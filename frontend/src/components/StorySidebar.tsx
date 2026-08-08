@@ -33,12 +33,10 @@ export function StorySidebar(props: {
       <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="故事名称" autoFocus />
       <TemplateChecklist label="角色（可多选）" items={props.characterTemplates.map((item) => ({ id: item.id, label: item.name }))} selected={characterIds} onSelected={setCharacterIds} />
       <TemplateChecklist label="世界书（可多选）" items={props.worldBookTemplates.map((item) => ({ id: item.id, label: item.title }))} selected={worldBookIds} onSelected={setWorldBookIds} />
-      <small className="snapshot-hint">加入故事后可以单独修改，不会改动角色库和世界书库。</small>
       <button className="primary-button">创建</button>
     </form>}
     <p className="section-label">故事</p>
     <nav className="chat-list">{props.chats.map((chat) => <button key={chat.id} className={chat.id === props.selectedChatId ? "chat-item active" : "chat-item"} onClick={() => props.onSelect(chat.id)}><span className="book-icon">◈</span><span><strong>{chat.title}</strong><small>{formatDate(chat.updated_at)}</small></span></button>)}</nav>
-    <div className="sidebar-note">重要数值修改前会请你确认<br />旧剧情可以随时查看来源</div>
   </aside>;
 }
 

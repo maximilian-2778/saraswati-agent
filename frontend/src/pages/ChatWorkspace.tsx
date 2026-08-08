@@ -261,9 +261,9 @@ export default function App() {
 
         <section className="message-list">
           {!selectedChatId ? (
-            <EmptyState title="从左侧建立第一个存档" detail="给故事一个名字，再写下角色或世界设定。" />
+            <EmptyState title="还没有故事" detail="从左侧新建一个故事。" />
           ) : loading && messages.length === 0 ? (
-            <EmptyState title="正在展开书页…" detail="读取消息、记忆和世界状态。" />
+            <EmptyState title="正在载入…" detail="" />
           ) : messages.length === 0 ? (
             <EmptyState title="故事尚未开始" detail="在下方写下第一句话。" />
           ) : (
@@ -601,7 +601,7 @@ function MessageBubble({ message, onEdit }: { message: Message; onEdit: (id: str
       {assistant && <div className="avatar">S</div>}
       <div className="message-column">
         <div className="message-meta">{assistant ? "Saraswati" : "你"}<span>{formatTime(message.created_at)} <button onClick={() => { setContent(message.content); setEditing((value) => !value); }}>改写</button></span></div>
-        {editing ? <form className="message-editor" onSubmit={save}><textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} /><footer><button type="button" onClick={() => setEditing(false)}>取消</button><button>保存并校验记忆</button></footer></form> : <div className="bubble">{message.content}</div>}
+        {editing ? <form className="message-editor" onSubmit={save}><textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} /><footer><button type="button" onClick={() => setEditing(false)}>取消</button><button>保存修改</button></footer></form> : <div className="bubble">{message.content}</div>}
       </div>
     </div>
   );
@@ -629,7 +629,7 @@ function Inspector(props: {
 
   return (
     <aside className="inspector">
-      <div className="inspector-title"><span>运行观察台</span><small>可解释 · 可审核</small></div>
+      <div className="inspector-title"><span>运行记录</span></div>
       <div className="tabs">
         {tabs.map((tab) => (
           <button key={tab.id} className={props.activeTab === tab.id ? "active" : ""} onClick={() => props.onTab(tab.id)}>
@@ -639,7 +639,7 @@ function Inspector(props: {
       </div>
       <div className="inspector-content">
         {!props.chatId ? (
-          <EmptyState title="暂无数据" detail="选择存档后查看 Agent 的内部状态。" />
+          <EmptyState title="暂无数据" detail="请先选择故事。" />
         ) : props.activeTab === "state" ? (
           <StatePanel {...props} chatId={props.chatId} />
         ) : props.activeTab === "memory" ? (
@@ -803,12 +803,12 @@ function WorldBookPanel({ chatId, onError }: { chatId: string; onError: (reason:
         <form className="world-entry-form" onSubmit={save}>
           <input value={draft.title} onChange={(e) => setDraft((value) => ({ ...value, title: e.target.value }))} placeholder="词条标题" autoFocus />
           <input value={draft.keywords} onChange={(e) => setDraft((value) => ({ ...value, keywords: e.target.value }))} placeholder="触发关键词，用逗号分隔；留空表示常驻" />
-          <textarea value={draft.content} onChange={(e) => setDraft((value) => ({ ...value, content: e.target.value }))} placeholder="需要告诉 Agent 的世界设定" rows={6} />
+          <textarea value={draft.content} onChange={(e) => setDraft((value) => ({ ...value, content: e.target.value }))} placeholder="世界设定" rows={6} />
           <div className="world-form-row"><label><span>优先级</span><input type="number" min={0} max={100} value={draft.priority} onChange={(e) => setDraft((value) => ({ ...value, priority: Number(e.target.value) }))} /></label><label className="inline-check"><input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft((value) => ({ ...value, enabled: e.target.checked }))} /> 启用</label></div>
           <footer><button type="button" onClick={() => setShowForm(false)}>取消</button><button className="primary-button">{editingId ? "保存修改" : "创建词条"}</button></footer>
         </form>
       )}
-      {entries.length === 0 && !showForm ? <p className="muted">还没有世界书词条。无关键词词条适合保存世界常识，有关键词词条适合按需触发。</p> : entries.map((entry) => (
+      {entries.length === 0 && !showForm ? <p className="muted">暂无世界书词条。</p> : entries.map((entry) => (
         <article className={`world-entry-card${entry.enabled ? "" : " disabled"}`} key={entry.id}>
           <header><div><strong>{entry.title}</strong><small>优先级 {entry.priority}</small></div><button className={entry.enabled ? "enabled" : ""} onClick={() => toggle(entry)}>{entry.enabled ? "已启用" : "已停用"}</button></header>
           <div className="keyword-list">{entry.keywords.length ? entry.keywords.map((keyword) => <span key={keyword}>{keyword}</span>) : <span>常驻</span>}</div>
@@ -864,7 +864,7 @@ function StatePanel(props: {
         </div>
       ))}
       <PanelHeading title="待审核建议" note={`${pending.length} 条等待决定`} />
-      {pending.length === 0 ? <p className="muted">Agent 暂未提出修改。</p> : pending.map((item) => (
+      {pending.length === 0 ? <p className="muted">暂无待确认修改。</p> : pending.map((item) => (
         <article className="proposal-card" key={item.id}>
           <header><strong>{item.entity}.{item.key}</strong><span>待审核</span></header>
           <div className="value-change"><code>{displayValue(item.old_value)}</code><b>→</b><code>{displayValue(item.new_value)}</code></div>
@@ -956,7 +956,7 @@ function AuditPanel(props: { chatId: string; audits: AuditIssue[]; onRefresh: ()
 function TracePanel({ traces }: { traces: AgentTrace[] }) {
   return (
     <div className="panel-stack">
-      <PanelHeading title="Agent 轨迹" note="查看上下文、模型和工具执行过程" />
+      <PanelHeading title="运行记录" note="上下文、模型和工具调用" />
       {traces.length === 0 ? <p className="muted">发送消息后会记录执行轨迹。</p> : traces.map((trace) => (
         <details className="trace-card" key={trace.id}>
           <summary><span>步骤 {trace.step}</span><strong>{traceEventLabel(trace.event_type)}</strong><time>{formatTime(trace.created_at)}</time></summary>
@@ -972,7 +972,7 @@ function PanelHeading({ title, note }: { title: string; note: string }) {
 }
 
 function EmptyState({ title, detail }: { title: string; detail: string }) {
-  return <div className="empty-state"><div>✦</div><h2>{title}</h2><p>{detail}</p></div>;
+  return <div className="empty-state"><div>✦</div><h2>{title}</h2>{detail && <p>{detail}</p>}</div>;
 }
 
 function SettingsModal({
@@ -1084,7 +1084,7 @@ function SettingsModal({
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: "model", label: "模型 API" },
     { id: "generation", label: "生成参数" },
-    { id: "agent", label: "Agent 与记忆" },
+    { id: "agent", label: "对话与记忆" },
     { id: "appearance", label: "界面与隐私" },
   ];
   const weightTotal = form
@@ -1136,8 +1136,8 @@ function SettingsModal({
               </div>
             ) : activeTab === "agent" ? (
               <div className="settings-section">
-                <SettingsHeading title="Agent 与上下文" detail="这些参数决定每轮可以思考几步，以及携带多少历史信息。" />
-                <NumberSetting label="最大 Agent 步数" note="模型和工具往返的上限；越高越慢且更贵" value={form.max_agent_steps} min={1} max={12} step={1} onChange={(value) => updateField("max_agent_steps", Math.round(value))} />
+                <SettingsHeading title="对话与记忆" detail="" />
+                <NumberSetting label="最大处理步数" note="模型与工具的往返上限" value={form.max_agent_steps} min={1} max={12} step={1} onChange={(value) => updateField("max_agent_steps", Math.round(value))} />
                 <NumberSetting label="近期原文条数" note="直接放入上下文的最近消息数量" value={form.recent_message_limit} min={2} max={100} step={2} onChange={(value) => updateField("recent_message_limit", Math.round(value))} />
                 <NumberSetting label="相关回忆数量" note="每轮最多带回多少条旧剧情" value={form.rag_limit} min={1} max={30} step={1} onChange={(value) => updateField("rag_limit", Math.round(value))} />
                 <div className="subsection-title"><strong>自动记忆整理</strong><small>每轮摘要，并按阈值逐级压缩</small></div>
@@ -1148,7 +1148,7 @@ function SettingsModal({
                 <div className="settings-grid">
                   <NumberSetting label="向量语义" note="意思是否相近" value={form.vector_weight} min={0} max={1} step={0.05} onChange={(value) => updateField("vector_weight", value)} compact />
                   <NumberSetting label="关键词" note="字面线索重合" value={form.keyword_weight} min={0} max={1} step={0.05} onChange={(value) => updateField("keyword_weight", value)} compact />
-                  <NumberSetting label="记忆重要度" note="人工或 Agent 标记" value={form.importance_weight} min={0} max={1} step={0.05} onChange={(value) => updateField("importance_weight", value)} compact />
+                  <NumberSetting label="记忆重要度" note="记录本身的重要程度" value={form.importance_weight} min={0} max={1} step={0.05} onChange={(value) => updateField("importance_weight", value)} compact />
                   <NumberSetting label="时间新鲜度" note="近期记忆略微优先" value={form.recency_weight} min={0} max={1} step={0.05} onChange={(value) => updateField("recency_weight", value)} compact />
                 </div>
                 {weightTotal <= 0 && <p className="field-error">至少有一项 RAG 权重必须大于 0。</p>}
@@ -1182,7 +1182,7 @@ function SettingsModal({
 }
 
 function SettingsHeading({ title, detail }: { title: string; detail: string }) {
-  return <div className="settings-heading"><h3>{title}</h3><p>{detail}</p></div>;
+  return <div className="settings-heading"><h3>{title}</h3>{detail && <p>{detail}</p>}</div>;
 }
 
 function NumberSetting({ label, note, value, min, max, step, onChange, compact = false }: {
