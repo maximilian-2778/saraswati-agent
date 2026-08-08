@@ -9,11 +9,14 @@ from backend.models import (
     CharacterTemplateRecord,
     CharacterProfileRecord,
     MemoryRecord,
+    NpcRecord,
+    SceneNodeRecord,
     MessageRecord,
     StateChangeRecord,
     StateEntryRecord,
     StoryCharacterRecord,
     StoryWorldBookRecord,
+    TimelineAnchorRecord,
     WorldBookTemplateRecord,
     WorldBookEntryRecord,
 )
@@ -26,6 +29,9 @@ from backend.schemas import (
     CharacterProfileRead,
     MemoryKind,
     MemoryRead,
+    NpcRead,
+    NpcRelation,
+    SceneNodeRead,
     MessageRead,
     MessageRole,
     ProposalStatus,
@@ -33,6 +39,7 @@ from backend.schemas import (
     StateEntryRead,
     StoryCharacterRead,
     StoryWorldBookRead,
+    TimelineAnchorRead,
     WorldBookTemplateRead,
     WorldBookEntryRead,
 )
@@ -155,6 +162,53 @@ def memory_read(record: MemoryRecord) -> MemoryRead:
         access_count=record.access_count,
         last_accessed_at=record.last_accessed_at,
         created_at=record.created_at,
+    )
+
+
+def scene_read(record: SceneNodeRecord, path: list[str]) -> SceneNodeRead:
+    return SceneNodeRead(
+        id=UUID(record.id),
+        chat_id=UUID(record.chat_id),
+        parent_id=UUID(record.parent_id) if record.parent_id else None,
+        name=record.name,
+        description=record.description,
+        is_current=record.is_current,
+        path=path,
+        source_message_id=UUID(record.source_message_id) if record.source_message_id else None,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+def npc_read(record: NpcRecord) -> NpcRead:
+    relations = json_loads(record.relations_json) or []
+    return NpcRead(
+        id=UUID(record.id),
+        chat_id=UUID(record.chat_id),
+        name=record.name,
+        description=record.description,
+        relation_to_user=record.relation_to_user,
+        relations=[NpcRelation.model_validate(item) for item in relations],
+        importance=record.importance,
+        presence=record.presence,
+        location_scene_id=(UUID(record.location_scene_id) if record.location_scene_id else None),
+        outfit=record.outfit,
+        condition=record.condition,
+        source_message_id=UUID(record.source_message_id) if record.source_message_id else None,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+def timeline_anchor_read(record: TimelineAnchorRecord) -> TimelineAnchorRead:
+    return TimelineAnchorRead(
+        id=UUID(record.id),
+        chat_id=UUID(record.chat_id),
+        story_time=record.story_time,
+        description=record.description,
+        source_message_id=(UUID(record.source_message_id) if record.source_message_id else None),
+        created_at=record.created_at,
+        updated_at=record.updated_at,
     )
 
 

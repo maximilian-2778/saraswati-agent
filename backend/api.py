@@ -20,9 +20,13 @@ from backend.models import (
     CharacterProfileRecord,
     MemoryRecord,
     MessageRecord,
+    NarrativeLeafRecord,
+    NpcRecord,
+    SceneNodeRecord,
     StateChangeRecord,
     StoryCharacterRecord,
     StoryWorldBookRecord,
+    TimelineAnchorRecord,
     WorldBookTemplateRecord,
     WorldBookEntryRecord,
 )
@@ -40,25 +44,36 @@ from backend.schemas import (
     CharacterProfileUpdate,
     HealthRead,
     MemoryCreate,
+    MemoryCoverageRead,
     MemoryKind,
     MemoryRead,
     MemorySearchRequest,
     MemorySearchResult,
     MemorySummaryRequest,
+    MemoryMergeRequest,
+    MemoryUpdate,
+    NarrativeNodeRead,
+    NpcRead,
+    NpcUpsert,
     MessageRead,
     MessageRole,
     MessageSend,
+    MessageUpdate,
     ProposalStatus,
     RuntimeInfo,
     SettingsRead,
     SettingsTestResult,
     SettingsUpdate,
+    SceneNodeRead,
+    SceneNodeUpsert,
     StateChangeRead,
     StateEntryRead,
     StateProposalCreate,
     StateResolution,
     StoryCharacterRead,
     StoryWorldBookRead,
+    TimelineAnchorCreate,
+    TimelineAnchorRead,
     WorldBookTemplateRead,
     WorldBookEntryCreate,
     WorldBookEntryRead,
@@ -71,10 +86,13 @@ from backend.serializers import (
     character_read,
     memory_read,
     message_read,
+    npc_read,
+    scene_read,
     state_change_read,
     state_entry_read,
     story_character_read,
     story_world_book_read,
+    timeline_anchor_read,
     trace_read,
     world_book_read,
     world_book_template_read,
@@ -122,6 +140,11 @@ def update_settings(payload: SettingsUpdate, request: Request) -> SettingsRead:
         api_key = None
     elif payload.api_key and payload.api_key.strip():
         api_key = payload.api_key.strip()
+    rerank_api_key = current.rerank_api_key
+    if payload.clear_rerank_api_key:
+        rerank_api_key = None
+    elif payload.rerank_api_key and payload.rerank_api_key.strip():
+        rerank_api_key = payload.rerank_api_key.strip()
 
     weights = (
         payload.vector_weight
@@ -154,6 +177,14 @@ def update_settings(payload: SettingsUpdate, request: Request) -> SettingsRead:
         keyword_weight=payload.keyword_weight,
         importance_weight=payload.importance_weight,
         recency_weight=payload.recency_weight,
+        auto_summary_enabled=payload.auto_summary_enabled,
+        summary_detail_mode=payload.summary_detail_mode,
+        chapter_summary_size=payload.chapter_summary_size,
+        arc_summary_size=payload.arc_summary_size,
+        rerank_base_url=_clean_optional(payload.rerank_base_url),
+        rerank_api_key=rerank_api_key,
+        rerank_model=_clean_optional(payload.rerank_model),
+        rerank_candidates=payload.rerank_candidates,
     )
     model = build_model_client(updated)
     save_local_settings(updated)
@@ -713,6 +744,59 @@ def list_messages(chat_id: UUID, db: Session = Depends(get_db)) -> list[MessageR
     return [message_read(record) for record in records]
 
 
+@router.put(
+    "/chats/{chat_id}/messages/{message_id}",
+    response_model=MessageRead,
+    tags=["messages"],
+)
+def update_message(
+    chat_id: UUID,
+    message_id: UUID,
+    payload: MessageUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> MessageRead:
+    """改写正文；相关记忆不会被静默修改，而会由原文指纹标记为失效。"""
+    _chat_or_404(db, chat_id)
+    record = db.scalar(
+        select(MessageRecord).where(
+            MessageRecord.id == str(message_id),
+            MessageRecord.chat_id == str(chat_id),
+        )
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    affected_leaves = db.scalars(
+        select(NarrativeLeafRecord).where(
+            NarrativeLeafRecord.chat_id == str(chat_id),
+            (
+                (NarrativeLeafRecord.user_message_id == str(message_id))
+                | (NarrativeLeafRecord.assistant_message_id == str(message_id))
+            ),
+        )
+    ).all()
+    affected_sources = {leaf.user_message_id for leaf in affected_leaves}
+    if affected_sources:
+        approved_changes = db.scalars(
+            select(StateChangeRecord).where(
+                StateChangeRecord.chat_id == str(chat_id),
+                StateChangeRecord.source_message_id.in_(affected_sources),
+                StateChangeRecord.status == ProposalStatus.APPROVED.value,
+            )
+        ).all()
+        for change in approved_changes:
+            change.status = ProposalStatus.PENDING.value
+            change.resolved_at = None
+            if not change.reason.startswith("源剧情已改写"):
+                change.reason = f"源剧情已改写，请重新确认：{change.reason}"
+    record.content = payload.content.strip()
+    db.commit()
+    runtime: AgentRuntime = request.app.state.runtime
+    runtime.state_service.rebuild_entries(db, str(chat_id))
+    db.refresh(record)
+    return message_read(record)
+
+
 @router.post(
     "/chats/{chat_id}/messages",
     response_model=AgentTurnRead,
@@ -774,6 +858,224 @@ def list_memories(chat_id: UUID, db: Session = Depends(get_db)) -> list[MemoryRe
     return [memory_read(record) for record in records]
 
 
+@router.get(
+    "/chats/{chat_id}/memory-graph",
+    response_model=list[NarrativeNodeRead],
+    tags=["memory-hub"],
+)
+def memory_graph(
+    chat_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> list[NarrativeNodeRead]:
+    """返回摘要森林，并标记当前真正会注入主模型的节点。"""
+    _chat_or_404(db, chat_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    recent = db.scalars(
+        select(MessageRecord)
+        .where(MessageRecord.chat_id == str(chat_id))
+        .order_by(MessageRecord.created_at.desc())
+        .limit(runtime.settings.recent_message_limit)
+    ).all()
+    nodes = runtime.narrative_memory_service.inspect_nodes(
+        db, str(chat_id), {item.id for item in recent}
+    )
+    return [
+        NarrativeNodeRead(
+            id=UUID(item.id),
+            node_type=item.node_type,
+            level=item.level,
+            content=item.content,
+            child_ids=[UUID(child_id) for child_id in item.child_ids],
+            source_message_id=(UUID(item.source_message_id) if item.source_message_id else None),
+            time_start=item.time_start,
+            time_end=item.time_end,
+            valid=item.valid,
+            active=item.active,
+            created_at=item.created_at,
+        )
+        for item in nodes
+    ]
+
+
+@router.get(
+    "/chats/{chat_id}/memory-coverage",
+    response_model=MemoryCoverageRead,
+    tags=["memory-hub"],
+)
+def memory_coverage(
+    chat_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> MemoryCoverageRead:
+    """报告漏摘和因原文变化而失效的楼层。"""
+    _chat_or_404(db, chat_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    coverage = runtime.narrative_memory_service.coverage(db, str(chat_id))
+    return MemoryCoverageRead(
+        total_ai_floors=coverage.total_ai_floors,
+        summarized_floors=coverage.summarized_floors,
+        valid_floors=coverage.valid_floors,
+        coverage_ratio=coverage.coverage_ratio,
+        missing_message_ids=[UUID(item) for item in coverage.missing_message_ids],
+        invalid_message_ids=[UUID(item) for item in coverage.invalid_message_ids],
+        selected_node_ids=[UUID(item) for item in coverage.selected_node_ids],
+    )
+
+
+@router.post(
+    "/chats/{chat_id}/memory-coverage/backfill",
+    response_model=MemoryCoverageRead,
+    tags=["memory-hub"],
+)
+async def backfill_memory_coverage(
+    chat_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> MemoryCoverageRead:
+    """为升级前的旧故事补齐楼层叶子；可能产生多次摘要模型调用。"""
+    _chat_or_404(db, chat_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    await runtime.narrative_memory_service.backfill_missing(
+        db, runtime.model, str(chat_id)
+    )
+    coverage = runtime.narrative_memory_service.coverage(db, str(chat_id))
+    return MemoryCoverageRead(
+        total_ai_floors=coverage.total_ai_floors,
+        summarized_floors=coverage.summarized_floors,
+        valid_floors=coverage.valid_floors,
+        coverage_ratio=coverage.coverage_ratio,
+        missing_message_ids=[UUID(item) for item in coverage.missing_message_ids],
+        invalid_message_ids=[UUID(item) for item in coverage.invalid_message_ids],
+        selected_node_ids=[UUID(item) for item in coverage.selected_node_ids],
+    )
+
+
+@router.get("/chats/{chat_id}/scenes", response_model=list[SceneNodeRead], tags=["roleplay-graph"])
+def list_scenes(
+    chat_id: UUID, request: Request, db: Session = Depends(get_db)
+) -> list[SceneNodeRead]:
+    _chat_or_404(db, chat_id)
+    service = request.app.state.runtime.graph_service
+    records = service.list_scenes(db, str(chat_id))
+    by_id = {item.id: item for item in records}
+    return [scene_read(item, service.scene_path(item, by_id)) for item in records]
+
+
+@router.post(
+    "/chats/{chat_id}/scenes",
+    response_model=SceneNodeRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["roleplay-graph"],
+)
+def create_scene(
+    chat_id: UUID,
+    payload: SceneNodeUpsert,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> SceneNodeRead:
+    _chat_or_404(db, chat_id)
+    service = request.app.state.runtime.graph_service
+    try:
+        record = service.upsert_scene(
+            db, str(chat_id), payload.name,
+            str(payload.parent_id) if payload.parent_id else None,
+            payload.description, payload.is_current,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    records = service.list_scenes(db, str(chat_id))
+    return scene_read(record, service.scene_path(record, {item.id: item for item in records}))
+
+
+@router.put("/chats/{chat_id}/scenes/{scene_id}", response_model=SceneNodeRead, tags=["roleplay-graph"])
+def update_scene(
+    chat_id: UUID,
+    scene_id: UUID,
+    payload: SceneNodeUpsert,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> SceneNodeRead:
+    _chat_or_404(db, chat_id)
+    service = request.app.state.runtime.graph_service
+    try:
+        record = service.upsert_scene(
+            db, str(chat_id), payload.name,
+            str(payload.parent_id) if payload.parent_id else None,
+            payload.description, payload.is_current, scene_id=str(scene_id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    records = service.list_scenes(db, str(chat_id))
+    return scene_read(record, service.scene_path(record, {item.id: item for item in records}))
+
+
+@router.delete("/chats/{chat_id}/scenes/{scene_id}", status_code=204, tags=["roleplay-graph"])
+def delete_scene(chat_id: UUID, scene_id: UUID, db: Session = Depends(get_db)) -> Response:
+    _chat_or_404(db, chat_id)
+    record = db.get(SceneNodeRecord, str(scene_id))
+    if not record or record.chat_id != str(chat_id):
+        raise HTTPException(status_code=404, detail="场景不存在")
+    db.delete(record)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/chats/{chat_id}/npcs", response_model=list[NpcRead], tags=["roleplay-graph"])
+def list_npcs(chat_id: UUID, request: Request, db: Session = Depends(get_db)) -> list[NpcRead]:
+    _chat_or_404(db, chat_id)
+    return [npc_read(item) for item in request.app.state.runtime.graph_service.list_npcs(db, str(chat_id))]
+
+
+@router.post(
+    "/chats/{chat_id}/npcs", response_model=NpcRead,
+    status_code=status.HTTP_201_CREATED, tags=["roleplay-graph"],
+)
+def create_npc(
+    chat_id: UUID, payload: NpcUpsert, request: Request, db: Session = Depends(get_db)
+) -> NpcRead:
+    _chat_or_404(db, chat_id)
+    try:
+        record = request.app.state.runtime.graph_service.upsert_npc(
+            db, str(chat_id), payload.name, payload.description, payload.relation_to_user,
+            [item.model_dump() for item in payload.relations], payload.importance, payload.presence,
+            str(payload.location_scene_id) if payload.location_scene_id else None,
+            payload.outfit, payload.condition,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return npc_read(record)
+
+
+@router.put("/chats/{chat_id}/npcs/{npc_id}", response_model=NpcRead, tags=["roleplay-graph"])
+def update_npc(
+    chat_id: UUID, npc_id: UUID, payload: NpcUpsert,
+    request: Request, db: Session = Depends(get_db),
+) -> NpcRead:
+    _chat_or_404(db, chat_id)
+    try:
+        record = request.app.state.runtime.graph_service.upsert_npc(
+            db, str(chat_id), payload.name, payload.description, payload.relation_to_user,
+            [item.model_dump() for item in payload.relations], payload.importance, payload.presence,
+            str(payload.location_scene_id) if payload.location_scene_id else None,
+            payload.outfit, payload.condition, npc_id=str(npc_id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return npc_read(record)
+
+
+@router.delete("/chats/{chat_id}/npcs/{npc_id}", status_code=204, tags=["roleplay-graph"])
+def delete_npc(chat_id: UUID, npc_id: UUID, db: Session = Depends(get_db)) -> Response:
+    _chat_or_404(db, chat_id)
+    record = db.get(NpcRecord, str(npc_id))
+    if not record or record.chat_id != str(chat_id):
+        raise HTTPException(status_code=404, detail="NPC 不存在")
+    db.delete(record)
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.post(
     "/chats/{chat_id}/memories",
     response_model=MemoryRead,
@@ -831,6 +1133,30 @@ async def search_memories(
 
 
 @router.post(
+    "/chats/{chat_id}/memories/merge",
+    response_model=MemoryRead,
+    tags=["memory"],
+)
+async def merge_memories(
+    chat_id: UUID,
+    payload: MemoryMergeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> MemoryRead:
+    _chat_or_404(db, chat_id)
+    records = [_memory_or_404(db, chat_id, item) for item in payload.memory_ids]
+    runtime: AgentRuntime = request.app.state.runtime
+    record = await runtime.narrative_memory_service.merge_memories(
+        db,
+        runtime.model,
+        str(chat_id),
+        records,
+        payload.detail_mode,
+    )
+    return memory_read(record)
+
+
+@router.post(
     "/chats/{chat_id}/memories/summarize",
     response_model=MemoryRead,
     tags=["memory"],
@@ -864,12 +1190,17 @@ async def summarize_memories(
                 "content": (
                     "生成剧情摘要。保留关键事件、人物关系、承诺、伏笔、"
                     "时间变化和重要状态，不补充原文没有的信息。"
+                    + (
+                        "使用详细模式，保留重要动作和关系变化。"
+                        if payload.detail_mode == "detailed"
+                        else "使用精简模式，只保留影响后续剧情的信息。"
+                    )
                 ),
             },
             {"role": "user", "content": transcript},
         ]
     )
-    summary = reply.content or "未能生成摘要。"
+    summary = f"[手动总结] {reply.content or '未能生成摘要。'}"
     record = await runtime.memory_service.create(
         db,
         runtime.model,
@@ -880,6 +1211,128 @@ async def summarize_memories(
         source_message_id=records[-1].id,
     )
     return memory_read(record)
+
+
+@router.put(
+    "/chats/{chat_id}/memories/{memory_id}",
+    response_model=MemoryRead,
+    tags=["memory"],
+)
+async def update_memory(
+    chat_id: UUID,
+    memory_id: UUID,
+    payload: MemoryUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> MemoryRead:
+    _chat_or_404(db, chat_id)
+    record = _memory_or_404(db, chat_id, memory_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    record.content = payload.content.strip()
+    record.importance = payload.importance
+    record.embedding_json = json_dumps(await runtime.model.embed(record.content))
+    db.commit()
+    db.refresh(record)
+    return memory_read(record)
+
+
+@router.delete(
+    "/chats/{chat_id}/memories/{memory_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["memory"],
+)
+def delete_memory(
+    chat_id: UUID,
+    memory_id: UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    _chat_or_404(db, chat_id)
+    db.delete(_memory_or_404(db, chat_id, memory_id))
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/chats/{chat_id}/timeline",
+    response_model=list[TimelineAnchorRead],
+    tags=["memory-hub"],
+)
+def list_timeline(
+    chat_id: UUID,
+    db: Session = Depends(get_db),
+) -> list[TimelineAnchorRead]:
+    _chat_or_404(db, chat_id)
+    records = db.scalars(
+        select(TimelineAnchorRecord)
+        .where(TimelineAnchorRecord.chat_id == str(chat_id))
+        .order_by(TimelineAnchorRecord.created_at)
+    ).all()
+    return [timeline_anchor_read(record) for record in records]
+
+
+@router.post(
+    "/chats/{chat_id}/timeline",
+    response_model=TimelineAnchorRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["memory-hub"],
+)
+def create_timeline_anchor(
+    chat_id: UUID,
+    payload: TimelineAnchorCreate,
+    db: Session = Depends(get_db),
+) -> TimelineAnchorRead:
+    _chat_or_404(db, chat_id)
+    now = datetime.now(UTC)
+    record = TimelineAnchorRecord(
+        id=str(uuid4()),
+        chat_id=str(chat_id),
+        story_time=payload.story_time.strip(),
+        description=payload.description.strip(),
+        source_message_id=(str(payload.source_message_id) if payload.source_message_id else None),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return timeline_anchor_read(record)
+
+
+@router.put(
+    "/chats/{chat_id}/timeline/{anchor_id}",
+    response_model=TimelineAnchorRead,
+    tags=["memory-hub"],
+)
+def update_timeline_anchor(
+    chat_id: UUID,
+    anchor_id: UUID,
+    payload: TimelineAnchorCreate,
+    db: Session = Depends(get_db),
+) -> TimelineAnchorRead:
+    _chat_or_404(db, chat_id)
+    record = _timeline_or_404(db, chat_id, anchor_id)
+    record.story_time = payload.story_time.strip()
+    record.description = payload.description.strip()
+    record.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(record)
+    return timeline_anchor_read(record)
+
+
+@router.delete(
+    "/chats/{chat_id}/timeline/{anchor_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["memory-hub"],
+)
+def delete_timeline_anchor(
+    chat_id: UUID,
+    anchor_id: UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    _chat_or_404(db, chat_id)
+    db.delete(_timeline_or_404(db, chat_id, anchor_id))
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
@@ -1051,6 +1504,38 @@ def _chat_or_404(db: Session, chat_id: UUID) -> ChatRecord:
     return record
 
 
+def _memory_or_404(
+    db: Session,
+    chat_id: UUID,
+    memory_id: UUID,
+) -> MemoryRecord:
+    record = db.scalar(
+        select(MemoryRecord).where(
+            MemoryRecord.id == str(memory_id),
+            MemoryRecord.chat_id == str(chat_id),
+        )
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    return record
+
+
+def _timeline_or_404(
+    db: Session,
+    chat_id: UUID,
+    anchor_id: UUID,
+) -> TimelineAnchorRecord:
+    record = db.scalar(
+        select(TimelineAnchorRecord).where(
+            TimelineAnchorRecord.id == str(anchor_id),
+            TimelineAnchorRecord.chat_id == str(chat_id),
+        )
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="时间锚点不存在")
+    return record
+
+
 def _records_by_ids(
     db: Session,
     model: type[Any],
@@ -1198,6 +1683,8 @@ def _clean_keywords(keywords: list[str]) -> list[str]:
 def _settings_read(settings: Settings) -> SettingsRead:
     key = settings.llm_api_key or ""
     hint = f"••••{key[-4:]}" if key else None
+    rerank_key = settings.rerank_api_key or ""
+    rerank_hint = f"••••{rerank_key[-4:]}" if rerank_key else None
     return SettingsRead(
         provider_mode=settings.provider_mode,
         llm_base_url=settings.llm_base_url,
@@ -1218,6 +1705,15 @@ def _settings_read(settings: Settings) -> SettingsRead:
         keyword_weight=settings.keyword_weight,
         importance_weight=settings.importance_weight,
         recency_weight=settings.recency_weight,
+        auto_summary_enabled=settings.auto_summary_enabled,
+        summary_detail_mode=settings.summary_detail_mode,
+        chapter_summary_size=settings.chapter_summary_size,
+        arc_summary_size=settings.arc_summary_size,
+        rerank_base_url=settings.rerank_base_url,
+        rerank_api_key_configured=bool(rerank_key),
+        rerank_api_key_hint=rerank_hint,
+        rerank_model=settings.rerank_model,
+        rerank_candidates=settings.rerank_candidates,
     )
 
 

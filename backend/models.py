@@ -178,6 +178,125 @@ class MemoryRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class NarrativeLeafRecord(Base):
+    """一轮角色回复对应的可信摘要叶子；原文变化后可由指纹判定失效。"""
+
+    __tablename__ = "narrative_leaves"
+    __table_args__ = (
+        UniqueConstraint("assistant_message_id", name="uq_narrative_leaf_message"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_message_id: Mapped[str] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), nullable=False
+    )
+    assistant_message_id: Mapped[str] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    memory_id: Mapped[str | None] = mapped_column(
+        ForeignKey("memories.id", ondelete="SET NULL"), nullable=True
+    )
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    detail_mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    time_start: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    time_end: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class NarrativeSummaryNodeRecord(Base):
+    """摘要森林中的压缩节点；child_refs_json 引用叶子或更低层节点。"""
+
+    __tablename__ = "narrative_summary_nodes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    level: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    child_refs_json: Mapped[str] = mapped_column(Text, nullable=False)
+    memory_id: Mapped[str | None] = mapped_column(
+        ForeignKey("memories.id", ondelete="SET NULL"), nullable=True
+    )
+    time_start: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    time_end: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SceneNodeRecord(Base):
+    """故事内地点树节点。"""
+
+    __tablename__ = "scene_nodes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    parent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("scene_nodes.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    source_message_id: Mapped[str | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class NpcRecord(Base):
+    """NPC 当前档案与关系图节点。"""
+
+    __tablename__ = "npcs"
+    __table_args__ = (UniqueConstraint("chat_id", "name", name="uq_npc_chat_name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    relation_to_user: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    relations_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    importance: Mapped[str] = mapped_column(String(20), nullable=False, default="supporting")
+    presence: Mapped[str] = mapped_column(String(20), nullable=False, default="away")
+    location_scene_id: Mapped[str | None] = mapped_column(
+        ForeignKey("scene_nodes.id", ondelete="SET NULL"), nullable=True
+    )
+    outfit: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    condition: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source_message_id: Mapped[str | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TimelineAnchorRecord(Base):
+    """从剧情中提取或由用户补充的故事内时间锚点。"""
+
+    __tablename__ = "timeline_anchors"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    story_time: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    source_message_id: Mapped[str | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class StateEntryRecord(Base):
     __tablename__ = "state_entries"
     __table_args__ = (
