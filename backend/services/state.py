@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from backend.models import StateChangeRecord, StateEntryRecord
@@ -81,39 +81,59 @@ class StateService:
 
         now = datetime.now(UTC)
         if approve:
-            current = db.scalar(
-                select(StateEntryRecord).where(
-                    StateEntryRecord.chat_id == proposal.chat_id,
-                    StateEntryRecord.entity == proposal.entity,
-                    StateEntryRecord.key == proposal.key,
-                )
-            )
-            if current:
-                current.value_json = proposal.new_value_json
-                current.source_message_id = proposal.source_message_id
-                current.version += 1
-                current.updated_at = now
-            else:
-                db.add(
-                    StateEntryRecord(
-                        id=str(uuid4()),
-                        chat_id=proposal.chat_id,
-                        entity=proposal.entity,
-                        key=proposal.key,
-                        value_json=proposal.new_value_json,
-                        source_message_id=proposal.source_message_id,
-                        version=1,
-                        updated_at=now,
-                    )
-                )
             proposal.status = ProposalStatus.APPROVED.value
         else:
             proposal.status = ProposalStatus.REJECTED.value
 
         proposal.resolved_at = now
         db.commit()
+        if approve:
+            self.rebuild_entries(db, proposal.chat_id)
         db.refresh(proposal)
         return proposal
+
+    def rebuild_entries(self, db: Session, chat_id: str) -> None:
+        """按已批准事件重建当前状态；state_changes 是真源，state_entries 是投影视图。"""
+        changes = list(
+            db.scalars(
+                select(StateChangeRecord)
+                .where(
+                    StateChangeRecord.chat_id == chat_id,
+                    StateChangeRecord.status == ProposalStatus.APPROVED.value,
+                )
+                .order_by(StateChangeRecord.resolved_at, StateChangeRecord.created_at)
+            ).all()
+        )
+        projected: dict[tuple[str, str], dict[str, Any]] = {}
+        for change in changes:
+            identity = (change.entity, change.key)
+            previous = projected.get(identity)
+            projected[identity] = {
+                "value_json": change.new_value_json,
+                "source_message_id": change.source_message_id,
+                "version": (int(previous["version"]) + 1) if previous else 1,
+                "updated_at": change.resolved_at or change.created_at,
+            }
+
+        db.execute(delete(StateEntryRecord).where(StateEntryRecord.chat_id == chat_id))
+        for (entity, key), value in projected.items():
+            db.add(
+                StateEntryRecord(
+                    id=str(uuid4()),
+                    chat_id=chat_id,
+                    entity=entity,
+                    key=key,
+                    value_json=str(value["value_json"]),
+                    source_message_id=(
+                        str(value["source_message_id"])
+                        if value["source_message_id"]
+                        else None
+                    ),
+                    version=int(value["version"]),
+                    updated_at=value["updated_at"],
+                )
+            )
+        db.commit()
 
     @staticmethod
     def value(entry: StateEntryRecord) -> Any:

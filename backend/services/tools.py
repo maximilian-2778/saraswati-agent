@@ -8,11 +8,52 @@ from backend.llm import ModelClient
 from backend.models import MemoryRecord, StateChangeRecord
 from backend.schemas import MemoryKind
 from backend.services.memory import MemoryService
+from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
 from backend.utils import json_loads
 
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "upsert_scene",
+            "description": "发现新地点、进入新地点或场景描述发生变化时，维护层级场景树。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                    "description": {"type": "string"},
+                    "is_current": {"type": "boolean"},
+                },
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "upsert_npc",
+            "description": "NPC 登场、离场、换装、受伤、位置或人物关系变化时更新关系图。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "relation_to_user": {"type": "string"},
+                    "relations": {"type": "array", "items": {"type": "object", "properties": {"target": {"type": "string"}, "relation": {"type": "string"}}, "required": ["target", "relation"]}},
+                    "importance": {"type": "string", "enum": ["core", "supporting", "minor"]},
+                    "presence": {"type": "string", "enum": ["present", "nearby", "away", "unknown"]},
+                    "location_path": {"type": "array", "items": {"type": "string"}},
+                    "outfit": {"type": "string"},
+                    "condition": {"type": "string"},
+                },
+                "required": ["name"],
+                "additionalProperties": False,
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -100,6 +141,7 @@ class ToolExecutor:
         source_message_id: str,
         memory_service: MemoryService,
         state_service: StateService,
+        graph_service: RoleplayGraphService,
     ) -> None:
         self.db = db
         self.model = model
@@ -107,10 +149,47 @@ class ToolExecutor:
         self.source_message_id = source_message_id
         self.memory_service = memory_service
         self.state_service = state_service
+        self.graph_service = graph_service
         self.created_proposals: list[StateChangeRecord] = []
         self.created_memories: list[MemoryRecord] = []
 
     async def execute(self, name: str, arguments: dict[str, Any]) -> Any:
+        if name == "upsert_scene":
+            path = [str(item) for item in arguments.get("path", [])]
+            scene = self.graph_service.upsert_scene_path(
+                self.db,
+                self.chat_id,
+                path,
+                str(arguments.get("description", "")),
+                bool(arguments.get("is_current", False)),
+                self.source_message_id,
+            )
+            return {"scene_id": scene.id, "path": path, "is_current": scene.is_current}
+
+        if name == "upsert_npc":
+            location_id = None
+            location_path = [str(item) for item in arguments.get("location_path", [])]
+            if location_path:
+                location = self.graph_service.upsert_scene_path(
+                    self.db, self.chat_id, location_path, source_message_id=self.source_message_id
+                )
+                location_id = location.id
+            npc = self.graph_service.upsert_npc(
+                self.db,
+                self.chat_id,
+                str(arguments["name"]),
+                str(arguments.get("description", "")),
+                str(arguments.get("relation_to_user", "")),
+                list(arguments.get("relations", [])),
+                str(arguments.get("importance", "supporting")),
+                str(arguments.get("presence", "away")),
+                location_id,
+                str(arguments.get("outfit", "")),
+                str(arguments.get("condition", "")),
+                self.source_message_id,
+            )
+            return {"npc_id": npc.id, "name": npc.name, "presence": npc.presence}
+
         if name == "query_state":
             entries = self.state_service.list_entries(
                 self.db,

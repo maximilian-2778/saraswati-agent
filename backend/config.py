@@ -36,6 +36,14 @@ class Settings:
     keyword_weight: float = 0.25
     importance_weight: float = 0.15
     recency_weight: float = 0.05
+    auto_summary_enabled: bool = True
+    summary_detail_mode: str = "brief"
+    chapter_summary_size: int = 8
+    arc_summary_size: int = 4
+    rerank_base_url: str | None = None
+    rerank_api_key: str | None = None
+    rerank_model: str | None = None
+    rerank_candidates: int = 20
     settings_file: str | None = None
 
     @property
@@ -74,6 +82,14 @@ class Settings:
             keyword_weight=float(os.getenv("SARASWATI_KEYWORD_WEIGHT", "0.25")),
             importance_weight=float(os.getenv("SARASWATI_IMPORTANCE_WEIGHT", "0.15")),
             recency_weight=float(os.getenv("SARASWATI_RECENCY_WEIGHT", "0.05")),
+            auto_summary_enabled=os.getenv("SARASWATI_AUTO_SUMMARY", "true").lower() == "true",
+            summary_detail_mode=os.getenv("SARASWATI_SUMMARY_DETAIL", "brief"),
+            chapter_summary_size=int(os.getenv("SARASWATI_CHAPTER_SUMMARY_SIZE", "8")),
+            arc_summary_size=int(os.getenv("SARASWATI_ARC_SUMMARY_SIZE", "4")),
+            rerank_base_url=_optional_env("SARASWATI_RERANK_BASE_URL"),
+            rerank_api_key=_optional_env("SARASWATI_RERANK_API_KEY"),
+            rerank_model=_optional_env("SARASWATI_RERANK_MODEL"),
+            rerank_candidates=int(os.getenv("SARASWATI_RERANK_CANDIDATES", "20")),
             settings_file=str(settings_file),
         )
         return load_local_settings(settings)
@@ -97,6 +113,14 @@ EDITABLE_SETTING_NAMES = {
     "keyword_weight",
     "importance_weight",
     "recency_weight",
+    "auto_summary_enabled",
+    "summary_detail_mode",
+    "chapter_summary_size",
+    "arc_summary_size",
+    "rerank_base_url",
+    "rerank_api_key",
+    "rerank_model",
+    "rerank_candidates",
 }
 
 

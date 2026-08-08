@@ -30,6 +30,15 @@ export interface AppSettings {
   keyword_weight: number;
   importance_weight: number;
   recency_weight: number;
+  auto_summary_enabled: boolean;
+  summary_detail_mode: "brief" | "detailed";
+  chapter_summary_size: number;
+  arc_summary_size: number;
+  rerank_base_url: string | null;
+  rerank_api_key_configured: boolean;
+  rerank_api_key_hint: string | null;
+  rerank_model: string | null;
+  rerank_candidates: number;
 }
 
 export interface SettingsUpdate {
@@ -51,6 +60,15 @@ export interface SettingsUpdate {
   keyword_weight: number;
   importance_weight: number;
   recency_weight: number;
+  auto_summary_enabled: boolean;
+  summary_detail_mode: "brief" | "detailed";
+  chapter_summary_size: number;
+  arc_summary_size: number;
+  rerank_base_url: string | null;
+  rerank_api_key: string | null;
+  clear_rerank_api_key: boolean;
+  rerank_model: string | null;
+  rerank_candidates: number;
 }
 
 export interface SettingsTestResult {
@@ -131,6 +149,72 @@ export interface Memory {
   access_count: number;
   last_accessed_at: string | null;
   created_at: string;
+}
+
+export interface NarrativeNode {
+  id: string;
+  node_type: "leaf" | "summary";
+  level: number;
+  content: string;
+  child_ids: string[];
+  source_message_id: string | null;
+  time_start: string | null;
+  time_end: string | null;
+  valid: boolean;
+  active: boolean;
+  created_at: string;
+}
+
+export interface MemoryCoverage {
+  total_ai_floors: number;
+  summarized_floors: number;
+  valid_floors: number;
+  coverage_ratio: number;
+  missing_message_ids: string[];
+  invalid_message_ids: string[];
+  selected_node_ids: string[];
+}
+
+export interface SceneNode {
+  id: string;
+  chat_id: string;
+  name: string;
+  parent_id: string | null;
+  description: string;
+  is_current: boolean;
+  path: string[];
+  source_message_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NpcRelation { target: string; relation: string; }
+
+export interface Npc {
+  id: string;
+  chat_id: string;
+  name: string;
+  description: string;
+  relation_to_user: string;
+  relations: NpcRelation[];
+  importance: "core" | "supporting" | "minor";
+  presence: "present" | "nearby" | "away" | "unknown";
+  location_scene_id: string | null;
+  outfit: string;
+  condition: string;
+  source_message_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TimelineAnchor {
+  id: string;
+  chat_id: string;
+  story_time: string;
+  description: string;
+  source_message_id: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface RetrievedMemory {

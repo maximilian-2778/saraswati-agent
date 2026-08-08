@@ -121,6 +121,10 @@ class MessageSend(BaseModel):
     content: str = Field(min_length=1, max_length=20_000)
 
 
+class MessageUpdate(BaseModel):
+    content: str = Field(min_length=1, max_length=20_000)
+
+
 class MessageRead(BaseModel):
     id: UUID
     chat_id: UUID
@@ -161,6 +165,95 @@ class MemorySearchRequest(BaseModel):
 
 class MemorySummaryRequest(BaseModel):
     max_messages: int = Field(default=30, ge=4, le=100)
+    detail_mode: Literal["brief", "detailed"] = "brief"
+
+
+class MemoryUpdate(BaseModel):
+    content: str = Field(min_length=1, max_length=20_000)
+    importance: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class MemoryMergeRequest(BaseModel):
+    memory_ids: list[UUID] = Field(min_length=2, max_length=50)
+    detail_mode: Literal["brief", "detailed"] = "brief"
+
+
+class NarrativeNodeRead(BaseModel):
+    id: UUID
+    node_type: Literal["leaf", "summary"]
+    level: int
+    content: str
+    child_ids: list[UUID] = Field(default_factory=list)
+    source_message_id: UUID | None = None
+    time_start: str | None = None
+    time_end: str | None = None
+    valid: bool = True
+    active: bool = False
+    created_at: datetime
+
+
+class MemoryCoverageRead(BaseModel):
+    total_ai_floors: int
+    summarized_floors: int
+    valid_floors: int
+    coverage_ratio: float
+    missing_message_ids: list[UUID] = Field(default_factory=list)
+    invalid_message_ids: list[UUID] = Field(default_factory=list)
+    selected_node_ids: list[UUID] = Field(default_factory=list)
+
+
+class SceneNodeUpsert(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    parent_id: UUID | None = None
+    description: str = Field(default="", max_length=10_000)
+    is_current: bool = False
+
+
+class SceneNodeRead(SceneNodeUpsert):
+    id: UUID
+    chat_id: UUID
+    path: list[str] = Field(default_factory=list)
+    source_message_id: UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class NpcRelation(BaseModel):
+    target: str = Field(min_length=1, max_length=120)
+    relation: str = Field(min_length=1, max_length=1_000)
+
+
+class NpcUpsert(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=10_000)
+    relation_to_user: str = Field(default="", max_length=5_000)
+    relations: list[NpcRelation] = Field(default_factory=list, max_length=100)
+    importance: Literal["core", "supporting", "minor"] = "supporting"
+    presence: Literal["present", "nearby", "away", "unknown"] = "away"
+    location_scene_id: UUID | None = None
+    outfit: str = Field(default="", max_length=5_000)
+    condition: str = Field(default="", max_length=5_000)
+
+
+class NpcRead(NpcUpsert):
+    id: UUID
+    chat_id: UUID
+    source_message_id: UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TimelineAnchorCreate(BaseModel):
+    story_time: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=5_000)
+    source_message_id: UUID | None = None
+
+
+class TimelineAnchorRead(TimelineAnchorCreate):
+    id: UUID
+    chat_id: UUID
+    created_at: datetime
+    updated_at: datetime
 
 
 class StateEntryRead(BaseModel):
@@ -268,6 +361,15 @@ class SettingsRead(BaseModel):
     keyword_weight: float
     importance_weight: float
     recency_weight: float
+    auto_summary_enabled: bool
+    summary_detail_mode: Literal["brief", "detailed"]
+    chapter_summary_size: int
+    arc_summary_size: int
+    rerank_base_url: str | None
+    rerank_api_key_configured: bool
+    rerank_api_key_hint: str | None
+    rerank_model: str | None
+    rerank_candidates: int
 
 
 class SettingsUpdate(BaseModel):
@@ -291,6 +393,15 @@ class SettingsUpdate(BaseModel):
     keyword_weight: float = Field(default=0.25, ge=0.0, le=1.0)
     importance_weight: float = Field(default=0.15, ge=0.0, le=1.0)
     recency_weight: float = Field(default=0.05, ge=0.0, le=1.0)
+    auto_summary_enabled: bool = True
+    summary_detail_mode: Literal["brief", "detailed"] = "brief"
+    chapter_summary_size: int = Field(default=8, ge=2, le=50)
+    arc_summary_size: int = Field(default=4, ge=2, le=20)
+    rerank_base_url: str | None = Field(default=None, max_length=2_000)
+    rerank_api_key: str | None = Field(default=None, max_length=10_000)
+    clear_rerank_api_key: bool = False
+    rerank_model: str | None = Field(default=None, max_length=200)
+    rerank_candidates: int = Field(default=20, ge=2, le=100)
 
 
 class SettingsTestResult(BaseModel):
@@ -303,4 +414,4 @@ class SettingsTestResult(BaseModel):
 class HealthRead(BaseModel):
     status: str = "ok"
     service: str = "saraswati-agent-api"
-    version: str = "0.2.0"
+    version: str = "0.4.0"

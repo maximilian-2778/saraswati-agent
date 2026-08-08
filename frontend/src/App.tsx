@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { api } from "./api";
+import { MemoryHub } from "./MemoryHub";
+import type { MemoryHubTab } from "./MemoryHub";
 import type {
   AgentTrace,
   AppSettings,
@@ -9,20 +11,26 @@ import type {
   CharacterProfile,
   CharacterTemplate,
   Memory,
+  MemoryCoverage,
   MemoryKind,
   Message,
+  NarrativeNode,
+  Npc,
   RetrievedMemory,
   RuntimeInfo,
+  SceneNode,
   SettingsUpdate,
   StateEntry,
   StateProposal,
   StoryCharacter,
   StoryWorldBook,
+  TimelineAnchor,
   WorldBookEntry,
   WorldBookTemplate,
 } from "./types";
 
-type InspectorTab = "state" | "memory" | "audit" | "trace";
+type InspectorTab = MemoryHubTab;
+type LegacyInspectorTab = "state" | "memory" | "audit" | "trace";
 type AppPage = "story" | "characters" | "world";
 type SettingsTab = "model" | "generation" | "agent" | "appearance";
 type ThemeName = "ink" | "midnight";
@@ -40,12 +48,17 @@ export default function App() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [memoryGraph, setMemoryGraph] = useState<NarrativeNode[]>([]);
+  const [memoryCoverage, setMemoryCoverage] = useState<MemoryCoverage | null>(null);
+  const [scenes, setScenes] = useState<SceneNode[]>([]);
+  const [npcs, setNpcs] = useState<Npc[]>([]);
   const [retrieved, setRetrieved] = useState<RetrievedMemory[]>([]);
   const [stateEntries, setStateEntries] = useState<StateEntry[]>([]);
   const [proposals, setProposals] = useState<StateProposal[]>([]);
   const [audits, setAudits] = useState<AuditIssue[]>([]);
   const [traces, setTraces] = useState<AgentTrace[]>([]);
-  const [activeTab, setActiveTab] = useState<InspectorTab>("state");
+  const [timeline, setTimeline] = useState<TimelineAnchor[]>([]);
+  const [activeTab, setActiveTab] = useState<InspectorTab>("summary");
   const [page, setPage] = useState<AppPage>("story");
   const [characterTemplates, setCharacterTemplates] = useState<CharacterTemplate[]>([]);
   const [worldBookTemplates, setWorldBookTemplates] = useState<WorldBookTemplate[]>([]);
@@ -95,10 +108,15 @@ export default function App() {
   async function loadChat(chatId: string) {
     try {
       setLoading(true);
-      const [messageList, memoryList, stateList, proposalList, auditList, traceList] =
+      const [messageList, memoryList, graph, coverage, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] =
         await Promise.all([
           api.messages(chatId),
           api.memories(chatId),
+          api.memoryGraph(chatId),
+          api.memoryCoverage(chatId),
+          api.scenes(chatId),
+          api.npcs(chatId),
+          api.timeline(chatId),
           api.state(chatId),
           api.proposals(chatId),
           api.audits(chatId),
@@ -106,6 +124,11 @@ export default function App() {
         ]);
       setMessages(messageList);
       setMemories(memoryList);
+      setMemoryGraph(graph);
+      setMemoryCoverage(coverage);
+      setScenes(sceneList);
+      setNpcs(npcList);
+      setTimeline(timelineList);
       setStateEntries(stateList);
       setProposals(proposalList);
       setAudits(auditList);
@@ -120,14 +143,24 @@ export default function App() {
   }
 
   async function refreshInspector(chatId: string) {
-    const [memoryList, stateList, proposalList, auditList, traceList] = await Promise.all([
+    const [memoryList, graph, coverage, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] = await Promise.all([
       api.memories(chatId),
+      api.memoryGraph(chatId),
+      api.memoryCoverage(chatId),
+      api.scenes(chatId),
+      api.npcs(chatId),
+      api.timeline(chatId),
       api.state(chatId),
       api.proposals(chatId),
       api.audits(chatId),
       api.traces(chatId),
     ]);
     setMemories(memoryList);
+    setMemoryGraph(graph);
+    setMemoryCoverage(coverage);
+    setScenes(sceneList);
+    setNpcs(npcList);
+    setTimeline(timelineList);
     setStateEntries(stateList);
     setProposals(proposalList);
     setAudits(auditList);
@@ -139,7 +172,7 @@ export default function App() {
       const chat = await api.createChat(title, characterIds, worldBookIds);
       setChats((current) => [chat, ...current]);
       setSelectedChatId(chat.id);
-      setActiveTab("state");
+      setActiveTab("summary");
       setPage("story");
       setError(null);
     } catch (reason) {
@@ -163,14 +196,25 @@ export default function App() {
         turn.assistant_message,
       ]);
       setRetrieved(turn.retrieved_memories);
-      if (turn.state_proposals.length) setActiveTab("state");
-      if (turn.audit_issues.length) setActiveTab("audit");
+      if (turn.state_proposals.length) setActiveTab("ledger");
+      if (turn.audit_issues.length) setActiveTab("diagnostics");
       await refreshInspector(selectedChatId);
     } catch (reason) {
       setDraft(content);
       setError(errorMessage(reason));
     } finally {
       setSending(false);
+    }
+  }
+
+  async function editMessage(messageId: string, content: string) {
+    if (!selectedChatId) return;
+    try {
+      const updated = await api.updateMessage(selectedChatId, messageId, content);
+      setMessages((current) => current.map((item) => item.id === messageId ? updated : item));
+      await refreshInspector(selectedChatId);
+    } catch (reason) {
+      setError(errorMessage(reason));
     }
   }
 
@@ -219,7 +263,7 @@ export default function App() {
           ) : messages.length === 0 ? (
             <EmptyState title="故事尚未开始" detail="在下方写下第一句话。" />
           ) : (
-            messages.map((message) => <MessageBubble key={message.id} message={message} />)
+            messages.map((message) => <MessageBubble key={message.id} message={message} onEdit={editMessage} />)
           )}
           {sending && (
             <div className="message-row assistant">
@@ -253,12 +297,17 @@ export default function App() {
         </form>
       </main>
 
-      <Inspector
+      <MemoryHub
         chatId={selectedChatId}
         activeTab={activeTab}
         onTab={setActiveTab}
         memories={memories}
+        memoryGraph={memoryGraph}
+        coverage={memoryCoverage}
+        scenes={scenes}
+        npcs={npcs}
         retrieved={retrieved}
+        timeline={timeline}
         stateEntries={stateEntries}
         proposals={proposals}
         audits={audits}
@@ -632,14 +681,22 @@ function LibraryCard(props: { title: string; detail: string; badge: string; chil
   return <article className="library-card"><header><div><strong>{props.title}</strong><span>{props.badge}</span></div></header><p>{props.detail}</p><footer>{props.children}</footer></article>;
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({ message, onEdit }: { message: Message; onEdit: (id: string, content: string) => Promise<void> }) {
   const assistant = message.role === "assistant";
+  const [editing, setEditing] = useState(false);
+  const [content, setContent] = useState(message.content);
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!content.trim()) return;
+    await onEdit(message.id, content.trim());
+    setEditing(false);
+  }
   return (
     <div className={`message-row ${assistant ? "assistant" : "user"}`}>
       {assistant && <div className="avatar">S</div>}
       <div className="message-column">
-        <div className="message-meta">{assistant ? "Saraswati" : "你"}<span>{formatTime(message.created_at)}</span></div>
-        <div className="bubble">{message.content}</div>
+        <div className="message-meta">{assistant ? "Saraswati" : "你"}<span>{formatTime(message.created_at)} <button onClick={() => { setContent(message.content); setEditing((value) => !value); }}>改写</button></span></div>
+        {editing ? <form className="message-editor" onSubmit={save}><textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} /><footer><button type="button" onClick={() => setEditing(false)}>取消</button><button>保存并校验记忆</button></footer></form> : <div className="bubble">{message.content}</div>}
       </div>
     </div>
   );
@@ -647,8 +704,8 @@ function MessageBubble({ message }: { message: Message }) {
 
 function Inspector(props: {
   chatId: string | null;
-  activeTab: InspectorTab;
-  onTab: (tab: InspectorTab) => void;
+  activeTab: LegacyInspectorTab;
+  onTab: (tab: LegacyInspectorTab) => void;
   memories: Memory[];
   retrieved: RetrievedMemory[];
   stateEntries: StateEntry[];
@@ -658,7 +715,7 @@ function Inspector(props: {
   onRefresh: () => Promise<void> | void;
   onError: (reason: unknown) => void;
 }) {
-  const tabs: { id: InspectorTab; label: string; count?: number }[] = [
+  const tabs: { id: LegacyInspectorTab; label: string; count?: number }[] = [
     { id: "state", label: "状态", count: props.proposals.filter((item) => item.status === "pending").length },
     { id: "memory", label: "记忆", count: props.memories.length },
     { id: "audit", label: "审计", count: props.audits.filter((item) => item.status === "open").length },
@@ -1028,6 +1085,7 @@ function SettingsModal({
   const [current, setCurrent] = useState<AppSettings | null>(null);
   const [form, setForm] = useState<SettingsUpdate | null>(null);
   const [apiKey, setApiKey] = useState("");
+  const [rerankApiKey, setRerankApiKey] = useState("");
   const [draftPreferences, setDraftPreferences] = useState(preferences);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -1061,11 +1119,13 @@ function SettingsModal({
       const saved = await api.updateSettings({
         ...form,
         api_key: apiKey.trim() || null,
+        rerank_api_key: rerankApiKey.trim() || null,
       });
       const runtimeInfo = await api.runtime();
       setCurrent(saved);
       setForm(settingsToUpdate(saved));
       setApiKey("");
+      setRerankApiKey("");
       persistUiPreferences(draftPreferences);
       onPreferences(draftPreferences);
       onRuntime(runtimeInfo);
@@ -1110,6 +1170,7 @@ function SettingsModal({
       keyword_weight: 0.25,
       importance_weight: 0.15,
       recency_weight: 0.05,
+      rerank_candidates: 20,
     });
     setDraftPreferences(DEFAULT_UI_PREFERENCES);
     setNotice({ kind: "ok", text: "已恢复推荐值，点击“保存并应用”后生效。" });
@@ -1174,6 +1235,10 @@ function SettingsModal({
                 <NumberSetting label="最大 Agent 步数" note="模型和工具往返的上限；越高越慢且更贵" value={form.max_agent_steps} min={1} max={12} step={1} onChange={(value) => updateField("max_agent_steps", Math.round(value))} />
                 <NumberSetting label="近期原文条数" note="直接放入上下文的最近消息数量" value={form.recent_message_limit} min={2} max={100} step={2} onChange={(value) => updateField("recent_message_limit", Math.round(value))} />
                 <NumberSetting label="RAG 召回条数" note="每轮注入的相关长期记忆上限" value={form.rag_limit} min={1} max={30} step={1} onChange={(value) => updateField("rag_limit", Math.round(value))} />
+                <div className="subsection-title"><strong>自动记忆整理</strong><small>每轮摘要，并按阈值逐级压缩</small></div>
+                <label className="check-row"><input type="checkbox" checked={form.auto_summary_enabled} onChange={(e) => updateField("auto_summary_enabled", e.target.checked)} /><span><strong>启用自动摘要</strong><small>每次角色回复后额外调用一次模型整理楼层摘要</small></span></label>
+                <label className="settings-field"><span>默认摘要模式</span><small>详细模式信息更全，但消耗更多 Token</small><select value={form.summary_detail_mode} onChange={(e) => updateField("summary_detail_mode", e.target.value as "brief" | "detailed")}><option value="brief">精简</option><option value="detailed">详细</option></select></label>
+                <div className="settings-grid"><NumberSetting label="每章楼层数" note="累计多少条楼层摘要后生成章节总结" value={form.chapter_summary_size} min={2} max={50} step={1} onChange={(value) => updateField("chapter_summary_size", Math.round(value))} compact /><NumberSetting label="每篇章节数" note="累计多少章后生成篇章概览" value={form.arc_summary_size} min={2} max={20} step={1} onChange={(value) => updateField("arc_summary_size", Math.round(value))} compact /></div>
                 <div className="subsection-title"><strong>混合 RAG 权重</strong><small>系统会自动按总和归一化 · 当前总和 {weightTotal.toFixed(2)}</small></div>
                 <div className="settings-grid">
                   <NumberSetting label="向量语义" note="意思是否相近" value={form.vector_weight} min={0} max={1} step={0.05} onChange={(value) => updateField("vector_weight", value)} compact />
@@ -1182,6 +1247,11 @@ function SettingsModal({
                   <NumberSetting label="时间新鲜度" note="近期记忆略微优先" value={form.recency_weight} min={0} max={1} step={0.05} onChange={(value) => updateField("recency_weight", value)} compact />
                 </div>
                 {weightTotal <= 0 && <p className="field-error">至少有一项 RAG 权重必须大于 0。</p>}
+                <div className="subsection-title"><strong>独立 Reranker</strong><small>兼容 Cohere/Jina 风格的 /rerank 接口；未配置时自动跳过</small></div>
+                <label className="settings-field"><span>Rerank API 地址</span><small>可以填写服务根地址，也可以直接填写以 /rerank 结尾的地址</small><input value={form.rerank_base_url ?? ""} onChange={(e) => updateField("rerank_base_url", e.target.value || null)} placeholder="https://api.example.com/v1" /></label>
+                <div className="settings-grid"><label className="settings-field"><span>Rerank 模型</span><input value={form.rerank_model ?? ""} onChange={(e) => updateField("rerank_model", e.target.value || null)} placeholder="reranker-model" /></label><label className="settings-field"><span>Rerank API Key</span><small>{current.rerank_api_key_configured ? `已保存：${current.rerank_api_key_hint}；留空保持不变` : "尚未配置"}</small><input type="password" value={rerankApiKey} onChange={(e) => { setRerankApiKey(e.target.value); if (e.target.value) updateField("clear_rerank_api_key", false); }} placeholder="可与对话模型使用不同密钥" /></label></div>
+                {current.rerank_api_key_configured && <label className="check-row danger-check"><input type="checkbox" checked={form.clear_rerank_api_key} onChange={(e) => updateField("clear_rerank_api_key", e.target.checked)} /><span>保存时删除 Rerank API Key</span></label>}
+                <NumberSetting label="精排候选数" note="混合初排后送给 reranker 的候选数量" value={form.rerank_candidates} min={2} max={100} step={1} onChange={(value) => updateField("rerank_candidates", Math.round(value))} />
               </div>
             ) : (
               <div className="settings-section">
@@ -1248,6 +1318,15 @@ function settingsToUpdate(settings: AppSettings): SettingsUpdate {
     keyword_weight: settings.keyword_weight,
     importance_weight: settings.importance_weight,
     recency_weight: settings.recency_weight,
+    auto_summary_enabled: settings.auto_summary_enabled,
+    summary_detail_mode: settings.summary_detail_mode,
+    chapter_summary_size: settings.chapter_summary_size,
+    arc_summary_size: settings.arc_summary_size,
+    rerank_base_url: settings.rerank_base_url,
+    rerank_api_key: null,
+    clear_rerank_api_key: false,
+    rerank_model: settings.rerank_model,
+    rerank_candidates: settings.rerank_candidates,
   };
 }
 

@@ -18,10 +18,12 @@ from backend.models import (
     MessageRecord,
     StateChangeRecord,
 )
-from backend.schemas import MemoryKind, MessageRole
+from backend.schemas import MessageRole
 from backend.services.audit import AuditService
 from backend.services.context import ContextBuilder
 from backend.services.memory import MemoryService, RetrievedMemory
+from backend.services.narrative_memory import NarrativeMemoryService
+from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
 from backend.services.tools import TOOL_SCHEMAS, ToolExecutor
 from backend.utils import json_dumps
@@ -46,10 +48,16 @@ class AgentRuntime:
         self.memory_service = MemoryService(settings)
         self.state_service = StateService()
         self.audit_service = AuditService()
+        self.graph_service = RoleplayGraphService()
+        self.narrative_memory_service = NarrativeMemoryService(
+            settings, self.memory_service
+        )
         self.context_builder = ContextBuilder(
             settings,
             self.memory_service,
             self.state_service,
+            self.narrative_memory_service,
+            self.graph_service,
         )
 
     async def run_turn(
@@ -87,6 +95,7 @@ class AgentRuntime:
             user_message.id,
             self.memory_service,
             self.state_service,
+            self.graph_service,
         )
         working_messages = list(context.messages)
         final_content: str | None = None
@@ -189,18 +198,24 @@ class AgentRuntime:
         db.commit()
         db.refresh(assistant_message)
 
-        episode = (
-            f"用户：{user_message.content}\n角色：{assistant_message.content}"
-        )[:6_000]
-        await self.memory_service.create(
-            db,
-            self.model,
-            chat.id,
-            MemoryKind.EPISODIC,
-            episode,
-            importance=0.45,
-            source_message_id=assistant_message.id,
-        )
+        try:
+            await self.narrative_memory_service.process_turn(
+                db,
+                self.model,
+                chat.id,
+                user_message,
+                assistant_message,
+            )
+        except ModelProviderError as exc:
+            # 自动整理属于辅助流程；失败时保留正文，不能让已经完成的对话报错。
+            self._trace(
+                db,
+                chat.id,
+                turn_id,
+                self.settings.max_agent_steps + 1,
+                "memory_pipeline_error",
+                {"error": str(exc)},
+            )
 
         state_entries = self.state_service.list_entries(db, chat.id)
         issues = self.audit_service.audit_message(
