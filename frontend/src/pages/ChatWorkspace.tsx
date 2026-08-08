@@ -657,7 +657,7 @@ function GlobalNav({ onOpen }: { onOpen: (page: LibraryKind) => void }) {
   return (
     <nav className="global-nav" aria-label="主导航">
       <button onClick={() => onOpen("characters")}><i>♟</i><span>角色</span></button>
-      <button onClick={() => onOpen("personas")}><i>◎</i><span>Persona</span></button>
+      <button onClick={() => onOpen("personas")}><i>◎</i><span>主控人物</span></button>
       <button onClick={() => onOpen("world")}><i>◇</i><span>世界书</span></button>
     </nav>
   );
@@ -681,9 +681,9 @@ function LibraryWorkspace(props: {
 }) {
   return (
     <div className="library-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}>
-    <main className="library-workspace" role="dialog" aria-modal="true" aria-label={props.page === "characters" ? "角色" : props.page === "personas" ? "Persona" : "世界书"}>
+    <main className="library-workspace" role="dialog" aria-modal="true" aria-label={props.page === "characters" ? "角色" : props.page === "personas" ? "主控人物" : "世界书"}>
       <header className="topbar library-topbar">
-        <div><p className="eyebrow">故事设定</p><h1>{props.page === "characters" ? "角色" : props.page === "personas" ? "Persona" : "世界书"}</h1></div>
+        <div><p className="eyebrow">故事设定</p><h1>{props.page === "characters" ? "角色" : props.page === "personas" ? "主控人物" : "世界书"}</h1></div>
         <button className="icon-button" onClick={props.onClose} aria-label="关闭">×</button>
       </header>
       {props.error && <div className="error-banner">{props.error}</div>}
@@ -759,18 +759,26 @@ function PersonaLibrary(props: {
     try { await api.deletePersonaTemplate(id); props.onTemplates(await api.personaTemplates()); }
     catch (reason) { props.onError(reason); }
   }
+  async function removeFromStory() {
+    if (!props.selectedChat) return;
+    try {
+      await api.deleteStoryPersona(props.selectedChat.id);
+      props.onStoryPersona(null);
+      setEditing(null);
+    } catch (reason) { props.onError(reason); }
+  }
   const set = <K extends keyof typeof EMPTY_PERSONA>(key: K, value: (typeof EMPTY_PERSONA)[K]) => setDraft({ ...draft, [key]: value });
   return <div className="library-content">
-    <LibraryColumn title="Persona 库" note="选择你在故事中扮演的身份。" action="＋ 新建 Persona" onAction={() => edit("template")}>
-      {props.templates.length === 0 ? <p className="muted">还没有 Persona。</p> : props.templates.map((item) => <LibraryCard key={item.id} title={item.name} detail={item.identity || item.personality || "暂无描述"} badge="模板" avatar={item.avatar}>
+    <LibraryColumn title="主控人物库" note="选择你在故事中扮演的人物。" action="＋ 新建主控人物" onAction={() => edit("template")}>
+      {props.templates.length === 0 ? <p className="muted">还没有主控人物。</p> : props.templates.map((item) => <LibraryCard key={item.id} title={item.name} detail={item.identity || item.personality || "暂无描述"} badge="模板" avatar={item.avatar}>
         <button onClick={() => void attach(item.id)} disabled={!props.selectedChat}>用于当前故事</button><button onClick={() => edit("template", item)}>编辑</button><button className="delete-button" onClick={() => void remove(item.id)}>删除</button>
       </LibraryCard>)}
     </LibraryColumn>
-    <LibraryColumn title={`当前身份${props.selectedChat ? ` · ${props.selectedChat.title}` : ""}`} note="故事内修改不会影响模板。">
-      {!props.selectedChat ? <p className="muted">请先选择故事。</p> : !props.storyPersona ? <p className="muted">当前故事使用默认身份。</p> : <LibraryCard title={props.storyPersona.name} detail={props.storyPersona.identity || props.storyPersona.personality || "暂无描述"} badge="故事快照" avatar={props.storyPersona.avatar}><button onClick={() => edit("story", props.storyPersona!)}>编辑快照</button></LibraryCard>}
+    <LibraryColumn title={`当前故事的主控人物${props.selectedChat ? ` · ${props.selectedChat.title}` : ""}`} note="这里的修改只影响当前故事。">
+      {!props.selectedChat ? <p className="muted">请先选择故事。</p> : !props.storyPersona ? <p className="muted">当前故事没有设置主控人物。</p> : <LibraryCard title={props.storyPersona.name} detail={props.storyPersona.identity || props.storyPersona.personality || "暂无描述"} badge="故事快照" avatar={props.storyPersona.avatar}><button onClick={() => edit("story", props.storyPersona!)}>编辑</button><button className="delete-button" onClick={() => void removeFromStory()}>从故事移除</button></LibraryCard>}
     </LibraryColumn>
     {editing && <form className="library-editor" onSubmit={save}>
-      <div className="action-heading"><h3>{editing.scope === "template" ? "编辑 Persona" : "编辑故事身份"}</h3><button type="button" onClick={() => setEditing(null)}>关闭</button></div>
+      <div className="action-heading"><h3>{editing.scope === "template" ? "编辑主控人物" : "编辑故事中的主控人物"}</h3><button type="button" onClick={() => setEditing(null)}>关闭</button></div>
       <AvatarPicker value={draft.avatar} fallback={draft.name.charAt(0) || "你"} onChange={(value) => set("avatar", value)} />
       <input value={draft.name} onChange={(event) => set("name", event.target.value)} placeholder="名称" autoFocus />
       <textarea value={draft.identity} onChange={(event) => set("identity", event.target.value)} placeholder="身份描述" rows={3} />
@@ -1006,7 +1014,7 @@ function WorldLibrary(props: {
             <div className="world-form-row"><label><span>扫描深度</span><input type="number" min={1} max={100} value={draft.scanDepth} onChange={(e) => setDraft({ ...draft, scanDepth: Number(e.target.value) })} /></label><label><span>Token 预算</span><input type="number" min={64} max={20000} value={draft.tokenBudget} onChange={(e) => setDraft({ ...draft, tokenBudget: Number(e.target.value) })} /></label></div>
             <label><span>插入位置</span><select value={draft.insertionPosition} onChange={(e) => setDraft({ ...draft, insertionPosition: e.target.value as WorldEntryDraft["insertionPosition"] })}><option value="before_history">对话记录前</option><option value="after_history">对话记录后</option><option value="system">系统提示词</option></select></label>
             <label><span>互斥组</span><input value={draft.groupName} onChange={(e) => setDraft({ ...draft, groupName: e.target.value })} placeholder="同组只启用优先级最高的一条" /></label>
-            <label><span>归属</span><select value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as WorldEntryDraft["scope"] })}><option value="global">通用</option><option value="character">角色专属</option><option value="persona">Persona 专属</option><option value="story">故事专属</option></select></label>
+            <label><span>归属</span><select value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as WorldEntryDraft["scope"] })}><option value="global">通用</option><option value="character">角色专属</option><option value="persona">主控人物专属</option><option value="story">故事专属</option></select></label>
             <label className="inline-check"><input type="checkbox" checked={draft.constant} onChange={(e) => setDraft({ ...draft, constant: e.target.checked })} />常驻条目</label><label className="inline-check"><input type="checkbox" checked={draft.caseSensitive} onChange={(e) => setDraft({ ...draft, caseSensitive: e.target.checked })} />区分大小写</label><label className="inline-check"><input type="checkbox" checked={draft.recursive} onChange={(e) => setDraft({ ...draft, recursive: e.target.checked })} />递归激活</label>
           </details>
           <button className="primary-button">保存</button>

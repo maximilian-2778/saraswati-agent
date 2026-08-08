@@ -596,6 +596,8 @@ def test_persona_character_card_and_advanced_world_book_snapshots(
     assert messages[0]["content"] == "夜深了，你为何而来？"
     variants = client.get(f"/api/chats/{story_id}/message-variants").json()
     assert len(variants) == 2
+    assert client.delete(f"/api/chats/{story_id}/persona").status_code == 204
+    assert client.get(f"/api/chats/{story_id}/persona").json() is None
 
 
 def test_chat_turn_can_stream_ndjson_events(

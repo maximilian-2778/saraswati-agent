@@ -415,7 +415,7 @@ def create_chat(payload: ChatCreate, db: Session = Depends(get_db)) -> ChatRead:
         else None
     )
     if payload.persona_template_id and not persona_template:
-        raise HTTPException(status_code=404, detail="Persona 不存在")
+        raise HTTPException(status_code=404, detail="主控人物不存在")
     linked_world_ids = [str(item) for item in payload.world_book_template_ids]
     for template in character_templates:
         linked_world_ids.extend(json_loads(template.world_book_ids_json) or [])
@@ -564,7 +564,7 @@ def update_persona_template(
 ) -> PersonaRead:
     record = db.get(PersonaTemplateRecord, str(persona_id))
     if not record:
-        raise HTTPException(status_code=404, detail="Persona 不存在")
+        raise HTTPException(status_code=404, detail="主控人物不存在")
     _apply_persona(record, payload)
     record.updated_at = datetime.now(UTC)
     db.commit()
@@ -583,7 +583,7 @@ def delete_persona_template(
 ) -> Response:
     record = db.get(PersonaTemplateRecord, str(persona_id))
     if not record:
-        raise HTTPException(status_code=404, detail="Persona 不存在")
+        raise HTTPException(status_code=404, detail="主控人物不存在")
     db.delete(record)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -618,7 +618,7 @@ def attach_persona_template(
     chat = _chat_or_404(db, chat_id)
     template = db.get(PersonaTemplateRecord, str(persona_id))
     if not template:
-        raise HTTPException(status_code=404, detail="Persona 不存在")
+        raise HTTPException(status_code=404, detail="主控人物不存在")
     old = db.scalar(select(StoryPersonaRecord).where(StoryPersonaRecord.chat_id == str(chat_id)))
     if old:
         db.delete(old)
@@ -658,6 +658,27 @@ def update_story_persona(
     db.commit()
     db.refresh(record)
     return story_persona_read(record)
+
+
+@router.delete(
+    "/chats/{chat_id}/persona",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["story-bindings"],
+)
+def delete_story_persona(
+    chat_id: UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    chat = _chat_or_404(db, chat_id)
+    record = db.scalar(
+        select(StoryPersonaRecord).where(StoryPersonaRecord.chat_id == str(chat_id))
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="当前故事没有主控人物")
+    db.delete(record)
+    chat.updated_at = datetime.now(UTC)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(

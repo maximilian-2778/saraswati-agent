@@ -36,7 +36,7 @@ export function StorySidebar(props: {
     <button className="new-chat-button" onClick={() => setCreating((value) => !value)}><span>＋</span> 新建故事</button>
     {creating && <form className="create-card" onSubmit={submit}>
       <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="故事名称" autoFocus />
-      <label className="field"><span>玩家身份</span><select value={personaId} onChange={(event) => setPersonaId(event.target.value)}><option value="">默认身份</option>{props.personaTemplates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label className="field"><span>主控人物</span><select value={personaId} onChange={(event) => setPersonaId(event.target.value)}><option value="">暂不设置</option>{props.personaTemplates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <TemplateChecklist label="角色（可多选）" items={props.characterTemplates.map((item) => ({ id: item.id, label: item.name }))} selected={characterIds} onSelected={setCharacterIds} />
       <TemplateChecklist label="世界书（可多选）" items={props.worldBookTemplates.map((item) => ({ id: item.id, label: item.title }))} selected={worldBookIds} onSelected={setWorldBookIds} />
       <button className="primary-button">创建</button>

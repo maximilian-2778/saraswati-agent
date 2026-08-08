@@ -137,6 +137,8 @@ export const api = {
     request<StoryPersona>(`/chats/${chatId}/persona/from-template/${personaId}`, { method: "POST" }),
   updateStoryPersona: (chatId: string, payload: object) =>
     request<StoryPersona>(`/chats/${chatId}/persona`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteStoryPersona: (chatId: string) =>
+    request<void>(`/chats/${chatId}/persona`, { method: "DELETE" }),
   worldBookTemplates: () => request<WorldBookTemplate[]>("/world-book-templates"),
   createWorldBookTemplate: (payload: object) =>
     request<WorldBookTemplate>("/world-book-templates", { method: "POST", body: JSON.stringify(payload) }),
