@@ -63,7 +63,11 @@ input:focus, textarea:focus, select:focus { border-color: #8b7447; box-shadow: 0
 .book-icon { color: var(--gold); }
 .sidebar-note { margin-top: auto; border-top: 1px solid var(--line); color: #756f64; font-size: 10px; line-height: 1.7; padding: 15px 9px 0; }
 
-.conversation-pane { display: grid; grid-template-rows: auto auto minmax(0, 1fr) max-content; min-width: 0; min-height: 0; }
+.conversation-pane { display: grid; grid-template-rows: auto auto minmax(0, 1fr) max-content; min-width: 0; min-height: 0; overflow: hidden; }
+.conversation-pane > .topbar { grid-row: 1; }
+.conversation-pane > .error-banner { grid-row: 2; }
+.conversation-pane > .message-list { grid-row: 3; }
+.conversation-pane > .composer { grid-row: 4; }
 .topbar { display: flex; justify-content: space-between; align-items: center; padding: 21px 28px 16px; border-bottom: 1px solid #2d2922; background: linear-gradient(180deg, #181612d6, #15130fd1); backdrop-filter: blur(10px); }
 .global-nav { display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid #39342b; border-radius: 9px; background: #12110f; }
 .global-nav button { border: 0; border-radius: 6px; padding: 7px 13px; background: transparent; color: #8e867a; font-size: 10px; }
@@ -567,7 +571,8 @@ body {
 }
 
 .message-list {
-  padding: 15px clamp(12px, 3vw, 34px) 24px;
+  padding: 15px clamp(12px, 3vw, 34px) 34px;
+  scroll-padding-bottom: 34px;
   scroll-behavior: smooth;
 }
 
