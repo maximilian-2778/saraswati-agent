@@ -236,8 +236,8 @@ export default function App() {
 
       <main className="conversation-pane">
         <header className="topbar">
-          <div>
-            <p className="eyebrow">SARASWATI AGENT</p>
+          <div className="story-heading">
+            <p className="eyebrow">当前故事</p>
             <h1>{selectedChat?.title ?? "选择或创建一个故事"}</h1>
           </div>
           <GlobalNav onOpen={setLibraryOpen} />
@@ -279,6 +279,7 @@ export default function App() {
         </section>
 
         <form className="composer" onSubmit={sendMessage}>
+          <button type="button" className="composer-memory" onClick={() => setInspectorOpen(true)} disabled={!selectedChatId} aria-label="打开故事资料" title="故事资料">◫</button>
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -290,12 +291,12 @@ export default function App() {
             }}
             placeholder={selectedChatId ? "继续你的故事…" : "请先创建存档"}
             disabled={!selectedChatId || sending}
-            rows={2}
+            rows={1}
           />
           <div className="composer-footer">
             <span>Enter 发送 · Shift + Enter 换行</span>
             <button className="primary-button" disabled={!draft.trim() || !selectedChatId || sending}>
-              {sending ? "生成中" : "发送"}
+              <span>{sending ? "生成中" : "发送"}</span><b>↑</b>
             </button>
           </div>
         </form>
@@ -353,8 +354,8 @@ export default function App() {
 function GlobalNav({ onOpen }: { onOpen: (page: LibraryKind) => void }) {
   return (
     <nav className="global-nav" aria-label="主导航">
-      <button onClick={() => onOpen("characters")}>角色</button>
-      <button onClick={() => onOpen("world")}>世界书</button>
+      <button onClick={() => onOpen("characters")}><i>♟</i><span>角色</span></button>
+      <button onClick={() => onOpen("world")}><i>◇</i><span>世界书</span></button>
     </nav>
   );
 }
@@ -598,7 +599,7 @@ function MessageBubble({ message, onEdit }: { message: Message; onEdit: (id: str
   }
   return (
     <div className={`message-row ${assistant ? "assistant" : "user"}`}>
-      {assistant && <div className="avatar">S</div>}
+      <div className="avatar">{assistant ? "S" : "你"}</div>
       <div className="message-column">
         <div className="message-meta">{assistant ? "Saraswati" : "你"}<span>{formatTime(message.created_at)} <button onClick={() => { setContent(message.content); setEditing((value) => !value); }}>改写</button></span></div>
         {editing ? <form className="message-editor" onSubmit={save}><textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} /><footer><button type="button" onClick={() => setEditing(false)}>取消</button><button>保存修改</button></footer></form> : <div className="bubble">{message.content}</div>}

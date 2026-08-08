@@ -4,6 +4,11 @@ All notable changes to Saraswati Agent are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- 重做主聊天界面：消息、工具栏、故事列表和输入区采用连续阅读布局。
+- 调整桌面端、平板和手机端的页面尺寸与导航排列。
+
 ### Planned
 
 - Streaming model responses.

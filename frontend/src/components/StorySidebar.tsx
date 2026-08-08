@@ -36,7 +36,7 @@ export function StorySidebar(props: {
       <button className="primary-button">创建</button>
     </form>}
     <p className="section-label">故事</p>
-    <nav className="chat-list">{props.chats.map((chat) => <button key={chat.id} className={chat.id === props.selectedChatId ? "chat-item active" : "chat-item"} onClick={() => props.onSelect(chat.id)}><span className="book-icon">◈</span><span><strong>{chat.title}</strong><small>{formatDate(chat.updated_at)}</small></span></button>)}</nav>
+    <nav className="chat-list">{props.chats.map((chat) => <button key={chat.id} className={chat.id === props.selectedChatId ? "chat-item active" : "chat-item"} onClick={() => props.onSelect(chat.id)}><span className="story-avatar">{chat.title.trim().charAt(0) || "故"}</span><span><strong>{chat.title}</strong><small>{formatDate(chat.updated_at)}</small></span></button>)}</nav>
   </aside>;
 }
 
