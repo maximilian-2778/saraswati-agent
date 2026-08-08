@@ -6,6 +6,7 @@ import type {
   Memory,
   MemoryCoverage,
   NarrativeNode,
+  NarrativeDelta,
   Npc,
   RetrievedMemory,
   SceneNode,
@@ -14,7 +15,7 @@ import type {
   TimelineAnchor,
 } from "./types";
 
-export type MemoryHubTab = "summary" | "world" | "timeline" | "ledger" | "retrieval" | "diagnostics";
+export type MemoryHubTab = "summary" | "delta" | "world" | "timeline" | "ledger" | "retrieval" | "diagnostics";
 
 interface MemoryHubProps {
   chatId: string | null;
@@ -22,6 +23,7 @@ interface MemoryHubProps {
   onTab: (tab: MemoryHubTab) => void;
   memories: Memory[];
   memoryGraph: NarrativeNode[];
+  deltas: NarrativeDelta[];
   coverage: MemoryCoverage | null;
   scenes: SceneNode[];
   npcs: Npc[];
@@ -38,6 +40,7 @@ interface MemoryHubProps {
 export function MemoryHub(props: MemoryHubProps) {
   const tabs: { id: MemoryHubTab; label: string; count?: number }[] = [
     { id: "summary", label: "摘要", count: props.memoryGraph.length },
+    { id: "delta", label: "变化", count: props.deltas.filter((item) => item.valid).length },
     { id: "world", label: "世界", count: props.scenes.length + props.npcs.length },
     { id: "timeline", label: "时间线", count: props.timeline.length },
     { id: "ledger", label: "台账", count: props.proposals.filter((item) => item.status === "pending").length },
@@ -53,6 +56,7 @@ export function MemoryHub(props: MemoryHubProps) {
       <div className="inspector-content">
         {!props.chatId ? <Empty text="选择故事后，记忆中枢会自动开始整理。" />
           : props.activeTab === "summary" ? <SummaryPanel {...props} chatId={props.chatId} />
+          : props.activeTab === "delta" ? <DeltaPanel deltas={props.deltas} />
           : props.activeTab === "world" ? <WorldGraphPanel {...props} chatId={props.chatId} />
           : props.activeTab === "timeline" ? <TimelinePanel {...props} chatId={props.chatId} />
           : props.activeTab === "ledger" ? <LedgerPanel {...props} chatId={props.chatId} />
@@ -61,6 +65,11 @@ export function MemoryHub(props: MemoryHubProps) {
       </div>
     </aside>
   );
+}
+
+function DeltaPanel({ deltas }: { deltas: NarrativeDelta[] }) {
+  if (!deltas.length) return <Empty text="完成一轮对话后，这里会显示时间、事实、数值和图谱变化。" />;
+  return <div className="panel-stack delta-list">{[...deltas].reverse().map((delta) => <article key={delta.id} className={delta.valid ? "" : "invalid"}><header><strong>{delta.payload.summary || "本轮剧情变化"}</strong><span>{delta.valid ? "有效" : "原文已改写"}</span></header>{delta.payload.time_change && <p>时间：{delta.payload.time_change}</p>}{Boolean(delta.payload.facts?.length) && <ul>{delta.payload.facts?.map((fact) => <li key={fact}>{fact}</li>)}</ul>}{Boolean(delta.payload.numbers?.length) && <p>数值：{delta.payload.numbers?.map((item) => `${item.name} ${item.value}${item.unit}`).join("；")}</p>}<small>{new Date(delta.created_at).toLocaleString()}</small></article>)}</div>;
 }
 
 function WorldGraphPanel(props: MemoryHubProps & { chatId: string }) {

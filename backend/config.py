@@ -44,6 +44,7 @@ class Settings:
     rerank_api_key: str | None = None
     rerank_model: str | None = None
     rerank_candidates: int = 20
+    context_window_tokens: int = 32768
     settings_file: str | None = None
 
     @property
@@ -90,6 +91,7 @@ class Settings:
             rerank_api_key=_optional_env("SARASWATI_RERANK_API_KEY"),
             rerank_model=_optional_env("SARASWATI_RERANK_MODEL"),
             rerank_candidates=int(os.getenv("SARASWATI_RERANK_CANDIDATES", "20")),
+            context_window_tokens=int(os.getenv("SARASWATI_CONTEXT_WINDOW_TOKENS", "32768")),
             settings_file=str(settings_file),
         )
         return load_local_settings(settings)
@@ -121,6 +123,7 @@ EDITABLE_SETTING_NAMES = {
     "rerank_api_key",
     "rerank_model",
     "rerank_candidates",
+    "context_window_tokens",
 }
 
 

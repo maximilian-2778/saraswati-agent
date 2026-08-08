@@ -7,7 +7,21 @@ All notable changes to Saraswati Agent are documented in this file.
 ### Planned
 
 - Streaming model responses.
-- Dedicated reranker model and retrieval evaluation dataset.
+
+## [0.5.0] - 2026-08-08
+
+### Added
+
+- 每轮自动提取结构化剧情 Delta，记录摘要、时间变化、事实、悬念、数值和图谱事件。
+- 场景/NPC 不可变事件日志与投影重放，消息改写后自动剔除来源失效事件。
+- Token 预算器和 `context_built` 分区占用诊断，始终为模型输出预留空间。
+- 记忆中枢“变化”页签，显示 Delta 内容与原文指纹有效性。
+- 固定角色扮演 RAG 数据集、Recall@K/MRR 脚本和 300 轮长上下文压力评测。
+
+### Changed
+
+- 手动删除场景/NPC 也写入事件日志，避免投影重建时错误复活。
+- 模型 Delta 提取失败时降级为本地数值提取，不影响正文保存。
 
 ## [0.4.0] - 2026-08-08
 

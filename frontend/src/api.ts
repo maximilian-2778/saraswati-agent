@@ -9,6 +9,7 @@ import type {
   Memory,
   MemoryCoverage,
   NarrativeNode,
+  NarrativeDelta,
   Npc,
   RetrievedMemory,
   RuntimeInfo,
@@ -186,4 +187,5 @@ export const api = {
       body: JSON.stringify({ action }),
     }),
   traces: (chatId: string) => request<AgentTrace[]>(`/chats/${chatId}/traces`),
+  narrativeDeltas: (chatId: string) => request<NarrativeDelta[]>(`/chats/${chatId}/narrative-deltas`),
 };

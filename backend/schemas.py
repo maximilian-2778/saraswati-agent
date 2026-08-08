@@ -192,6 +192,16 @@ class NarrativeNodeRead(BaseModel):
     created_at: datetime
 
 
+class NarrativeDeltaRead(BaseModel):
+    id: UUID
+    chat_id: UUID
+    user_message_id: UUID
+    assistant_message_id: UUID
+    payload: Any
+    valid: bool
+    created_at: datetime
+
+
 class MemoryCoverageRead(BaseModel):
     total_ai_floors: int
     summarized_floors: int
@@ -370,6 +380,7 @@ class SettingsRead(BaseModel):
     rerank_api_key_hint: str | None
     rerank_model: str | None
     rerank_candidates: int
+    context_window_tokens: int
 
 
 class SettingsUpdate(BaseModel):
@@ -402,6 +413,7 @@ class SettingsUpdate(BaseModel):
     clear_rerank_api_key: bool = False
     rerank_model: str | None = Field(default=None, max_length=200)
     rerank_candidates: int = Field(default=20, ge=2, le=100)
+    context_window_tokens: int = Field(default=32768, ge=4096, le=2_000_000)
 
 
 class SettingsTestResult(BaseModel):
@@ -414,4 +426,4 @@ class SettingsTestResult(BaseModel):
 class HealthRead(BaseModel):
     status: str = "ok"
     service: str = "saraswati-agent-api"
-    version: str = "0.4.0"
+    version: str = "0.5.0"

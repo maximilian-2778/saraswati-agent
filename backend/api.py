@@ -21,6 +21,7 @@ from backend.models import (
     MemoryRecord,
     MessageRecord,
     NarrativeLeafRecord,
+    NarrativeDeltaRecord,
     NpcRecord,
     SceneNodeRecord,
     StateChangeRecord,
@@ -53,6 +54,7 @@ from backend.schemas import (
     MemoryMergeRequest,
     MemoryUpdate,
     NarrativeNodeRead,
+    NarrativeDeltaRead,
     NpcRead,
     NpcUpsert,
     MessageRead,
@@ -98,7 +100,8 @@ from backend.serializers import (
     world_book_template_read,
 )
 from backend.services.agent import AgentRuntime
-from backend.utils import json_dumps
+from backend.services.roleplay_graph import RoleplayGraphService
+from backend.utils import json_dumps, json_loads
 
 
 router = APIRouter()
@@ -185,6 +188,7 @@ def update_settings(payload: SettingsUpdate, request: Request) -> SettingsRead:
         rerank_api_key=rerank_api_key,
         rerank_model=_clean_optional(payload.rerank_model),
         rerank_candidates=payload.rerank_candidates,
+        context_window_tokens=payload.context_window_tokens,
     )
     model = build_model_client(updated)
     save_local_settings(updated)
@@ -793,8 +797,38 @@ def update_message(
     db.commit()
     runtime: AgentRuntime = request.app.state.runtime
     runtime.state_service.rebuild_entries(db, str(chat_id))
+    runtime.graph_service.rebuild_projections(db, str(chat_id))
     db.refresh(record)
     return message_read(record)
+
+
+@router.get(
+    "/chats/{chat_id}/narrative-deltas",
+    response_model=list[NarrativeDeltaRead],
+    tags=["memory-hub"],
+)
+def list_narrative_deltas(
+    chat_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> list[NarrativeDeltaRead]:
+    """查看每轮结构化剧情变化及其原文指纹是否仍然有效。"""
+    _chat_or_404(db, chat_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    return [
+        NarrativeDeltaRead(
+            id=UUID(record.id),
+            chat_id=UUID(record.chat_id),
+            user_message_id=UUID(record.user_message_id),
+            assistant_message_id=UUID(record.assistant_message_id),
+            payload=json_loads(record.payload_json),
+            valid=valid,
+            created_at=record.created_at,
+        )
+        for record, valid in runtime.narrative_delta_service.list_with_validity(
+            db, str(chat_id)
+        )
+    ]
 
 
 @router.post(
@@ -1013,11 +1047,10 @@ def update_scene(
 @router.delete("/chats/{chat_id}/scenes/{scene_id}", status_code=204, tags=["roleplay-graph"])
 def delete_scene(chat_id: UUID, scene_id: UUID, db: Session = Depends(get_db)) -> Response:
     _chat_or_404(db, chat_id)
-    record = db.get(SceneNodeRecord, str(scene_id))
-    if not record or record.chat_id != str(chat_id):
-        raise HTTPException(status_code=404, detail="场景不存在")
-    db.delete(record)
-    db.commit()
+    try:
+        RoleplayGraphService().delete_scene(db, str(chat_id), str(scene_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return Response(status_code=204)
 
 
@@ -1068,11 +1101,10 @@ def update_npc(
 @router.delete("/chats/{chat_id}/npcs/{npc_id}", status_code=204, tags=["roleplay-graph"])
 def delete_npc(chat_id: UUID, npc_id: UUID, db: Session = Depends(get_db)) -> Response:
     _chat_or_404(db, chat_id)
-    record = db.get(NpcRecord, str(npc_id))
-    if not record or record.chat_id != str(chat_id):
-        raise HTTPException(status_code=404, detail="NPC 不存在")
-    db.delete(record)
-    db.commit()
+    try:
+        RoleplayGraphService().delete_npc(db, str(chat_id), str(npc_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return Response(status_code=204)
 
 
@@ -1714,6 +1746,7 @@ def _settings_read(settings: Settings) -> SettingsRead:
         rerank_api_key_hint=rerank_hint,
         rerank_model=settings.rerank_model,
         rerank_candidates=settings.rerank_candidates,
+        context_window_tokens=settings.context_window_tokens,
     )
 
 

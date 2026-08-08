@@ -6,10 +6,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from backend.models import NpcRecord, SceneNodeRecord
+from backend.models import MessageRecord, NpcRecord, RoleplayGraphEventRecord, SceneNodeRecord
+from backend.services.narrative_delta import message_hash
 from backend.utils import json_dumps, json_loads
 
 
@@ -44,6 +45,7 @@ class RoleplayGraphService:
         is_current: bool = False,
         source_message_id: str | None = None,
         scene_id: str | None = None,
+        record_event: bool = True,
     ) -> SceneNodeRecord:
         parent = self._scene_parent(db, chat_id, parent_id)
         record = db.get(SceneNodeRecord, scene_id) if scene_id else None
@@ -88,6 +90,19 @@ class RoleplayGraphService:
             record.is_current = True
         db.commit()
         db.refresh(record)
+        if record_event:
+            records = self.list_scenes(db, chat_id)
+            self._record_event(
+                db,
+                chat_id,
+                "scene_upsert",
+                {
+                    "path": self.scene_path(record, {item.id: item for item in records}),
+                    "description": record.description,
+                    "is_current": record.is_current,
+                },
+                source_message_id,
+            )
         return record
 
     def upsert_scene_path(
@@ -98,6 +113,7 @@ class RoleplayGraphService:
         description: str = "",
         is_current: bool = False,
         source_message_id: str | None = None,
+        record_event: bool = True,
     ) -> SceneNodeRecord:
         parent_id: str | None = None
         current: SceneNodeRecord | None = None
@@ -113,6 +129,7 @@ class RoleplayGraphService:
                 description if index == len(cleaned) - 1 else "",
                 is_current and index == len(cleaned) - 1,
                 source_message_id,
+                record_event=record_event,
             )
             parent_id = current.id
         assert current is not None
@@ -133,6 +150,7 @@ class RoleplayGraphService:
         condition: str = "",
         source_message_id: str | None = None,
         npc_id: str | None = None,
+        record_event: bool = True,
     ) -> NpcRecord:
         if location_scene_id:
             self._scene_parent(db, chat_id, location_scene_id)
@@ -175,7 +193,152 @@ class RoleplayGraphService:
                 setattr(record, key, value)
         db.commit()
         db.refresh(record)
+        if record_event:
+            scenes = self.list_scenes(db, chat_id)
+            scene_by_id = {item.id: item for item in scenes}
+            location = scene_by_id.get(record.location_scene_id or "")
+            self._record_event(
+                db,
+                chat_id,
+                "npc_upsert",
+                {
+                    "name": record.name,
+                    "description": record.description,
+                    "relation_to_user": record.relation_to_user,
+                    "relations": json_loads(record.relations_json) or [],
+                    "importance": record.importance,
+                    "presence": record.presence,
+                    "location_path": self.scene_path(location, scene_by_id) if location else [],
+                    "outfit": record.outfit,
+                    "condition": record.condition,
+                },
+                source_message_id,
+            )
         return record
+
+    def rebuild_projections(self, db: Session, chat_id: str) -> dict[str, int]:
+        """丢弃当前投影，仅按来源仍有效的历史事件重放。"""
+        events = list(
+            db.scalars(
+                select(RoleplayGraphEventRecord)
+                .where(RoleplayGraphEventRecord.chat_id == chat_id)
+                .order_by(RoleplayGraphEventRecord.created_at, RoleplayGraphEventRecord.id)
+            ).all()
+        )
+        source_ids = {event.source_message_id for event in events if event.source_message_id}
+        messages = db.scalars(select(MessageRecord).where(MessageRecord.id.in_(source_ids))).all()
+        source_by_id = {message.id: message for message in messages}
+        valid_events = [
+            event for event in events
+            if event.source_message_id is None
+            or (
+                event.source_message_id in source_by_id
+                and event.source_hash == message_hash(source_by_id[event.source_message_id].content)
+            )
+        ]
+        db.execute(delete(NpcRecord).where(NpcRecord.chat_id == chat_id))
+        db.execute(delete(SceneNodeRecord).where(SceneNodeRecord.chat_id == chat_id))
+        db.commit()
+        for event in valid_events:
+            payload = json_loads(event.payload_json) or {}
+            if event.event_type == "scene_upsert":
+                self.upsert_scene_path(
+                    db,
+                    chat_id,
+                    list(payload.get("path") or []),
+                    str(payload.get("description") or ""),
+                    bool(payload.get("is_current")),
+                    event.source_message_id,
+                    record_event=False,
+                )
+            elif event.event_type == "npc_upsert":
+                location_id = None
+                location_path = list(payload.get("location_path") or [])
+                if location_path:
+                    location_id = self.upsert_scene_path(
+                        db, chat_id, location_path, record_event=False
+                    ).id
+                self.upsert_npc(
+                    db,
+                    chat_id,
+                    str(payload.get("name") or ""),
+                    str(payload.get("description") or ""),
+                    str(payload.get("relation_to_user") or ""),
+                    list(payload.get("relations") or []),
+                    str(payload.get("importance") or "supporting"),
+                    str(payload.get("presence") or "unknown"),
+                    location_id,
+                    str(payload.get("outfit") or ""),
+                    str(payload.get("condition") or ""),
+                    event.source_message_id,
+                    record_event=False,
+                )
+            elif event.event_type == "scene_delete":
+                scene = self._find_scene_by_path(db, chat_id, list(payload.get("path") or []))
+                if scene:
+                    db.delete(scene)
+                    db.commit()
+            elif event.event_type == "npc_delete":
+                npc = db.scalar(
+                    select(NpcRecord).where(
+                        NpcRecord.chat_id == chat_id,
+                        NpcRecord.name == str(payload.get("name") or ""),
+                    )
+                )
+                if npc:
+                    db.delete(npc)
+                    db.commit()
+        return {"total_events": len(events), "replayed_events": len(valid_events)}
+
+    def delete_scene(self, db: Session, chat_id: str, scene_id: str) -> None:
+        scene = db.get(SceneNodeRecord, scene_id)
+        if not scene or scene.chat_id != chat_id:
+            raise ValueError("场景不存在")
+        records = self.list_scenes(db, chat_id)
+        path = self.scene_path(scene, {item.id: item for item in records})
+        self._record_event(db, chat_id, "scene_delete", {"path": path}, None)
+        db.delete(scene)
+        db.commit()
+
+    def delete_npc(self, db: Session, chat_id: str, npc_id: str) -> None:
+        npc = db.get(NpcRecord, npc_id)
+        if not npc or npc.chat_id != chat_id:
+            raise ValueError("NPC 不存在")
+        self._record_event(db, chat_id, "npc_delete", {"name": npc.name}, None)
+        db.delete(npc)
+        db.commit()
+
+    @staticmethod
+    def _record_event(
+        db: Session,
+        chat_id: str,
+        event_type: str,
+        payload: dict[str, Any],
+        source_message_id: str | None,
+    ) -> None:
+        source = db.get(MessageRecord, source_message_id) if source_message_id else None
+        db.add(
+            RoleplayGraphEventRecord(
+                id=str(uuid4()),
+                chat_id=chat_id,
+                event_type=event_type,
+                payload_json=json_dumps(payload),
+                source_message_id=source_message_id,
+                source_hash=message_hash(source.content) if source else None,
+                created_at=datetime.now(UTC),
+            )
+        )
+        db.commit()
+
+    def _find_scene_by_path(
+        self, db: Session, chat_id: str, path: list[str]
+    ) -> SceneNodeRecord | None:
+        records = self.list_scenes(db, chat_id)
+        by_id = {item.id: item for item in records}
+        return next(
+            (item for item in records if self.scene_path(item, by_id) == path),
+            None,
+        )
 
     def context_text(self, db: Session, chat_id: str, query: str) -> str:
         scenes = self.list_scenes(db, chat_id)

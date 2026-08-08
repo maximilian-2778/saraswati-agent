@@ -22,6 +22,7 @@ from backend.services.memory import MemoryService, RetrievedMemory
 from backend.services.narrative_memory import NarrativeMemoryService
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
+from backend.services.token_budget import TokenBudgetManager
 from backend.utils import clean_story_text, json_loads
 
 
@@ -32,6 +33,7 @@ class ContextBundle:
     state_count: int
     character_configured: bool
     world_entry_ids: list[str]
+    diagnostics: dict[str, Any]
 
 
 class ContextBuilder:
@@ -50,6 +52,7 @@ class ContextBuilder:
         self.state_service = state_service
         self.narrative_memory_service = narrative_memory_service
         self.graph_service = graph_service
+        self.budget_manager = TokenBudgetManager()
 
     async def build(
         self,
@@ -206,12 +209,24 @@ class ContextBuilder:
             for record in recent
             if record.role in {"user", "assistant", "system"}
         )
+        section_texts = {
+            "角色档案": "\n".join(character_lines),
+            "世界书": "\n".join(world_lines),
+            "场景与NPC": roleplay_graph,
+            "精确状态": "\n".join(state_lines),
+            "RAG召回": "\n".join(memory_lines),
+            "窗口外摘要": "\n".join(_format_history_node(item) for item in history_nodes),
+            "近期原文": "\n".join(record.content for record in recent),
+        }
+        input_budget = max(1024, self.settings.context_window_tokens - self.settings.max_output_tokens)
+        messages, diagnostics = self.budget_manager.fit(messages, input_budget, section_texts)
         return ContextBundle(
             messages,
             retrieved,
             len(state_entries),
             bool(character_lines),
             [record.id for record in active_world_entries[:12]],
+            diagnostics,
         )
 
 
