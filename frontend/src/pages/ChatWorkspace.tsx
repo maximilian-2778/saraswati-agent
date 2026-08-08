@@ -17,6 +17,7 @@ import type {
   MemoryCoverage,
   MemoryKind,
   Message,
+  MessageVariant,
   NarrativeNode,
   NarrativeDelta,
   Npc,
@@ -27,6 +28,7 @@ import type {
   StateEntry,
   StateProposal,
   StoryCharacter,
+  StoryCheckpoint,
   StoryWorldBook,
   TimelineAnchor,
   WorldBookEntry,
@@ -43,6 +45,9 @@ export default function App() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [messageVariants, setMessageVariants] = useState<Record<string, MessageVariant[]>>({});
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  const [checkpoints, setCheckpoints] = useState<StoryCheckpoint[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [memoryGraph, setMemoryGraph] = useState<NarrativeNode[]>([]);
   const [deltas, setDeltas] = useState<NarrativeDelta[]>([]);
@@ -68,6 +73,13 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { preferences: uiPreferences, setPreferences: setUiPreferences } = useUiPreferences();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const streamTimerRef = useRef<number | null>(null);
+  const streamResolveRef = useRef<(() => void) | null>(null);
+  const streamingRef = useRef<{ id: string; content: string } | null>(null);
+  const autoScrollRef = useRef(true);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
 
   const selectedChat = useMemo(
     () => chats.find((chat) => chat.id === selectedChatId) ?? null,
@@ -83,8 +95,30 @@ export default function App() {
   }, [selectedChatId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (autoScrollRef.current) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+
+  useEffect(() => {
+    function onShortcut(event: KeyboardEvent) {
+      if (event.key === "Escape" && sending) {
+        event.preventDefault();
+        void stopGeneration();
+        return;
+      }
+      if (!event.altKey || sending) return;
+      const lastAssistant = [...messages].reverse().find((item) => item.role === "assistant");
+      if (!lastAssistant) return;
+      if (event.key.toLowerCase() === "r") {
+        event.preventDefault();
+        void regenerateMessage(lastAssistant.id);
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        void selectVariant(lastAssistant.id, event.key === "ArrowLeft" ? -1 : 1);
+      }
+    }
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, [messages, messageVariants, selectedChatId, sending]);
 
   async function initialize() {
     try {
@@ -107,9 +141,12 @@ export default function App() {
   async function loadChat(chatId: string) {
     try {
       setLoading(true);
-      const [messageList, storyCharacterList, memoryList, graph, coverage, deltaList, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] =
+      const [messageList, variantList, bookmarkList, checkpointList, storyCharacterList, memoryList, graph, coverage, deltaList, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] =
         await Promise.all([
           api.messages(chatId),
+          api.messageVariants(chatId),
+          api.bookmarks(chatId),
+          api.checkpoints(chatId),
           api.storyCharacters(chatId),
           api.memories(chatId),
           api.memoryGraph(chatId),
@@ -124,6 +161,9 @@ export default function App() {
           api.traces(chatId),
         ]);
       setMessages(messageList);
+      setMessageVariants(groupVariants(variantList));
+      setBookmarkedIds(new Set(bookmarkList.filter((item) => item.bookmarked).map((item) => item.message_id)));
+      setCheckpoints(checkpointList);
       setStoryCharacters(storyCharacterList);
       setMemories(memoryList);
       setMemoryGraph(graph);
@@ -206,26 +246,200 @@ export default function App() {
     const content = draft.trim();
     if (!selectedChatId || !content || sending) return;
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const optimisticId = `pending-${Date.now()}`;
+    const streamingId = `stream-${Date.now()}`;
+    let streamedContent = "";
+    setSending(true);
+    setDraft("");
+    setError(null);
+    setMessages((current) => [...current, {
+      id: optimisticId,
+      chat_id: selectedChatId,
+      role: "user",
+      content,
+      created_at: new Date().toISOString(),
+    }]);
     try {
-      setSending(true);
-      setDraft("");
-      setError(null);
-      const turn = await api.sendMessage(selectedChatId, content);
-      setMessages((current) => [
-        ...current,
-        turn.user_message,
-        turn.assistant_message,
-      ]);
+      const turn = await api.streamMessage(selectedChatId, content, {
+        onUser: (message) => {
+          setMessages((current) => current.map((item) => item.id === optimisticId ? message : item));
+        },
+        onChunk: (chunk) => {
+          streamedContent += chunk;
+          streamingRef.current = { id: streamingId, content: streamedContent };
+          setMessages((current) => {
+            const exists = current.some((item) => item.id === streamingId);
+            if (exists) return current.map((item) => item.id === streamingId ? { ...item, content: streamedContent } : item);
+            return [...current, {
+              id: streamingId,
+              chat_id: selectedChatId,
+              role: "assistant",
+              content: streamedContent,
+              created_at: new Date().toISOString(),
+            }];
+          });
+        },
+        onDone: (turn) => {
+          streamingRef.current = null;
+          setMessages((current) => {
+            const withoutTemporary = current.filter((item) => item.id !== optimisticId && item.id !== streamingId && item.id !== turn.user_message.id);
+            return [...withoutTemporary, turn.user_message, turn.assistant_message];
+          });
+        },
+      }, controller.signal);
+      abortControllerRef.current = null;
       setRetrieved(turn.retrieved_memories);
       if (turn.state_proposals.length) setActiveTab("ledger");
       if (turn.audit_issues.length) setActiveTab("diagnostics");
       await refreshInspector(selectedChatId);
     } catch (reason) {
-      setDraft(content);
-      setError(errorMessage(reason));
+      if (!isAbortError(reason)) {
+        setDraft(content);
+        setMessages((current) => current.filter((item) => item.id !== optimisticId));
+        setError(errorMessage(reason));
+      } else {
+        streamingRef.current = null;
+        await loadChat(selectedChatId);
+      }
     } finally {
+      abortControllerRef.current = null;
       setSending(false);
     }
+  }
+
+  function animateMessage(messageId: string, fullContent: string): Promise<void> {
+    if (streamTimerRef.current !== null) window.clearInterval(streamTimerRef.current);
+    streamResolveRef.current?.();
+    const chunkSize = Math.max(1, Math.ceil(fullContent.length / 100));
+    let offset = 0;
+    streamingRef.current = { id: messageId, content: "" };
+    return new Promise((resolve) => {
+      streamResolveRef.current = resolve;
+      streamTimerRef.current = window.setInterval(() => {
+        offset = Math.min(fullContent.length, offset + chunkSize);
+        const visible = fullContent.slice(0, offset);
+        streamingRef.current = { id: messageId, content: visible };
+        setMessages((current) => current.map((item) => item.id === messageId ? { ...item, content: visible } : item));
+        if (offset >= fullContent.length) {
+          if (streamTimerRef.current !== null) window.clearInterval(streamTimerRef.current);
+          streamTimerRef.current = null;
+          streamingRef.current = null;
+          streamResolveRef.current = null;
+          resolve();
+        }
+      }, 18);
+    });
+  }
+
+  async function stopGeneration() {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    if (streamTimerRef.current !== null) {
+      window.clearInterval(streamTimerRef.current);
+      streamTimerRef.current = null;
+      streamResolveRef.current?.();
+      streamResolveRef.current = null;
+      const partial = streamingRef.current;
+      streamingRef.current = null;
+      if (selectedChatId && partial?.content.trim()) {
+        try {
+          await api.updateMessage(selectedChatId, partial.id, partial.content);
+          await refreshInspector(selectedChatId);
+        } catch (reason) {
+          setError(errorMessage(reason));
+        }
+      }
+    }
+    setSending(false);
+  }
+
+  async function regenerateMessage(messageId: string) {
+    if (!selectedChatId || sending) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setSending(true);
+    setError(null);
+    try {
+      const variant = await api.regenerateMessage(selectedChatId, messageId, controller.signal);
+      abortControllerRef.current = null;
+      setMessages((current) => current.map((item) => item.id === messageId ? { ...item, content: "" } : item));
+      setMessageVariants(groupVariants(await api.messageVariants(selectedChatId)));
+      await animateMessage(messageId, variant.content);
+      await refreshInspector(selectedChatId);
+    } catch (reason) {
+      if (!isAbortError(reason)) setError(errorMessage(reason));
+      else await loadChat(selectedChatId);
+    } finally {
+      abortControllerRef.current = null;
+      setSending(false);
+    }
+  }
+
+  async function selectVariant(messageId: string, direction: -1 | 1) {
+    if (!selectedChatId || sending) return;
+    const variants = messageVariants[messageId] ?? [];
+    const currentIndex = variants.findIndex((item) => item.selected);
+    const next = variants[currentIndex + direction];
+    if (!next) return;
+    try {
+      const message = await api.selectMessageVariant(selectedChatId, messageId, next.id);
+      setMessages((current) => current.map((item) => item.id === messageId ? message : item));
+      setMessageVariants((current) => ({
+        ...current,
+        [messageId]: variants.map((item) => ({ ...item, selected: item.id === next.id })),
+      }));
+      await refreshInspector(selectedChatId);
+    } catch (reason) { setError(errorMessage(reason)); }
+  }
+
+  async function removeMessage(messageId: string) {
+    if (!selectedChatId || !window.confirm("删除这条消息以及之后的剧情？")) return;
+    try {
+      await api.deleteMessage(selectedChatId, messageId);
+      await loadChat(selectedChatId);
+    } catch (reason) { setError(errorMessage(reason)); }
+  }
+
+  async function toggleBookmark(messageId: string) {
+    if (!selectedChatId) return;
+    try {
+      const result = await api.toggleBookmark(selectedChatId, messageId);
+      setBookmarkedIds((current) => {
+        const next = new Set(current);
+        if (result.bookmarked) next.add(messageId); else next.delete(messageId);
+        return next;
+      });
+    } catch (reason) { setError(errorMessage(reason)); }
+  }
+
+  async function createBranch(messageId: string) {
+    if (!selectedChatId) return;
+    try {
+      const branch = await api.createBranch(selectedChatId, messageId);
+      setChats((current) => [branch, ...current]);
+      setSelectedChatId(branch.id);
+    } catch (reason) { setError(errorMessage(reason)); }
+  }
+
+  async function createCheckpoint(messageId: string) {
+    if (!selectedChatId) return;
+    const name = window.prompt("检查点名称", `检查点 ${checkpoints.length + 1}`)?.trim();
+    if (!name) return;
+    try {
+      const checkpoint = await api.createCheckpoint(selectedChatId, messageId, name);
+      setCheckpoints((current) => [checkpoint, ...current]);
+    } catch (reason) { setError(errorMessage(reason)); }
+  }
+
+  async function restoreCheckpoint(checkpointId: string) {
+    if (!selectedChatId) return;
+    try {
+      const branch = await api.restoreCheckpoint(selectedChatId, checkpointId);
+      setChats((current) => [branch, ...current]);
+      setSelectedChatId(branch.id);
+    } catch (reason) { setError(errorMessage(reason)); }
   }
 
   async function editMessage(messageId: string, content: string) {
@@ -262,6 +476,14 @@ export default function App() {
           </div>
           <GlobalNav onOpen={setLibraryOpen} />
           <div className="topbar-actions">
+            <details className="checkpoint-menu">
+              <summary>检查点</summary>
+              <div>
+                {checkpoints.length === 0 ? <span>还没有检查点</span> : checkpoints.map((item) => (
+                  <button key={item.id} onClick={() => void restoreCheckpoint(item.id)}>{item.name}</button>
+                ))}
+              </div>
+            </details>
             <div className={`provider-badge ${runtime?.provider_mode === "demo" ? "demo" : "live"}`}>
               <span className="status-dot" />
               {runtime?.provider_mode === "demo"
@@ -279,7 +501,16 @@ export default function App() {
 
         {error && <div className="error-banner">{error}</div>}
 
-        <section className="message-list">
+        <section
+          className="message-list"
+          ref={messageListRef}
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+            autoScrollRef.current = nearBottom;
+            setShowJumpToBottom(!nearBottom);
+          }}
+        >
           {!selectedChatId ? (
             <EmptyState title="还没有故事" detail="从左侧新建一个故事。" />
           ) : loading && messages.length === 0 ? (
@@ -287,9 +518,24 @@ export default function App() {
           ) : messages.length === 0 ? (
             <EmptyState title="故事尚未开始" detail="在下方写下第一句话。" />
           ) : (
-            messages.map((message) => <MessageBubble key={message.id} message={message} character={storyCharacters[0] ?? null} userAvatar={uiPreferences.userAvatar} onEdit={editMessage} />)
+            messages.map((message) => <MessageBubble
+              key={message.id}
+              message={message}
+              character={storyCharacters[0] ?? null}
+              userAvatar={uiPreferences.userAvatar}
+              variants={messageVariants[message.id] ?? []}
+              bookmarked={bookmarkedIds.has(message.id)}
+              busy={sending}
+              onEdit={editMessage}
+              onDelete={removeMessage}
+              onBookmark={toggleBookmark}
+              onRegenerate={regenerateMessage}
+              onVariant={selectVariant}
+              onBranch={createBranch}
+              onCheckpoint={createCheckpoint}
+            />)
           )}
-          {sending && (
+          {sending && !messages.some((item) => item.id.startsWith("stream-")) && (
             <div className="message-row assistant">
               <Avatar value={storyCharacters[0]?.avatar ?? ""} fallback={(storyCharacters[0]?.name ?? "S").charAt(0)} />
               <div className="bubble thinking"><i /><i /><i /></div>
@@ -297,6 +543,12 @@ export default function App() {
           )}
           <div ref={bottomRef} />
         </section>
+
+        {showJumpToBottom && <button className="jump-bottom" onClick={() => {
+          autoScrollRef.current = true;
+          setShowJumpToBottom(false);
+          bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+        }}>回到底部 ↓</button>}
 
         <form className="composer" onSubmit={sendMessage}>
           <button type="button" className="composer-memory" onClick={() => setInspectorOpen(true)} disabled={!selectedChatId} aria-label="打开故事资料" title="故事资料">◫</button>
@@ -315,9 +567,15 @@ export default function App() {
           />
           <div className="composer-footer">
             <span>Enter 发送 · Shift + Enter 换行</span>
-            <button className="primary-button" disabled={!draft.trim() || !selectedChatId || sending}>
-              <span>{sending ? "生成中" : "发送"}</span><b>↑</b>
-            </button>
+            {sending ? (
+              <button type="button" className="primary-button stop-button" onClick={() => void stopGeneration()}>
+                <span>停止</span><b>■</b>
+              </button>
+            ) : (
+              <button className="primary-button" disabled={!draft.trim() || !selectedChatId}>
+                <span>发送</span><b>↑</b>
+              </button>
+            )}
           </div>
         </form>
       </main>
@@ -614,10 +872,27 @@ function LibraryCard(props: { title: string; detail: string; badge: string; avat
   return <article className="library-card"><header>{props.avatar !== undefined && <Avatar value={props.avatar} fallback={props.title.charAt(0)} />}<div><strong>{props.title}</strong><span>{props.badge}</span></div></header><p>{props.detail}</p><footer>{props.children}</footer></article>;
 }
 
-function MessageBubble({ message, character, userAvatar, onEdit }: { message: Message; character: StoryCharacter | null; userAvatar: string; onEdit: (id: string, content: string) => Promise<void> }) {
+function MessageBubble({ message, character, userAvatar, variants, bookmarked, busy, onEdit, onDelete, onBookmark, onRegenerate, onVariant, onBranch, onCheckpoint }: {
+  message: Message;
+  character: StoryCharacter | null;
+  userAvatar: string;
+  variants: MessageVariant[];
+  bookmarked: boolean;
+  busy: boolean;
+  onEdit: (id: string, content: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onBookmark: (id: string) => Promise<void>;
+  onRegenerate: (id: string) => Promise<void>;
+  onVariant: (id: string, direction: -1 | 1) => Promise<void>;
+  onBranch: (id: string) => Promise<void>;
+  onCheckpoint: (id: string) => Promise<void>;
+}) {
   const assistant = message.role === "assistant";
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(message.content);
+  useEffect(() => setContent(message.content), [message.content]);
+  const selectedVariant = variants.findIndex((item) => item.selected);
+  const pending = message.id.startsWith("pending-");
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!content.trim()) return;
@@ -628,8 +903,22 @@ function MessageBubble({ message, character, userAvatar, onEdit }: { message: Me
     <div className={`message-row ${assistant ? "assistant" : "user"}`}>
       <Avatar value={assistant ? character?.avatar ?? "" : userAvatar} fallback={assistant ? (character?.name ?? "S").charAt(0) : "你"} />
       <div className="message-column">
-        <div className="message-meta">{assistant ? character?.name ?? "Saraswati" : "你"}<span>{formatTime(message.created_at)} <button onClick={() => { setContent(message.content); setEditing((value) => !value); }}>改写</button></span></div>
+        <div className="message-meta">{assistant ? character?.name ?? "Saraswati" : "你"}<span>{formatTime(message.created_at)}{bookmarked && " · 已收藏"}</span></div>
         {editing ? <form className="message-editor" onSubmit={save}><textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} /><footer><button type="button" onClick={() => setEditing(false)}>取消</button><button>保存修改</button></footer></form> : <div className="bubble">{message.content}</div>}
+        {!editing && !pending && <div className="message-toolbar">
+          {assistant && variants.length > 1 && <span className="variant-switcher">
+            <button disabled={busy || selectedVariant <= 0} onClick={() => void onVariant(message.id, -1)}>‹</button>
+            {selectedVariant + 1}/{variants.length}
+            <button disabled={busy || selectedVariant >= variants.length - 1} onClick={() => void onVariant(message.id, 1)}>›</button>
+          </span>}
+          <button disabled={busy} onClick={() => { setContent(message.content); setEditing(true); }}>编辑</button>
+          <button onClick={() => void navigator.clipboard.writeText(message.content)}>复制</button>
+          <button className={bookmarked ? "active" : ""} onClick={() => void onBookmark(message.id)}>{bookmarked ? "取消收藏" : "收藏"}</button>
+          {assistant && <button disabled={busy} onClick={() => void onRegenerate(message.id)}>重生成</button>}
+          <button onClick={() => void onCheckpoint(message.id)}>检查点</button>
+          <button onClick={() => void onBranch(message.id)}>创建分支</button>
+          <button className="danger" disabled={busy} onClick={() => void onDelete(message.id)}>删除</button>
+        </div>}
       </div>
     </div>
   );
@@ -1331,6 +1620,17 @@ function formatDate(value: string) {
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function groupVariants(items: MessageVariant[]): Record<string, MessageVariant[]> {
+  return items.reduce<Record<string, MessageVariant[]>>((groups, item) => {
+    (groups[item.message_id] ??= []).push(item);
+    return groups;
+  }, {});
+}
+
+function isAbortError(reason: unknown) {
+  return reason instanceof DOMException && reason.name === "AbortError";
 }
 
 function errorMessage(reason: unknown) {

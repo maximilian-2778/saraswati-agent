@@ -8,6 +8,9 @@ import type {
   CharacterProfile,
   Memory,
   MemoryCoverage,
+  Message,
+  MessageBookmark,
+  MessageVariant,
   NarrativeNode,
   NarrativeDelta,
   Npc,
@@ -20,8 +23,8 @@ import type {
   StateProposal,
   TimelineAnchor,
   StoryCharacter,
+  StoryCheckpoint,
   StoryWorldBook,
-  Message,
   WorldBookEntry,
   WorldBookTemplate,
 } from "./types";
@@ -39,6 +42,53 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+type StreamTurnHandlers = {
+  onUser: (message: Message) => void;
+  onChunk: (content: string) => void;
+  onDone: (turn: AgentTurn) => void;
+};
+
+async function streamTurn(
+  chatId: string,
+  content: string,
+  handlers: StreamTurnHandlers,
+  signal?: AbortSignal,
+): Promise<AgentTurn> {
+  const response = await fetch(`${API_BASE}/chats/${chatId}/turns/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.detail ?? `请求失败：HTTP ${response.status}`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line) as { type: string; message?: Message; content?: string; turn?: AgentTurn; detail?: string };
+      if (event.type === "user" && event.message) handlers.onUser(event.message);
+      else if (event.type === "chunk" && event.content) handlers.onChunk(event.content);
+      else if (event.type === "done" && event.turn) {
+        handlers.onDone(event.turn);
+        await reader.cancel();
+        return event.turn;
+      }
+      else if (event.type === "error") throw new Error(event.detail || "生成失败");
+    }
+    if (done) break;
+  }
+  throw new Error("模型流已结束，但没有返回完整结果");
 }
 
 export const api = {
@@ -115,11 +165,30 @@ export const api = {
   messages: (chatId: string) => request<Message[]>(`/chats/${chatId}/messages`),
   updateMessage: (chatId: string, messageId: string, content: string) =>
     request<Message>(`/chats/${chatId}/messages/${messageId}`, { method: "PUT", body: JSON.stringify({ content }) }),
-  sendMessage: (chatId: string, content: string) =>
+  deleteMessage: (chatId: string, messageId: string) =>
+    request<void>(`/chats/${chatId}/messages/${messageId}`, { method: "DELETE" }),
+  sendMessage: (chatId: string, content: string, signal?: AbortSignal) =>
     request<AgentTurn>(`/chats/${chatId}/messages`, {
       method: "POST",
       body: JSON.stringify({ content }),
+      signal,
     }),
+  streamMessage: streamTurn,
+  messageVariants: (chatId: string) => request<MessageVariant[]>(`/chats/${chatId}/message-variants`),
+  regenerateMessage: (chatId: string, messageId: string, signal?: AbortSignal) =>
+    request<MessageVariant>(`/chats/${chatId}/messages/${messageId}/regenerate`, { method: "POST", signal }),
+  selectMessageVariant: (chatId: string, messageId: string, variantId: string) =>
+    request<Message>(`/chats/${chatId}/messages/${messageId}/variants/${variantId}/select`, { method: "POST" }),
+  bookmarks: (chatId: string) => request<MessageBookmark[]>(`/chats/${chatId}/bookmarks`),
+  toggleBookmark: (chatId: string, messageId: string) =>
+    request<MessageBookmark>(`/chats/${chatId}/messages/${messageId}/bookmark`, { method: "POST" }),
+  createBranch: (chatId: string, messageId: string, title?: string) =>
+    request<Chat>(`/chats/${chatId}/branches`, { method: "POST", body: JSON.stringify({ message_id: messageId, title: title || null }) }),
+  checkpoints: (chatId: string) => request<StoryCheckpoint[]>(`/chats/${chatId}/checkpoints`),
+  createCheckpoint: (chatId: string, messageId: string, name: string) =>
+    request<StoryCheckpoint>(`/chats/${chatId}/checkpoints`, { method: "POST", body: JSON.stringify({ message_id: messageId, name }) }),
+  restoreCheckpoint: (chatId: string, checkpointId: string) =>
+    request<Chat>(`/chats/${chatId}/checkpoints/${checkpointId}/restore`, { method: "POST" }),
   memories: (chatId: string) => request<Memory[]>(`/chats/${chatId}/memories`),
   memoryGraph: (chatId: string) => request<NarrativeNode[]>(`/chats/${chatId}/memory-graph`),
   memoryCoverage: (chatId: string) => request<MemoryCoverage>(`/chats/${chatId}/memory-coverage`),

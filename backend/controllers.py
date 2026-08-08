@@ -1,12 +1,16 @@
 """Saraswati Agent 的 HTTP API 路由。"""
 
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import suppress
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import select
+from fastapi.responses import StreamingResponse
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
@@ -19,12 +23,16 @@ from backend.models import (
     CharacterTemplateRecord,
     CharacterProfileRecord,
     MemoryRecord,
+    MessageBookmarkRecord,
     MessageRecord,
+    MessageVariantRecord,
     NarrativeLeafRecord,
     NarrativeDeltaRecord,
     NpcRecord,
     SceneNodeRecord,
+    RoleplayGraphEventRecord,
     StateChangeRecord,
+    StoryCheckpointRecord,
     StoryCharacterRecord,
     StoryWorldBookRecord,
     TimelineAnchorRecord,
@@ -39,6 +47,8 @@ from backend.schemas import (
     AuditStatus,
     ChatCreate,
     ChatRead,
+    CheckpointCreate,
+    CheckpointRead,
     CharacterTemplateCreate,
     CharacterTemplateRead,
     CharacterProfileRead,
@@ -58,9 +68,11 @@ from backend.schemas import (
     NpcRead,
     NpcUpsert,
     MessageRead,
+    MessageBookmarkRead,
     MessageRole,
     MessageSend,
     MessageUpdate,
+    MessageVariantRead,
     ProposalStatus,
     RuntimeInfo,
     SettingsRead,
@@ -73,6 +85,7 @@ from backend.schemas import (
     StateProposalCreate,
     StateResolution,
     StoryCharacterRead,
+    StoryBranchCreate,
     StoryWorldBookRead,
     TimelineAnchorCreate,
     TimelineAnchorRead,
@@ -805,12 +818,326 @@ def update_message(
             if not change.reason.startswith("源剧情已改写"):
                 change.reason = f"源剧情已改写，请重新确认：{change.reason}"
     record.content = payload.content.strip()
+    selected_variant = db.scalar(
+        select(MessageVariantRecord).where(
+            MessageVariantRecord.message_id == record.id,
+            MessageVariantRecord.selected.is_(True),
+        )
+    )
+    if selected_variant:
+        selected_variant.content = record.content
     db.commit()
     runtime: AgentRuntime = request.app.state.runtime
     runtime.state_service.rebuild_entries(db, str(chat_id))
     runtime.graph_service.rebuild_projections(db, str(chat_id))
     db.refresh(record)
     return message_read(record)
+
+
+@router.delete(
+    "/chats/{chat_id}/messages/{message_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["messages"],
+)
+def delete_message_and_following(
+    chat_id: UUID,
+    message_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Response:
+    """删除选中消息以及它之后的剧情，避免留下断裂的上下文。"""
+    chat = _chat_or_404(db, chat_id)
+    record = _message_or_404(db, chat_id, message_id)
+    doomed = list(
+        db.scalars(
+            select(MessageRecord).where(
+                MessageRecord.chat_id == chat.id,
+                MessageRecord.created_at >= record.created_at,
+            )
+        ).all()
+    )
+    source_ids = [item.id for item in doomed]
+    if source_ids:
+        db.execute(
+            delete(StateChangeRecord).where(
+                StateChangeRecord.chat_id == chat.id,
+                StateChangeRecord.source_message_id.in_(source_ids),
+            )
+        )
+        db.execute(
+            delete(RoleplayGraphEventRecord).where(
+                RoleplayGraphEventRecord.chat_id == chat.id,
+                RoleplayGraphEventRecord.source_message_id.in_(source_ids),
+            )
+        )
+        db.execute(
+            delete(MemoryRecord).where(
+                MemoryRecord.chat_id == chat.id,
+                MemoryRecord.source_message_id.in_(source_ids),
+            )
+        )
+        db.execute(
+            delete(TimelineAnchorRecord).where(
+                TimelineAnchorRecord.chat_id == chat.id,
+                TimelineAnchorRecord.source_message_id.in_(source_ids),
+            )
+        )
+        db.execute(delete(MessageRecord).where(MessageRecord.id.in_(source_ids)))
+    previous = db.scalar(
+        select(MessageRecord)
+        .where(MessageRecord.chat_id == chat.id)
+        .order_by(MessageRecord.created_at.desc())
+    )
+    chat.updated_at = previous.created_at if previous else chat.created_at
+    db.commit()
+    runtime: AgentRuntime = request.app.state.runtime
+    runtime.state_service.rebuild_entries(db, chat.id)
+    runtime.graph_service.rebuild_projections(db, chat.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/chats/{chat_id}/message-variants",
+    response_model=list[MessageVariantRead],
+    tags=["messages"],
+)
+def list_message_variants(
+    chat_id: UUID,
+    db: Session = Depends(get_db),
+) -> list[MessageVariantRead]:
+    _chat_or_404(db, chat_id)
+    records = db.scalars(
+        select(MessageVariantRecord)
+        .where(MessageVariantRecord.chat_id == str(chat_id))
+        .order_by(MessageVariantRecord.message_id, MessageVariantRecord.position)
+    ).all()
+    return [_message_variant_read(item) for item in records]
+
+
+@router.post(
+    "/chats/{chat_id}/messages/{message_id}/regenerate",
+    response_model=MessageVariantRead,
+    tags=["messages"],
+)
+async def regenerate_message(
+    chat_id: UUID,
+    message_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> MessageVariantRead:
+    chat = _chat_or_404(db, chat_id)
+    message = _message_or_404(db, chat_id, message_id)
+    if message.role != MessageRole.ASSISTANT.value:
+        raise HTTPException(status_code=409, detail="只能重新生成助手回复")
+    user_message = db.scalar(
+        select(MessageRecord)
+        .where(
+            MessageRecord.chat_id == chat.id,
+            MessageRecord.role == MessageRole.USER.value,
+            MessageRecord.created_at < message.created_at,
+        )
+        .order_by(MessageRecord.created_at.desc())
+    )
+    if not user_message:
+        raise HTTPException(status_code=409, detail="没有找到这条回复对应的用户消息")
+    variants = _ensure_message_variants(db, message)
+    runtime: AgentRuntime = request.app.state.runtime
+    try:
+        content = await runtime.generate_candidate(db, chat, user_message)
+    except ModelProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    for item in variants:
+        item.selected = False
+    variant = MessageVariantRecord(
+        id=str(uuid4()),
+        chat_id=chat.id,
+        message_id=message.id,
+        position=len(variants),
+        content=content,
+        state_changes_json="[]",
+        graph_events_json="[]",
+        selected=True,
+        created_at=datetime.now(UTC),
+    )
+    db.add(variant)
+    message.content = content
+    chat.updated_at = variant.created_at
+    _apply_variant_effects(db, message, variant)
+    db.commit()
+    runtime.state_service.rebuild_entries(db, chat.id)
+    runtime.graph_service.rebuild_projections(db, chat.id)
+    db.refresh(variant)
+    return _message_variant_read(variant)
+
+
+@router.post(
+    "/chats/{chat_id}/messages/{message_id}/variants/{variant_id}/select",
+    response_model=MessageRead,
+    tags=["messages"],
+)
+def select_message_variant(
+    chat_id: UUID,
+    message_id: UUID,
+    variant_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> MessageRead:
+    chat = _chat_or_404(db, chat_id)
+    message = _message_or_404(db, chat_id, message_id)
+    variants = _ensure_message_variants(db, message)
+    selected = next((item for item in variants if item.id == str(variant_id)), None)
+    if not selected:
+        raise HTTPException(status_code=404, detail="候选回复不存在")
+    for item in variants:
+        item.selected = item.id == selected.id
+    message.content = selected.content
+    chat.updated_at = datetime.now(UTC)
+    _apply_variant_effects(db, message, selected)
+    db.commit()
+    runtime: AgentRuntime = request.app.state.runtime
+    runtime.state_service.rebuild_entries(db, chat.id)
+    runtime.graph_service.rebuild_projections(db, chat.id)
+    db.refresh(message)
+    return message_read(message)
+
+
+@router.get(
+    "/chats/{chat_id}/bookmarks",
+    response_model=list[MessageBookmarkRead],
+    tags=["messages"],
+)
+def list_message_bookmarks(
+    chat_id: UUID,
+    db: Session = Depends(get_db),
+) -> list[MessageBookmarkRead]:
+    _chat_or_404(db, chat_id)
+    records = db.scalars(
+        select(MessageBookmarkRecord).where(
+            MessageBookmarkRecord.chat_id == str(chat_id)
+        )
+    ).all()
+    return [MessageBookmarkRead(message_id=UUID(item.message_id), bookmarked=True) for item in records]
+
+
+@router.post(
+    "/chats/{chat_id}/messages/{message_id}/bookmark",
+    response_model=MessageBookmarkRead,
+    tags=["messages"],
+)
+def toggle_message_bookmark(
+    chat_id: UUID,
+    message_id: UUID,
+    db: Session = Depends(get_db),
+) -> MessageBookmarkRead:
+    _chat_or_404(db, chat_id)
+    message = _message_or_404(db, chat_id, message_id)
+    existing = db.get(MessageBookmarkRecord, message.id)
+    if existing:
+        db.delete(existing)
+        bookmarked = False
+    else:
+        db.add(
+            MessageBookmarkRecord(
+                message_id=message.id,
+                chat_id=message.chat_id,
+                created_at=datetime.now(UTC),
+            )
+        )
+        bookmarked = True
+    db.commit()
+    return MessageBookmarkRead(message_id=message_id, bookmarked=bookmarked)
+
+
+@router.post(
+    "/chats/{chat_id}/branches",
+    response_model=ChatRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["chats"],
+)
+def create_story_branch(
+    chat_id: UUID,
+    payload: StoryBranchCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> ChatRead:
+    chat = _chat_or_404(db, chat_id)
+    message = _message_or_404(db, chat_id, payload.message_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    branch = _copy_story_branch(db, chat, message, payload.title, runtime)
+    return chat_read(branch)
+
+
+@router.get(
+    "/chats/{chat_id}/checkpoints",
+    response_model=list[CheckpointRead],
+    tags=["chats"],
+)
+def list_checkpoints(
+    chat_id: UUID,
+    db: Session = Depends(get_db),
+) -> list[CheckpointRead]:
+    _chat_or_404(db, chat_id)
+    records = db.scalars(
+        select(StoryCheckpointRecord)
+        .where(StoryCheckpointRecord.chat_id == str(chat_id))
+        .order_by(StoryCheckpointRecord.created_at.desc())
+    ).all()
+    return [_checkpoint_read(item) for item in records]
+
+
+@router.post(
+    "/chats/{chat_id}/checkpoints",
+    response_model=CheckpointRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["chats"],
+)
+def create_checkpoint(
+    chat_id: UUID,
+    payload: CheckpointCreate,
+    db: Session = Depends(get_db),
+) -> CheckpointRead:
+    _chat_or_404(db, chat_id)
+    _message_or_404(db, chat_id, payload.message_id)
+    record = StoryCheckpointRecord(
+        id=str(uuid4()),
+        chat_id=str(chat_id),
+        message_id=str(payload.message_id),
+        name=payload.name.strip(),
+        created_at=datetime.now(UTC),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return _checkpoint_read(record)
+
+
+@router.post(
+    "/chats/{chat_id}/checkpoints/{checkpoint_id}/restore",
+    response_model=ChatRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["chats"],
+)
+def restore_checkpoint_as_branch(
+    chat_id: UUID,
+    checkpoint_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> ChatRead:
+    chat = _chat_or_404(db, chat_id)
+    checkpoint = db.scalar(
+        select(StoryCheckpointRecord).where(
+            StoryCheckpointRecord.id == str(checkpoint_id),
+            StoryCheckpointRecord.chat_id == chat.id,
+        )
+    )
+    if not checkpoint:
+        raise HTTPException(status_code=404, detail="检查点不存在")
+    message = _message_or_404(db, chat_id, UUID(checkpoint.message_id))
+    runtime: AgentRuntime = request.app.state.runtime
+    branch = _copy_story_branch(
+        db, chat, message, f"{chat.title} · {checkpoint.name}", runtime
+    )
+    return chat_read(branch)
 
 
 @router.get(
@@ -869,23 +1196,75 @@ async def send_message(
 
     runtime: AgentRuntime = request.app.state.runtime
     result = await runtime.run_turn(db, chat, user_message)
-    return AgentTurnRead(
-        turn_id=UUID(result.turn_id),
-        provider_mode=runtime.model.mode,
-        user_message=message_read(user_message),
-        assistant_message=message_read(result.assistant_message),
-        retrieved_memories=[
-            MemorySearchResult(
-                memory=memory_read(item.record),
-                score=item.score,
-                retrieval_reason=item.reason,
+    return _agent_turn_read(runtime, user_message, result)
+
+
+@router.post(
+    "/chats/{chat_id}/turns/stream",
+    tags=["messages"],
+)
+async def stream_message(
+    chat_id: UUID,
+    payload: MessageSend,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """通过 NDJSON 逐块返回模型正文，并在完成后发送整轮 Agent 结果。"""
+    chat = _chat_or_404(db, chat_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    events: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+
+    async def on_token(token: str) -> None:
+        await events.put({"type": "chunk", "content": token})
+
+    async def run() -> None:
+        try:
+            user_message = MessageRecord(
+                id=str(uuid4()),
+                chat_id=chat.id,
+                role=MessageRole.USER.value,
+                content=payload.content,
+                created_at=datetime.now(UTC),
             )
-            for item in result.retrieved_memories
-        ],
-        state_proposals=[state_change_read(item) for item in result.state_proposals],
-        audit_issues=[audit_read(item) for item in result.audit_issues],
-        trace=[trace_read(item) for item in result.traces],
-    )
+            chat.updated_at = user_message.created_at
+            db.add(user_message)
+            db.commit()
+            db.refresh(user_message)
+            await events.put(
+                {
+                    "type": "user",
+                    "message": message_read(user_message).model_dump(mode="json"),
+                }
+            )
+            result = await runtime.run_turn(db, chat, user_message, on_token=on_token)
+            turn = _agent_turn_read(runtime, user_message, result)
+            await events.put(
+                {"type": "done", "turn": turn.model_dump(mode="json")}
+            )
+        except asyncio.CancelledError:
+            db.rollback()
+            raise
+        except Exception as exc:  # 流已经开始后只能通过事件传递错误。
+            db.rollback()
+            await events.put({"type": "error", "detail": str(exc)})
+        finally:
+            await events.put(None)
+
+    async def body() -> AsyncIterator[str]:
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                event = await events.get()
+                if event is None:
+                    break
+                yield json_dumps(event) + "\n"
+        finally:
+            if not task.done():
+                task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
+    return StreamingResponse(body(), media_type="application/x-ndjson")
 
 
 @router.get(
@@ -1678,6 +2057,385 @@ def _story_character_or_404(
     if not record:
         raise HTTPException(status_code=404, detail="故事角色不存在")
     return record
+
+
+def _message_or_404(
+    db: Session,
+    chat_id: UUID,
+    message_id: UUID,
+) -> MessageRecord:
+    record = db.scalar(
+        select(MessageRecord).where(
+            MessageRecord.id == str(message_id),
+            MessageRecord.chat_id == str(chat_id),
+        )
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    return record
+
+
+def _agent_turn_read(
+    runtime: AgentRuntime,
+    user_message: MessageRecord,
+    result: Any,
+) -> AgentTurnRead:
+    return AgentTurnRead(
+        turn_id=UUID(result.turn_id),
+        provider_mode=runtime.model.mode,
+        user_message=message_read(user_message),
+        assistant_message=message_read(result.assistant_message),
+        retrieved_memories=[
+            MemorySearchResult(
+                memory=memory_read(item.record),
+                score=item.score,
+                retrieval_reason=item.reason,
+            )
+            for item in result.retrieved_memories
+        ],
+        state_proposals=[state_change_read(item) for item in result.state_proposals],
+        audit_issues=[audit_read(item) for item in result.audit_issues],
+        trace=[trace_read(item) for item in result.traces],
+    )
+
+
+def _message_variant_read(record: MessageVariantRecord) -> MessageVariantRead:
+    return MessageVariantRead(
+        id=UUID(record.id),
+        chat_id=UUID(record.chat_id),
+        message_id=UUID(record.message_id),
+        position=record.position,
+        content=record.content,
+        selected=record.selected,
+        created_at=record.created_at,
+    )
+
+
+def _checkpoint_read(record: StoryCheckpointRecord) -> CheckpointRead:
+    return CheckpointRead(
+        id=UUID(record.id),
+        chat_id=UUID(record.chat_id),
+        message_id=UUID(record.message_id),
+        name=record.name,
+        created_at=record.created_at,
+    )
+
+
+def _ensure_message_variants(
+    db: Session,
+    message: MessageRecord,
+) -> list[MessageVariantRecord]:
+    variants = list(
+        db.scalars(
+            select(MessageVariantRecord)
+            .where(MessageVariantRecord.message_id == message.id)
+            .order_by(MessageVariantRecord.position)
+        ).all()
+    )
+    if variants:
+        return variants
+    user_message = _preceding_user_message(db, message)
+    initial = MessageVariantRecord(
+        id=str(uuid4()),
+        chat_id=message.chat_id,
+        message_id=message.id,
+        position=0,
+        content=message.content,
+        state_changes_json=json_dumps(
+            _state_change_snapshots(db, user_message.id if user_message else None)
+        ),
+        graph_events_json=json_dumps(
+            _graph_event_snapshots(db, user_message.id if user_message else None)
+        ),
+        selected=True,
+        created_at=message.created_at,
+    )
+    db.add(initial)
+    db.commit()
+    return [initial]
+
+
+def _preceding_user_message(
+    db: Session,
+    message: MessageRecord,
+) -> MessageRecord | None:
+    return db.scalar(
+        select(MessageRecord)
+        .where(
+            MessageRecord.chat_id == message.chat_id,
+            MessageRecord.role == MessageRole.USER.value,
+            MessageRecord.created_at < message.created_at,
+        )
+        .order_by(MessageRecord.created_at.desc())
+    )
+
+
+def _state_change_snapshots(
+    db: Session,
+    source_message_id: str | None,
+) -> list[dict[str, Any]]:
+    if not source_message_id:
+        return []
+    records = db.scalars(
+        select(StateChangeRecord)
+        .where(StateChangeRecord.source_message_id == source_message_id)
+        .order_by(StateChangeRecord.created_at)
+    ).all()
+    return [
+        {
+            "entity": item.entity,
+            "key": item.key,
+            "old_value_json": item.old_value_json,
+            "new_value_json": item.new_value_json,
+            "reason": item.reason,
+            "status": item.status,
+            "created_at": item.created_at.isoformat(),
+            "resolved_at": item.resolved_at.isoformat() if item.resolved_at else None,
+        }
+        for item in records
+    ]
+
+
+def _graph_event_snapshots(
+    db: Session,
+    source_message_id: str | None,
+) -> list[dict[str, Any]]:
+    if not source_message_id:
+        return []
+    records = db.scalars(
+        select(RoleplayGraphEventRecord)
+        .where(RoleplayGraphEventRecord.source_message_id == source_message_id)
+        .order_by(RoleplayGraphEventRecord.created_at)
+    ).all()
+    return [
+        {
+            "event_type": item.event_type,
+            "payload_json": item.payload_json,
+            "source_hash": item.source_hash,
+            "created_at": item.created_at.isoformat(),
+        }
+        for item in records
+    ]
+
+
+def _apply_variant_effects(
+    db: Session,
+    message: MessageRecord,
+    variant: MessageVariantRecord,
+) -> None:
+    """切换正文时同步替换这一轮产生的状态事件和场景事件。"""
+    user_message = _preceding_user_message(db, message)
+    if not user_message:
+        return
+    db.execute(
+        delete(StateChangeRecord).where(
+            StateChangeRecord.chat_id == message.chat_id,
+            StateChangeRecord.source_message_id == user_message.id,
+        )
+    )
+    db.execute(
+        delete(RoleplayGraphEventRecord).where(
+            RoleplayGraphEventRecord.chat_id == message.chat_id,
+            RoleplayGraphEventRecord.source_message_id == user_message.id,
+        )
+    )
+    for item in json_loads(variant.state_changes_json) or []:
+        db.add(
+            StateChangeRecord(
+                id=str(uuid4()),
+                chat_id=message.chat_id,
+                entity=str(item["entity"]),
+                key=str(item["key"]),
+                old_value_json=item.get("old_value_json"),
+                new_value_json=str(item["new_value_json"]),
+                reason=str(item["reason"]),
+                source_message_id=user_message.id,
+                status=str(item["status"]),
+                created_at=datetime.fromisoformat(str(item["created_at"])),
+                resolved_at=(
+                    datetime.fromisoformat(str(item["resolved_at"]))
+                    if item.get("resolved_at")
+                    else None
+                ),
+            )
+        )
+    for item in json_loads(variant.graph_events_json) or []:
+        db.add(
+            RoleplayGraphEventRecord(
+                id=str(uuid4()),
+                chat_id=message.chat_id,
+                event_type=str(item["event_type"]),
+                payload_json=str(item["payload_json"]),
+                source_message_id=user_message.id,
+                source_hash=item.get("source_hash"),
+                created_at=datetime.fromisoformat(str(item["created_at"])),
+            )
+        )
+
+
+def _invalidate_changed_message(db: Session, chat_id: str, message_id: str) -> None:
+    """让改写前产生的状态提议回到待审核，投影稍后会按指纹重建。"""
+    affected_leaves = db.scalars(
+        select(NarrativeLeafRecord).where(
+            NarrativeLeafRecord.chat_id == chat_id,
+            (
+                (NarrativeLeafRecord.user_message_id == message_id)
+                | (NarrativeLeafRecord.assistant_message_id == message_id)
+            ),
+        )
+    ).all()
+    affected_sources = {leaf.user_message_id for leaf in affected_leaves}
+    if not affected_sources:
+        return
+    db.execute(
+        delete(RoleplayGraphEventRecord).where(
+            RoleplayGraphEventRecord.chat_id == chat_id,
+            RoleplayGraphEventRecord.source_message_id.in_(affected_sources),
+        )
+    )
+    approved_changes = db.scalars(
+        select(StateChangeRecord).where(
+            StateChangeRecord.chat_id == chat_id,
+            StateChangeRecord.source_message_id.in_(affected_sources),
+            StateChangeRecord.status == ProposalStatus.APPROVED.value,
+        )
+    ).all()
+    for change in approved_changes:
+        change.status = ProposalStatus.PENDING.value
+        change.resolved_at = None
+        if not change.reason.startswith("源剧情已改写"):
+            change.reason = f"源剧情已改写，请重新确认：{change.reason}"
+
+
+def _copy_story_branch(
+    db: Session,
+    source: ChatRecord,
+    through_message: MessageRecord,
+    requested_title: str | None,
+    runtime: AgentRuntime,
+) -> ChatRecord:
+    """复制指定消息之前的线性剧情；原故事始终保留。"""
+    now = datetime.now(UTC)
+    branch = ChatRecord(
+        id=str(uuid4()),
+        title=(requested_title or f"{source.title} · 分支").strip(),
+        system_prompt=source.system_prompt,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(branch)
+    characters = db.scalars(
+        select(StoryCharacterRecord)
+        .where(StoryCharacterRecord.chat_id == source.id)
+        .order_by(StoryCharacterRecord.created_at)
+    ).all()
+    for item in characters:
+        db.add(
+            StoryCharacterRecord(
+                id=str(uuid4()),
+                chat_id=branch.id,
+                source_template_id=item.source_template_id,
+                name=item.name,
+                identity=item.identity,
+                personality=item.personality,
+                speaking_style=item.speaking_style,
+                scenario=item.scenario,
+                avatar=item.avatar,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    world_entries = db.scalars(
+        select(StoryWorldBookRecord)
+        .where(StoryWorldBookRecord.chat_id == source.id)
+        .order_by(StoryWorldBookRecord.created_at)
+    ).all()
+    for item in world_entries:
+        db.add(
+            StoryWorldBookRecord(
+                id=str(uuid4()),
+                chat_id=branch.id,
+                source_template_id=item.source_template_id,
+                title=item.title,
+                keywords_json=item.keywords_json,
+                content=item.content,
+                priority=item.priority,
+                enabled=item.enabled,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    messages = db.scalars(
+        select(MessageRecord)
+        .where(
+            MessageRecord.chat_id == source.id,
+            MessageRecord.created_at <= through_message.created_at,
+        )
+        .order_by(MessageRecord.created_at)
+    ).all()
+    message_ids: dict[str, str] = {}
+    for index, item in enumerate(messages):
+        copied_id = str(uuid4())
+        message_ids[item.id] = copied_id
+        db.add(
+            MessageRecord(
+                id=copied_id,
+                chat_id=branch.id,
+                role=item.role,
+                content=item.content,
+                created_at=now + timedelta(microseconds=index),
+            )
+        )
+    changes = db.scalars(
+        select(StateChangeRecord)
+        .where(
+            StateChangeRecord.chat_id == source.id,
+            StateChangeRecord.source_message_id.in_(message_ids),
+        )
+        .order_by(StateChangeRecord.created_at)
+    ).all()
+    for item in changes:
+        db.add(
+            StateChangeRecord(
+                id=str(uuid4()),
+                chat_id=branch.id,
+                entity=item.entity,
+                key=item.key,
+                old_value_json=item.old_value_json,
+                new_value_json=item.new_value_json,
+                reason=item.reason,
+                source_message_id=message_ids[item.source_message_id],
+                status=item.status,
+                created_at=item.created_at,
+                resolved_at=item.resolved_at,
+            )
+        )
+    graph_events = db.scalars(
+        select(RoleplayGraphEventRecord)
+        .where(
+            RoleplayGraphEventRecord.chat_id == source.id,
+            RoleplayGraphEventRecord.source_message_id.in_(message_ids),
+        )
+        .order_by(RoleplayGraphEventRecord.created_at)
+    ).all()
+    for item in graph_events:
+        db.add(
+            RoleplayGraphEventRecord(
+                id=str(uuid4()),
+                chat_id=branch.id,
+                event_type=item.event_type,
+                payload_json=item.payload_json,
+                source_message_id=message_ids[item.source_message_id],
+                source_hash=item.source_hash,
+                created_at=item.created_at,
+            )
+        )
+    branch.updated_at = now
+    db.commit()
+    runtime.state_service.rebuild_entries(db, branch.id)
+    runtime.graph_service.rebuild_projections(db, branch.id)
+    db.refresh(branch)
+    return branch
 
 
 def _story_world_or_404(

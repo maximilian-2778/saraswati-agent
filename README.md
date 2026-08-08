@@ -13,6 +13,10 @@
 - 可复用的角色库和世界书库
 - 故事内独立的角色与世界书副本
 - 角色头像与用户头像
+- 模型回复流式输出与随时停止
+- 回复重生成和多候选切换
+- 消息编辑、复制、收藏和剧情截断
+- 故事分支与检查点恢复
 - 逐轮摘要、章节回顾和长篇回顾
 - 场景层级、人物关系和故事时间记录
 - 物品、数值、人物状态、计划与悬念记录
@@ -55,7 +59,7 @@ API 文档：`http://127.0.0.1:8010/docs`
 也可以直接运行：
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8010
 cd frontend
 npm run dev
 ```
@@ -107,4 +111,4 @@ frontend/src/
 
 ## 开发状态
 
-项目目前以本地单机运行。登录、云端同步、多人协作、流式输出和桌面安装包尚未完成。
+项目目前以本地单机运行。登录、云端同步、多人协作和桌面安装包尚未完成。

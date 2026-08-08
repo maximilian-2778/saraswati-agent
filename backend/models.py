@@ -156,6 +156,59 @@ class MessageRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class MessageVariantRecord(Base):
+    """同一条助手消息的候选正文，切换候选不会改变消息在剧情中的位置。"""
+
+    __tablename__ = "message_variants"
+    __table_args__ = (
+        UniqueConstraint("message_id", "position", name="uq_message_variant_position"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    message_id: Mapped[str] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    state_changes_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    graph_events_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    selected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MessageBookmarkRecord(Base):
+    """用户收藏的剧情消息。"""
+
+    __tablename__ = "message_bookmarks"
+
+    message_id: Mapped[str] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True
+    )
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class StoryCheckpointRecord(Base):
+    """指向某条消息的轻量检查点；恢复时创建一条安全的故事分支。"""
+
+    __tablename__ = "story_checkpoints"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    message_id: Mapped[str] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class MemoryRecord(Base):
     __tablename__ = "memories"
 

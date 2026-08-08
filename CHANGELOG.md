@@ -2,7 +2,7 @@
 
 All notable changes to Saraswati Agent are documented in this file.
 
-## [Unreleased]
+## [0.7.0] - 2026-08-09
 
 ### Changed
 
@@ -14,10 +14,11 @@ All notable changes to Saraswati Agent are documented in this file.
 
 - 删除故事并同步清理消息、记忆、状态和场景数据。
 - 为角色模板、故事角色副本和用户分别设置本地头像。
-
-### Planned
-
-- Streaming model responses.
+- 通过 NDJSON 返回模型流式正文，并支持中途停止生成。
+- 同一条角色回复保存多个候选版本，可以前后切换或重新生成。
+- 消息复制、收藏、编辑、剧情截断和快捷操作栏。
+- 从任意消息创建故事分支，并用检查点恢复为新分支。
+- 阅读旧消息时暂停自动滚动，提供回到底部按钮和键盘快捷键。
 
 ## [0.6.0] - 2026-08-08
 

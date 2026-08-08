@@ -134,6 +134,39 @@ class MessageRead(BaseModel):
     created_at: datetime
 
 
+class MessageVariantRead(BaseModel):
+    id: UUID
+    chat_id: UUID
+    message_id: UUID
+    position: int
+    content: str
+    selected: bool
+    created_at: datetime
+
+
+class MessageBookmarkRead(BaseModel):
+    message_id: UUID
+    bookmarked: bool
+
+
+class StoryBranchCreate(BaseModel):
+    message_id: UUID
+    title: str | None = Field(default=None, max_length=100)
+
+
+class CheckpointCreate(BaseModel):
+    message_id: UUID
+    name: str = Field(min_length=1, max_length=100)
+
+
+class CheckpointRead(BaseModel):
+    id: UUID
+    chat_id: UUID
+    message_id: UUID
+    name: str
+    created_at: datetime
+
+
 class MemoryCreate(BaseModel):
     kind: MemoryKind = MemoryKind.SEMANTIC
     content: str = Field(min_length=1, max_length=20_000)

@@ -60,6 +60,7 @@ class ContextBuilder:
         model: ModelClient,
         chat: ChatRecord,
         query: str,
+        through: datetime | None = None,
     ) -> ContextBundle:
         state_entries = self.state_service.list_entries(db, chat.id)
         characters = db.scalars(
@@ -75,9 +76,12 @@ class ContextBuilder:
             )
             .order_by(StoryWorldBookRecord.priority.desc())
         ).all()
+        message_filters = [MessageRecord.chat_id == chat.id]
+        if through is not None:
+            message_filters.append(MessageRecord.created_at <= through)
         recent_desc = db.scalars(
             select(MessageRecord)
-            .where(MessageRecord.chat_id == chat.id)
+            .where(*message_filters)
             .order_by(MessageRecord.created_at.desc())
             .limit(self.settings.recent_message_limit)
         ).all()

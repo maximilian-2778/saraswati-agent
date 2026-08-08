@@ -474,6 +474,7 @@ body {
 }
 
 .conversation-pane {
+  position: relative;
   width: min(1080px, 100%);
   justify-self: center;
   border-right: 1px solid var(--workspace-border);
@@ -636,6 +637,64 @@ body {
   color: #7d786e;
   font-size: 8px;
   font-weight: 400;
+}
+
+.message-toolbar {
+  min-height: 25px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  margin-top: 7px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity .14s ease, transform .14s ease;
+}
+
+.message-row:hover .message-toolbar,
+.message-toolbar:focus-within {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.user .message-toolbar {
+  justify-content: flex-end;
+}
+
+.message-toolbar button,
+.variant-switcher {
+  min-height: 23px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 3px 7px;
+  background: transparent;
+  color: #817b70;
+  font-size: 8px;
+}
+
+.message-toolbar button:hover:not(:disabled),
+.message-toolbar button.active {
+  border-color: rgba(207, 176, 113, .22);
+  background: rgba(207, 176, 113, .08);
+  color: #cdb883;
+}
+
+.message-toolbar button.danger:hover:not(:disabled) {
+  border-color: rgba(193, 92, 82, .25);
+  background: rgba(193, 92, 82, .09);
+  color: #cf8a82;
+}
+
+.variant-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #aaa193;
+}
+
+.variant-switcher button {
+  padding: 0 5px;
+  font-size: 14px;
 }
 
 .avatar {
@@ -835,6 +894,88 @@ body {
 .composer .primary-button b {
   font-size: 18px;
   line-height: 1;
+}
+
+.composer .stop-button {
+  border-color: rgba(194, 103, 89, .45);
+  background: #703d35;
+}
+
+.composer .stop-button b {
+  font-size: 13px;
+}
+
+.jump-bottom {
+  position: absolute;
+  right: 38px;
+  bottom: 92px;
+  z-index: 8;
+  border: 1px solid rgba(207, 176, 113, .28);
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: rgba(25, 23, 19, .94);
+  box-shadow: 0 8px 24px #0007;
+  color: #cdb883;
+  font-size: 9px;
+}
+
+.checkpoint-menu {
+  position: relative;
+}
+
+.checkpoint-menu summary {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #989084;
+  cursor: pointer;
+  font-size: 9px;
+  list-style: none;
+}
+
+.checkpoint-menu summary:hover,
+.checkpoint-menu[open] summary {
+  border-color: var(--workspace-border);
+  background: var(--workspace-highlight);
+}
+
+.checkpoint-menu > div {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  z-index: 30;
+  width: 190px;
+  max-height: 260px;
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 9px;
+  padding: 7px;
+  background: #171512;
+  box-shadow: 0 14px 36px #0009;
+}
+
+.checkpoint-menu > div span,
+.checkpoint-menu > div button {
+  padding: 8px;
+  color: #a79f92;
+  font-size: 9px;
+  text-align: left;
+}
+
+.checkpoint-menu > div button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+
+.checkpoint-menu > div button:hover {
+  background: var(--workspace-highlight);
+  color: var(--gold-bright);
 }
 
 .empty-state {

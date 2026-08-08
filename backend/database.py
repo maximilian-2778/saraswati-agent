@@ -36,6 +36,7 @@ class Database:
         """创建尚不存在的数据库表，并迁移 1.0 版故事内设定。"""
         Base.metadata.create_all(bind=self.engine)
         self._migrate_avatar_columns()
+        self._migrate_message_variant_columns()
         self._migrate_legacy_story_settings()
 
     def _migrate_avatar_columns(self) -> None:
@@ -48,6 +49,23 @@ class Database:
                 if "avatar" not in columns:
                     connection.execute(
                         text(f"ALTER TABLE {table} ADD COLUMN avatar TEXT NOT NULL DEFAULT ''")
+                    )
+
+    def _migrate_message_variant_columns(self) -> None:
+        """为早期 0.7 开发数据库补充候选回复的状态快照。"""
+        with self.engine.begin() as connection:
+            inspector = inspect(connection)
+            columns = {
+                column["name"]
+                for column in inspector.get_columns("message_variants")
+            }
+            for name in ("state_changes_json", "graph_events_json"):
+                if name not in columns:
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE message_variants ADD COLUMN {name} "
+                            "TEXT NOT NULL DEFAULT '[]'"
+                        )
                     )
 
     def _migrate_legacy_story_settings(self) -> None:

@@ -160,6 +160,29 @@ export interface Message {
   created_at: string;
 }
 
+export interface MessageVariant {
+  id: string;
+  chat_id: string;
+  message_id: string;
+  position: number;
+  content: string;
+  selected: boolean;
+  created_at: string;
+}
+
+export interface MessageBookmark {
+  message_id: string;
+  bookmarked: boolean;
+}
+
+export interface StoryCheckpoint {
+  id: string;
+  chat_id: string;
+  message_id: string;
+  name: string;
+  created_at: string;
+}
+
 export interface Memory {
   id: string;
   chat_id: string;
