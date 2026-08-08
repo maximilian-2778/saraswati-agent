@@ -262,6 +262,14 @@ input:focus, textarea:focus, select:focus { border-color: #8b7447; box-shadow: 0
 .library-editor h3 { margin: 0; font: 600 15px "Noto Serif SC", serif; }
 .library-editor input, .library-editor textarea { font-size: 11px; }
 .library-editor > .primary-button { justify-self: end; }
+.library-tools { display: flex; gap: 7px; }
+.library-tools input { min-width: 0; flex: 1; }
+.file-button { display: inline-flex; align-items: center; flex: 0 0 auto; border: 1px solid #55472f; border-radius: 6px; padding: 6px 9px; color: var(--gold-bright); cursor: pointer; font-size: 9px; }
+.file-button input { display: none; }
+.advanced-settings { display: grid; gap: 8px; border: 1px solid #40392f; border-radius: 8px; padding: 9px; }
+.advanced-settings[open] { display: grid; }
+.advanced-settings summary { color: #b9ac95; cursor: pointer; font-size: 10px; }
+.advanced-settings label { display: grid; gap: 5px; color: #a9a092; font-size: 9px; }
 
 .settings-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 24px; background: #050504c7; backdrop-filter: blur(8px); }
 .settings-modal { width: min(900px, 96vw); height: min(760px, 92vh); display: grid; grid-template-rows: auto 1fr auto auto; overflow: hidden; border: 1px solid #4a4030; border-radius: 15px; background: #161512; box-shadow: 0 30px 90px #000c; }
@@ -982,6 +990,10 @@ body {
   background: var(--workspace-highlight);
   color: var(--gold-bright);
 }
+.bookmark-menu > div { width: 280px; }
+.bookmark-menu > div button { display: grid; gap: 4px; }
+.bookmark-menu > div button b { color: #d2bb82; font-size: 9px; }
+.bookmark-menu > div button span { padding: 0; color: #9d9589; line-height: 1.45; }
 
 .empty-state {
   padding: 90px 20px;

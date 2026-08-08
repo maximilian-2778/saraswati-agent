@@ -14,6 +14,7 @@ import type {
   NarrativeNode,
   NarrativeDelta,
   Npc,
+  PersonaTemplate,
   RetrievedMemory,
   RuntimeInfo,
   SceneNode,
@@ -23,6 +24,7 @@ import type {
   StateProposal,
   TimelineAnchor,
   StoryCharacter,
+  StoryPersona,
   StoryCheckpoint,
   StoryWorldBook,
   WorldBookEntry,
@@ -102,7 +104,7 @@ export const api = {
   testSettings: () =>
     request<SettingsTestResult>("/settings/test", { method: "POST" }),
   chats: () => request<Chat[]>("/chats"),
-  createChat: (title: string, characterTemplateIds: string[] = [], worldBookTemplateIds: string[] = []) =>
+  createChat: (title: string, characterTemplateIds: string[] = [], worldBookTemplateIds: string[] = [], personaTemplateId: string | null = null) =>
     request<Chat>("/chats", {
       method: "POST",
       body: JSON.stringify({
@@ -110,6 +112,7 @@ export const api = {
         system_prompt: "",
         character_template_ids: characterTemplateIds,
         world_book_template_ids: worldBookTemplateIds,
+        persona_template_id: personaTemplateId,
       }),
     }),
   deleteChat: (id: string) => request<void>(`/chats/${id}`, { method: "DELETE" }),
@@ -120,6 +123,20 @@ export const api = {
     request<CharacterTemplate>(`/character-templates/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteCharacterTemplate: (id: string) =>
     request<void>(`/character-templates/${id}`, { method: "DELETE" }),
+  duplicateCharacterTemplate: (id: string) =>
+    request<CharacterTemplate>(`/character-templates/${id}/duplicate`, { method: "POST" }),
+  personaTemplates: () => request<PersonaTemplate[]>("/persona-templates"),
+  createPersonaTemplate: (payload: object) =>
+    request<PersonaTemplate>("/persona-templates", { method: "POST", body: JSON.stringify(payload) }),
+  updatePersonaTemplate: (id: string, payload: object) =>
+    request<PersonaTemplate>(`/persona-templates/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deletePersonaTemplate: (id: string) =>
+    request<void>(`/persona-templates/${id}`, { method: "DELETE" }),
+  storyPersona: (chatId: string) => request<StoryPersona | null>(`/chats/${chatId}/persona`),
+  attachPersona: (chatId: string, personaId: string) =>
+    request<StoryPersona>(`/chats/${chatId}/persona/from-template/${personaId}`, { method: "POST" }),
+  updateStoryPersona: (chatId: string, payload: object) =>
+    request<StoryPersona>(`/chats/${chatId}/persona`, { method: "PUT", body: JSON.stringify(payload) }),
   worldBookTemplates: () => request<WorldBookTemplate[]>("/world-book-templates"),
   createWorldBookTemplate: (payload: object) =>
     request<WorldBookTemplate>("/world-book-templates", { method: "POST", body: JSON.stringify(payload) }),

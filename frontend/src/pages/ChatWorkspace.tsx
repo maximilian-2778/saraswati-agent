@@ -21,6 +21,7 @@ import type {
   NarrativeNode,
   NarrativeDelta,
   Npc,
+  PersonaTemplate,
   RetrievedMemory,
   RuntimeInfo,
   SceneNode,
@@ -28,6 +29,7 @@ import type {
   StateEntry,
   StateProposal,
   StoryCharacter,
+  StoryPersona,
   StoryCheckpoint,
   StoryWorldBook,
   TimelineAnchor,
@@ -37,7 +39,7 @@ import type {
 
 type InspectorTab = MemoryHubTab;
 type LegacyInspectorTab = "state" | "memory" | "audit" | "trace";
-type LibraryKind = "characters" | "world";
+type LibraryKind = "characters" | "personas" | "world";
 type SettingsTab = "model" | "generation" | "agent" | "appearance";
 
 export default function App() {
@@ -66,6 +68,8 @@ export default function App() {
   const [characterTemplates, setCharacterTemplates] = useState<CharacterTemplate[]>([]);
   const [storyCharacters, setStoryCharacters] = useState<StoryCharacter[]>([]);
   const [worldBookTemplates, setWorldBookTemplates] = useState<WorldBookTemplate[]>([]);
+  const [personaTemplates, setPersonaTemplates] = useState<PersonaTemplate[]>([]);
+  const [storyPersona, setStoryPersona] = useState<StoryPersona | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -123,13 +127,14 @@ export default function App() {
   async function initialize() {
     try {
       setLoading(true);
-      const [runtimeInfo, chatList, characters, worldBooks] = await Promise.all([
-        api.runtime(), api.chats(), api.characterTemplates(), api.worldBookTemplates(),
+      const [runtimeInfo, chatList, characters, worldBooks, personas] = await Promise.all([
+        api.runtime(), api.chats(), api.characterTemplates(), api.worldBookTemplates(), api.personaTemplates(),
       ]);
       setRuntime(runtimeInfo);
       setChats(chatList);
       setCharacterTemplates(characters);
       setWorldBookTemplates(worldBooks);
+      setPersonaTemplates(personas);
       if (chatList.length) setSelectedChatId(chatList[0].id);
     } catch (reason) {
       setError(errorMessage(reason));
@@ -141,13 +146,14 @@ export default function App() {
   async function loadChat(chatId: string) {
     try {
       setLoading(true);
-      const [messageList, variantList, bookmarkList, checkpointList, storyCharacterList, memoryList, graph, coverage, deltaList, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] =
+      const [messageList, variantList, bookmarkList, checkpointList, storyCharacterList, persona, memoryList, graph, coverage, deltaList, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] =
         await Promise.all([
           api.messages(chatId),
           api.messageVariants(chatId),
           api.bookmarks(chatId),
           api.checkpoints(chatId),
           api.storyCharacters(chatId),
+          api.storyPersona(chatId),
           api.memories(chatId),
           api.memoryGraph(chatId),
           api.memoryCoverage(chatId),
@@ -165,6 +171,7 @@ export default function App() {
       setBookmarkedIds(new Set(bookmarkList.filter((item) => item.bookmarked).map((item) => item.message_id)));
       setCheckpoints(checkpointList);
       setStoryCharacters(storyCharacterList);
+      setStoryPersona(persona);
       setMemories(memoryList);
       setMemoryGraph(graph);
       setMemoryCoverage(coverage);
@@ -212,9 +219,9 @@ export default function App() {
     setTraces(traceList);
   }
 
-  async function createChat(title: string, characterIds: string[], worldBookIds: string[]) {
+  async function createChat(title: string, characterIds: string[], worldBookIds: string[], personaId: string | null) {
     try {
-      const chat = await api.createChat(title, characterIds, worldBookIds);
+      const chat = await api.createChat(title, characterIds, worldBookIds, personaId);
       setChats((current) => [chat, ...current]);
       setSelectedChatId(chat.id);
       setActiveTab("summary");
@@ -463,6 +470,7 @@ export default function App() {
         selectedChatId={selectedChatId}
         characterTemplates={characterTemplates}
         worldBookTemplates={worldBookTemplates}
+        personaTemplates={personaTemplates}
         onSelect={(id) => { setSelectedChatId(id); setLibraryOpen(null); }}
         onCreate={createChat}
         onDelete={deleteChat}
@@ -476,6 +484,17 @@ export default function App() {
           </div>
           <GlobalNav onOpen={setLibraryOpen} />
           <div className="topbar-actions">
+            <details className="checkpoint-menu bookmark-menu">
+              <summary>收藏 {bookmarkedIds.size || ""}</summary>
+              <div>
+                {bookmarkedIds.size === 0 ? <span>还没有收藏</span> : messages.filter((item) => bookmarkedIds.has(item.id)).map((item) => (
+                  <button key={item.id} onClick={() => document.getElementById(`message-${item.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}>
+                    <b>{item.role === "assistant" ? storyCharacters[0]?.name ?? "角色" : storyPersona?.name ?? "你"}</b>
+                    <span>{item.content.slice(0, 42)}{item.content.length > 42 ? "…" : ""}</span>
+                  </button>
+                ))}
+              </div>
+            </details>
             <details className="checkpoint-menu">
               <summary>检查点</summary>
               <div>
@@ -522,7 +541,7 @@ export default function App() {
               key={message.id}
               message={message}
               character={storyCharacters[0] ?? null}
-              userAvatar={uiPreferences.userAvatar}
+              userAvatar={storyPersona?.avatar || uiPreferences.userAvatar}
               variants={messageVariants[message.id] ?? []}
               bookmarked={bookmarkedIds.has(message.id)}
               busy={sending}
@@ -611,9 +630,13 @@ export default function App() {
           selectedChat={selectedChat}
           characterTemplates={characterTemplates}
           worldBookTemplates={worldBookTemplates}
+          personaTemplates={personaTemplates}
+          storyPersona={storyPersona}
           onCharacters={setCharacterTemplates}
           onStoryCharacters={setStoryCharacters}
           onWorldBooks={setWorldBookTemplates}
+          onPersonas={setPersonaTemplates}
+          onStoryPersona={setStoryPersona}
           onError={(reason) => setError(errorMessage(reason))}
           error={error}
         />
@@ -634,6 +657,7 @@ function GlobalNav({ onOpen }: { onOpen: (page: LibraryKind) => void }) {
   return (
     <nav className="global-nav" aria-label="主导航">
       <button onClick={() => onOpen("characters")}><i>♟</i><span>角色</span></button>
+      <button onClick={() => onOpen("personas")}><i>◎</i><span>Persona</span></button>
       <button onClick={() => onOpen("world")}><i>◇</i><span>世界书</span></button>
     </nav>
   );
@@ -645,17 +669,21 @@ function LibraryWorkspace(props: {
   selectedChat: Chat | null;
   characterTemplates: CharacterTemplate[];
   worldBookTemplates: WorldBookTemplate[];
+  personaTemplates: PersonaTemplate[];
+  storyPersona: StoryPersona | null;
   onCharacters: (items: CharacterTemplate[]) => void;
   onStoryCharacters: (items: StoryCharacter[]) => void;
   onWorldBooks: (items: WorldBookTemplate[]) => void;
+  onPersonas: (items: PersonaTemplate[]) => void;
+  onStoryPersona: (item: StoryPersona | null) => void;
   onError: (reason: unknown) => void;
   error: string | null;
 }) {
   return (
     <div className="library-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}>
-    <main className="library-workspace" role="dialog" aria-modal="true" aria-label={props.page === "characters" ? "角色" : "世界书"}>
+    <main className="library-workspace" role="dialog" aria-modal="true" aria-label={props.page === "characters" ? "角色" : props.page === "personas" ? "Persona" : "世界书"}>
       <header className="topbar library-topbar">
-        <div><p className="eyebrow">故事设定</p><h1>{props.page === "characters" ? "角色" : "世界书"}</h1></div>
+        <div><p className="eyebrow">故事设定</p><h1>{props.page === "characters" ? "角色" : props.page === "personas" ? "Persona" : "世界书"}</h1></div>
         <button className="icon-button" onClick={props.onClose} aria-label="关闭">×</button>
       </header>
       {props.error && <div className="error-banner">{props.error}</div>}
@@ -665,6 +693,17 @@ function LibraryWorkspace(props: {
           templates={props.characterTemplates}
           onTemplates={props.onCharacters}
           onStoryItems={props.onStoryCharacters}
+          onError={props.onError}
+          worldBooks={props.worldBookTemplates}
+        />
+      ) : props.page === "personas" ? (
+        <PersonaLibrary
+          selectedChat={props.selectedChat}
+          templates={props.personaTemplates}
+          storyPersona={props.storyPersona}
+          worldBooks={props.worldBookTemplates}
+          onTemplates={props.onPersonas}
+          onStoryPersona={props.onStoryPersona}
           onError={props.onError}
         />
       ) : (
@@ -680,7 +719,71 @@ function LibraryWorkspace(props: {
   );
 }
 
-const EMPTY_CHARACTER = { name: "", identity: "", personality: "", speaking_style: "", scenario: "", avatar: "" };
+const EMPTY_PERSONA = { name: "", avatar: "", identity: "", personality: "", appearance: "", speaking_style: "", world_book_ids: [] as string[] };
+
+function PersonaLibrary(props: {
+  selectedChat: Chat | null;
+  templates: PersonaTemplate[];
+  storyPersona: StoryPersona | null;
+  worldBooks: WorldBookTemplate[];
+  onTemplates: (items: PersonaTemplate[]) => void;
+  onStoryPersona: (item: StoryPersona | null) => void;
+  onError: (reason: unknown) => void;
+}) {
+  const [editing, setEditing] = useState<{ scope: "template" | "story"; id: string | null } | null>(null);
+  const [draft, setDraft] = useState(EMPTY_PERSONA);
+  function edit(scope: "template" | "story", item?: PersonaTemplate | StoryPersona) {
+    setEditing({ scope, id: item?.id ?? null });
+    setDraft(item ? { name: item.name, avatar: item.avatar, identity: item.identity, personality: item.personality, appearance: item.appearance, speaking_style: item.speaking_style, world_book_ids: item.world_book_ids } : EMPTY_PERSONA);
+  }
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!editing || !draft.name.trim()) return;
+    try {
+      if (editing.scope === "template") {
+        if (editing.id) await api.updatePersonaTemplate(editing.id, draft);
+        else await api.createPersonaTemplate(draft);
+        props.onTemplates(await api.personaTemplates());
+      } else if (props.selectedChat) {
+        props.onStoryPersona(await api.updateStoryPersona(props.selectedChat.id, draft));
+      }
+      setEditing(null);
+    } catch (reason) { props.onError(reason); }
+  }
+  async function attach(id: string) {
+    if (!props.selectedChat) return;
+    try { props.onStoryPersona(await api.attachPersona(props.selectedChat.id, id)); }
+    catch (reason) { props.onError(reason); }
+  }
+  async function remove(id: string) {
+    try { await api.deletePersonaTemplate(id); props.onTemplates(await api.personaTemplates()); }
+    catch (reason) { props.onError(reason); }
+  }
+  const set = <K extends keyof typeof EMPTY_PERSONA>(key: K, value: (typeof EMPTY_PERSONA)[K]) => setDraft({ ...draft, [key]: value });
+  return <div className="library-content">
+    <LibraryColumn title="Persona 库" note="选择你在故事中扮演的身份。" action="＋ 新建 Persona" onAction={() => edit("template")}>
+      {props.templates.length === 0 ? <p className="muted">还没有 Persona。</p> : props.templates.map((item) => <LibraryCard key={item.id} title={item.name} detail={item.identity || item.personality || "暂无描述"} badge="模板" avatar={item.avatar}>
+        <button onClick={() => void attach(item.id)} disabled={!props.selectedChat}>用于当前故事</button><button onClick={() => edit("template", item)}>编辑</button><button className="delete-button" onClick={() => void remove(item.id)}>删除</button>
+      </LibraryCard>)}
+    </LibraryColumn>
+    <LibraryColumn title={`当前身份${props.selectedChat ? ` · ${props.selectedChat.title}` : ""}`} note="故事内修改不会影响模板。">
+      {!props.selectedChat ? <p className="muted">请先选择故事。</p> : !props.storyPersona ? <p className="muted">当前故事使用默认身份。</p> : <LibraryCard title={props.storyPersona.name} detail={props.storyPersona.identity || props.storyPersona.personality || "暂无描述"} badge="故事快照" avatar={props.storyPersona.avatar}><button onClick={() => edit("story", props.storyPersona!)}>编辑快照</button></LibraryCard>}
+    </LibraryColumn>
+    {editing && <form className="library-editor" onSubmit={save}>
+      <div className="action-heading"><h3>{editing.scope === "template" ? "编辑 Persona" : "编辑故事身份"}</h3><button type="button" onClick={() => setEditing(null)}>关闭</button></div>
+      <AvatarPicker value={draft.avatar} fallback={draft.name.charAt(0) || "你"} onChange={(value) => set("avatar", value)} />
+      <input value={draft.name} onChange={(event) => set("name", event.target.value)} placeholder="名称" autoFocus />
+      <textarea value={draft.identity} onChange={(event) => set("identity", event.target.value)} placeholder="身份描述" rows={3} />
+      <textarea value={draft.personality} onChange={(event) => set("personality", event.target.value)} placeholder="性格" rows={3} />
+      <textarea value={draft.appearance} onChange={(event) => set("appearance", event.target.value)} placeholder="外貌" rows={2} />
+      <textarea value={draft.speaking_style} onChange={(event) => set("speaking_style", event.target.value)} placeholder="说话方式" rows={2} />
+      <fieldset className="template-checklist"><legend>专属世界书</legend>{props.worldBooks.map((item) => <label key={item.id}><input type="checkbox" checked={draft.world_book_ids.includes(item.id)} onChange={(event) => set("world_book_ids", event.target.checked ? [...draft.world_book_ids, item.id] : draft.world_book_ids.filter((id) => id !== item.id))} />{item.title}</label>)}</fieldset>
+      <button className="primary-button">保存</button>
+    </form>}
+  </div>;
+}
+
+const EMPTY_CHARACTER = { name: "", identity: "", personality: "", speaking_style: "", scenario: "", avatar: "", appearance: "", first_message: "", alternate_greetings: [] as string[], example_dialogue: "", tags: [] as string[], creator_notes: "", system_prompt: "", favorite: false, world_book_ids: [] as string[] };
 
 function CharacterLibrary(props: {
   selectedChat: Chat | null;
@@ -688,10 +791,12 @@ function CharacterLibrary(props: {
   onTemplates: (items: CharacterTemplate[]) => void;
   onStoryItems: (items: StoryCharacter[]) => void;
   onError: (reason: unknown) => void;
+  worldBooks: WorldBookTemplate[];
 }) {
   const [storyItems, setStoryItems] = useState<StoryCharacter[]>([]);
   const [editing, setEditing] = useState<{ scope: "template" | "story"; id: string | null } | null>(null);
   const [draft, setDraft] = useState(EMPTY_CHARACTER);
+  const [search, setSearch] = useState("");
 
   async function refreshStory() {
     const items = props.selectedChat ? await api.storyCharacters(props.selectedChat.id) : [];
@@ -705,6 +810,10 @@ function CharacterLibrary(props: {
     setDraft(item ? {
       name: item.name, identity: item.identity, personality: item.personality,
       speaking_style: item.speaking_style, scenario: item.scenario, avatar: item.avatar,
+      appearance: item.appearance, first_message: item.first_message,
+      alternate_greetings: item.alternate_greetings, example_dialogue: item.example_dialogue,
+      tags: item.tags, creator_notes: item.creator_notes, system_prompt: item.system_prompt,
+      favorite: item.favorite, world_book_ids: item.world_book_ids,
     } : EMPTY_CHARACTER);
   }
 
@@ -742,13 +851,36 @@ function CharacterLibrary(props: {
     } catch (reason) { props.onError(reason); }
   }
 
+  async function duplicate(id: string) {
+    try { await api.duplicateCharacterTemplate(id); props.onTemplates(await api.characterTemplates()); }
+    catch (reason) { props.onError(reason); }
+  }
+
+  async function importCard(file: File | undefined) {
+    if (!file) return;
+    try {
+      const raw = file.name.toLowerCase().endsWith(".png") ? await readPngCharacterCard(file) : JSON.parse(await file.text());
+      const data = raw.data ?? raw;
+      await api.createCharacterTemplate({ ...EMPTY_CHARACTER, name: data.name || "导入角色", avatar: file.name.toLowerCase().endsWith(".png") ? await fileToDataUrl(file) : "", identity: data.description || data.identity || "", personality: data.personality || "", scenario: data.scenario || "", first_message: data.first_mes || data.first_message || "", alternate_greetings: data.alternate_greetings || [], example_dialogue: data.mes_example || data.example_dialogue || "", tags: data.tags || [], creator_notes: data.creator_notes || "", system_prompt: data.system_prompt || "" });
+      props.onTemplates(await api.characterTemplates());
+    } catch (reason) { props.onError(reason); }
+  }
+
+  const visibleTemplates = props.templates
+    .filter((item) => `${item.name} ${item.tags.join(" ")} ${item.identity}`.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => Number(b.favorite) - Number(a.favorite));
+
   return (
     <div className="library-content">
       <LibraryColumn title="角色库" note="这里的角色可以添加到多个故事。" action="＋ 新建角色" onAction={() => edit("template")}>
-        {props.templates.length === 0 ? <p className="muted">还没有角色模板。</p> : props.templates.map((item) => (
-          <LibraryCard key={item.id} title={item.name} detail={item.identity || item.personality || "暂无补充设定"} badge="模板" avatar={item.avatar}>
+        <div className="library-tools"><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索角色" /><label className="file-button">导入角色卡<input type="file" accept=".json,.png,application/json,image/png" onChange={(event) => void importCard(event.target.files?.[0])} /></label></div>
+        {visibleTemplates.length === 0 ? <p className="muted">没有找到角色。</p> : visibleTemplates.map((item) => (
+          <LibraryCard key={item.id} title={`${item.favorite ? "★ " : ""}${item.name}`} detail={item.identity || item.personality || "暂无补充设定"} badge={item.tags.length ? item.tags.join(" · ") : "模板"} avatar={item.avatar}>
             <button onClick={() => attach(item.id)} disabled={!props.selectedChat}>添加到故事</button>
             <button onClick={() => edit("template", item)}>编辑</button>
+            <button onClick={() => void duplicate(item.id)}>复制</button>
+            <button onClick={() => downloadCharacterCard(item)}>导出 JSON</button>
+            {item.avatar.startsWith("data:image/png") && <button onClick={() => downloadPngCharacterCard(item)}>导出 PNG</button>}
             <button className="delete-button" onClick={() => void remove("template", item.id)}>删除</button>
           </LibraryCard>
         ))}
@@ -761,7 +893,7 @@ function CharacterLibrary(props: {
           </LibraryCard>
         ))}
       </LibraryColumn>
-      {editing && <CharacterEditor draft={draft} onDraft={setDraft} scope={editing.scope} onSubmit={save} onCancel={() => setEditing(null)} />}
+      {editing && <CharacterEditor draft={draft} onDraft={setDraft} scope={editing.scope} worldBooks={props.worldBooks} onSubmit={save} onCancel={() => setEditing(null)} />}
     </div>
   );
 }
@@ -770,10 +902,11 @@ function CharacterEditor(props: {
   draft: typeof EMPTY_CHARACTER;
   onDraft: (value: typeof EMPTY_CHARACTER) => void;
   scope: "template" | "story";
+  worldBooks: WorldBookTemplate[];
   onSubmit: (event: FormEvent) => void;
   onCancel: () => void;
 }) {
-  const set = (key: keyof typeof EMPTY_CHARACTER, value: string) => props.onDraft({ ...props.draft, [key]: value });
+  const set = <K extends keyof typeof EMPTY_CHARACTER>(key: K, value: (typeof EMPTY_CHARACTER)[K]) => props.onDraft({ ...props.draft, [key]: value });
   return (
     <form className="library-editor" onSubmit={props.onSubmit}>
       <div className="action-heading"><h3>{props.scope === "template" ? "编辑角色" : "编辑当前故事中的角色"}</h3><button type="button" onClick={props.onCancel}>关闭</button></div>
@@ -781,8 +914,15 @@ function CharacterEditor(props: {
       <input value={props.draft.name} onChange={(e) => set("name", e.target.value)} placeholder="角色名" autoFocus />
       <textarea value={props.draft.identity} onChange={(e) => set("identity", e.target.value)} placeholder="身份与背景" rows={3} />
       <textarea value={props.draft.personality} onChange={(e) => set("personality", e.target.value)} placeholder="性格" rows={3} />
+      <textarea value={props.draft.appearance} onChange={(e) => set("appearance", e.target.value)} placeholder="外貌" rows={2} />
       <textarea value={props.draft.speaking_style} onChange={(e) => set("speaking_style", e.target.value)} placeholder="说话风格" rows={2} />
       <textarea value={props.draft.scenario} onChange={(e) => set("scenario", e.target.value)} placeholder="当前情境" rows={3} />
+      <textarea value={props.draft.first_message} onChange={(e) => set("first_message", e.target.value)} placeholder="开场白" rows={4} />
+      <textarea value={props.draft.alternate_greetings.join("\n")} onChange={(e) => set("alternate_greetings", e.target.value.split("\n").filter(Boolean))} placeholder="备选开场白，每行一条" rows={4} />
+      <textarea value={props.draft.example_dialogue} onChange={(e) => set("example_dialogue", e.target.value)} placeholder="示例对话" rows={4} />
+      <input value={props.draft.tags.join("，")} onChange={(e) => set("tags", e.target.value.split(/[,，]/).map((item) => item.trim()).filter(Boolean))} placeholder="标签，用逗号分隔" />
+      <details className="advanced-settings"><summary>更多设定</summary><textarea value={props.draft.creator_notes} onChange={(e) => set("creator_notes", e.target.value)} placeholder="创作者备注" rows={3} /><textarea value={props.draft.system_prompt} onChange={(e) => set("system_prompt", e.target.value)} placeholder="角色专属系统提示词" rows={4} /><fieldset className="template-checklist"><legend>角色专属世界书</legend>{props.worldBooks.map((item) => <label key={item.id}><input type="checkbox" checked={props.draft.world_book_ids.includes(item.id)} onChange={(event) => set("world_book_ids", event.target.checked ? [...props.draft.world_book_ids, item.id] : props.draft.world_book_ids.filter((id) => id !== item.id))} />{item.title}</label>)}</fieldset></details>
+      <label className="inline-check"><input type="checkbox" checked={props.draft.favorite} onChange={(event) => set("favorite", event.target.checked)} />收藏角色</label>
       <button className="primary-button">保存</button>
     </form>
   );
@@ -802,11 +942,15 @@ function WorldLibrary(props: {
 
   function edit(scope: "template" | "story", item?: WorldBookTemplate | StoryWorldBook) {
     setEditing({ scope, id: item?.id ?? null });
-    setDraft(item ? { title: item.title, keywords: item.keywords.join("，"), content: item.content, priority: item.priority, enabled: item.enabled } : EMPTY_WORLD_ENTRY);
+    setDraft(item ? worldEntryToDraft(item) : EMPTY_WORLD_ENTRY);
   }
   const payload = () => ({
     title: draft.title.trim(), content: draft.content.trim(), priority: draft.priority, enabled: draft.enabled,
     keywords: draft.keywords.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean),
+    secondary_keywords: draft.secondaryKeywords.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean),
+    constant: draft.constant, case_sensitive: draft.caseSensitive, scan_depth: draft.scanDepth,
+    insertion_position: draft.insertionPosition, group_name: draft.groupName,
+    recursive: draft.recursive, token_budget: draft.tokenBudget, scope: draft.scope,
   });
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -857,6 +1001,14 @@ function WorldLibrary(props: {
           <input value={draft.keywords} onChange={(e) => setDraft({ ...draft, keywords: e.target.value })} placeholder="触发词，用逗号分隔；留空表示常驻" />
           <textarea value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} placeholder="世界设定" rows={6} />
           <div className="world-form-row"><label><span>优先级</span><input type="number" min={0} max={100} value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: Number(e.target.value) })} /></label><label className="inline-check"><input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })} />启用</label></div>
+          <details className="advanced-settings"><summary>高级设置</summary>
+            <input value={draft.secondaryKeywords} onChange={(e) => setDraft({ ...draft, secondaryKeywords: e.target.value })} placeholder="次要关键词，用逗号分隔" />
+            <div className="world-form-row"><label><span>扫描深度</span><input type="number" min={1} max={100} value={draft.scanDepth} onChange={(e) => setDraft({ ...draft, scanDepth: Number(e.target.value) })} /></label><label><span>Token 预算</span><input type="number" min={64} max={20000} value={draft.tokenBudget} onChange={(e) => setDraft({ ...draft, tokenBudget: Number(e.target.value) })} /></label></div>
+            <label><span>插入位置</span><select value={draft.insertionPosition} onChange={(e) => setDraft({ ...draft, insertionPosition: e.target.value as WorldEntryDraft["insertionPosition"] })}><option value="before_history">对话记录前</option><option value="after_history">对话记录后</option><option value="system">系统提示词</option></select></label>
+            <label><span>互斥组</span><input value={draft.groupName} onChange={(e) => setDraft({ ...draft, groupName: e.target.value })} placeholder="同组只启用优先级最高的一条" /></label>
+            <label><span>归属</span><select value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as WorldEntryDraft["scope"] })}><option value="global">通用</option><option value="character">角色专属</option><option value="persona">Persona 专属</option><option value="story">故事专属</option></select></label>
+            <label className="inline-check"><input type="checkbox" checked={draft.constant} onChange={(e) => setDraft({ ...draft, constant: e.target.checked })} />常驻条目</label><label className="inline-check"><input type="checkbox" checked={draft.caseSensitive} onChange={(e) => setDraft({ ...draft, caseSensitive: e.target.checked })} />区分大小写</label><label className="inline-check"><input type="checkbox" checked={draft.recursive} onChange={(e) => setDraft({ ...draft, recursive: e.target.checked })} />递归激活</label>
+          </details>
           <button className="primary-button">保存</button>
         </form>
       )}
@@ -900,7 +1052,7 @@ function MessageBubble({ message, character, userAvatar, variants, bookmarked, b
     setEditing(false);
   }
   return (
-    <div className={`message-row ${assistant ? "assistant" : "user"}`}>
+    <div id={`message-${message.id}`} className={`message-row ${assistant ? "assistant" : "user"}`}>
       <Avatar value={assistant ? character?.avatar ?? "" : userAvatar} fallback={assistant ? (character?.name ?? "S").charAt(0) : "你"} />
       <div className="message-column">
         <div className="message-meta">{assistant ? character?.name ?? "Saraswati" : "你"}<span>{formatTime(message.created_at)}{bookmarked && " · 已收藏"}</span></div>
@@ -947,6 +1099,96 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+async function readPngCharacterCard(file: File): Promise<Record<string, any>> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (!signature.every((value, index) => bytes[index] === value)) throw new Error("这不是有效的 PNG 角色卡");
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 8;
+  while (offset + 12 <= bytes.length) {
+    const length = view.getUint32(offset);
+    const type = new TextDecoder().decode(bytes.slice(offset + 4, offset + 8));
+    if (type === "tEXt") {
+      const chunk = bytes.slice(offset + 8, offset + 8 + length);
+      const zero = chunk.indexOf(0);
+      const key = new TextDecoder().decode(chunk.slice(0, zero));
+      if (key === "chara") {
+        const encoded = new TextDecoder("latin1").decode(chunk.slice(zero + 1));
+        const binary = atob(encoded);
+        const decoded = new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+        return JSON.parse(decoded);
+      }
+    }
+    offset += 12 + length;
+  }
+  throw new Error("PNG 中没有找到角色卡数据");
+}
+
+function downloadCharacterCard(item: CharacterTemplate) {
+  const card = characterCardData(item);
+  const blob = new Blob([JSON.stringify(card, null, 2)], { type: "application/json" });
+  downloadBlob(blob, `${safeFileName(item.name)}.json`);
+}
+
+function characterCardData(item: CharacterTemplate) {
+  return {
+    spec: "chara_card_v2",
+    spec_version: "2.0",
+    data: {
+      name: item.name, description: item.identity, personality: item.personality,
+      scenario: item.scenario, first_mes: item.first_message,
+      alternate_greetings: item.alternate_greetings, mes_example: item.example_dialogue,
+      tags: item.tags, creator_notes: item.creator_notes, system_prompt: item.system_prompt,
+      extensions: { saraswati: { appearance: item.appearance, speaking_style: item.speaking_style } },
+    },
+  };
+}
+
+function downloadPngCharacterCard(item: CharacterTemplate) {
+  const raw = atob(item.avatar.split(",", 2)[1] || "");
+  const png = Uint8Array.from(raw, (char) => char.charCodeAt(0));
+  const json = new TextEncoder().encode(JSON.stringify(characterCardData(item)));
+  const encoded = new TextEncoder().encode(btoa(String.fromCharCode(...json)));
+  const keyword = new TextEncoder().encode("chara");
+  const data = new Uint8Array(keyword.length + 1 + encoded.length);
+  data.set(keyword); data[keyword.length] = 0; data.set(encoded, keyword.length + 1);
+  const chunk = createPngTextChunk(data);
+  const output = new Uint8Array(png.length + chunk.length);
+  output.set(png.slice(0, -12));
+  output.set(chunk, png.length - 12);
+  output.set(png.slice(-12), png.length - 12 + chunk.length);
+  downloadBlob(new Blob([output.buffer as ArrayBuffer], { type: "image/png" }), `${safeFileName(item.name)}.png`);
+}
+
+function createPngTextChunk(data: Uint8Array): Uint8Array {
+  const type = new TextEncoder().encode("tEXt");
+  const result = new Uint8Array(data.length + 12);
+  new DataView(result.buffer).setUint32(0, data.length);
+  result.set(type, 4); result.set(data, 8);
+  new DataView(result.buffer).setUint32(data.length + 8, crc32(new Uint8Array([...type, ...data])));
+  return result;
+}
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function safeFileName(value: string) { return value.replace(/[\\/:*?"<>|]/g, "_"); }
+
+function downloadBlob(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function Inspector(props: {
@@ -1048,6 +1290,15 @@ interface WorldEntryDraft {
   content: string;
   priority: number;
   enabled: boolean;
+  secondaryKeywords: string;
+  constant: boolean;
+  caseSensitive: boolean;
+  scanDepth: number;
+  insertionPosition: "before_history" | "after_history" | "system";
+  groupName: string;
+  recursive: boolean;
+  tokenBudget: number;
+  scope: "global" | "character" | "persona" | "story";
 }
 
 const EMPTY_WORLD_ENTRY: WorldEntryDraft = {
@@ -1056,7 +1307,27 @@ const EMPTY_WORLD_ENTRY: WorldEntryDraft = {
   content: "",
   priority: 50,
   enabled: true,
+  secondaryKeywords: "",
+  constant: false,
+  caseSensitive: false,
+  scanDepth: 4,
+  insertionPosition: "before_history",
+  groupName: "",
+  recursive: false,
+  tokenBudget: 512,
+  scope: "global",
 };
+
+function worldEntryToDraft(item: WorldBookTemplate | StoryWorldBook | WorldBookEntry): WorldEntryDraft {
+  return {
+    title: item.title, keywords: item.keywords.join("，"), content: item.content,
+    priority: item.priority, enabled: item.enabled,
+    secondaryKeywords: item.secondary_keywords.join("，"), constant: item.constant,
+    caseSensitive: item.case_sensitive, scanDepth: item.scan_depth,
+    insertionPosition: item.insertion_position, groupName: item.group_name,
+    recursive: item.recursive, tokenBudget: item.token_budget, scope: item.scope,
+  };
+}
 
 function WorldBookPanel({ chatId, onError }: { chatId: string; onError: (reason: unknown) => void }) {
   const [entries, setEntries] = useState<WorldBookEntry[]>([]);
@@ -1080,13 +1351,7 @@ function WorldBookPanel({ chatId, onError }: { chatId: string; onError: (reason:
 
   function startEdit(entry: WorldBookEntry) {
     setEditingId(entry.id);
-    setDraft({
-      title: entry.title,
-      keywords: entry.keywords.join("，"),
-      content: entry.content,
-      priority: entry.priority,
-      enabled: entry.enabled,
-    });
+    setDraft(worldEntryToDraft(entry));
     setShowForm(true);
   }
 
@@ -1097,6 +1362,11 @@ function WorldBookPanel({ chatId, onError }: { chatId: string; onError: (reason:
       content: value.content.trim(),
       priority: value.priority,
       enabled: value.enabled,
+      secondary_keywords: value.secondaryKeywords.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean),
+      constant: value.constant, case_sensitive: value.caseSensitive,
+      scan_depth: value.scanDepth, insertion_position: value.insertionPosition,
+      group_name: value.groupName, recursive: value.recursive,
+      token_budget: value.tokenBudget, scope: value.scope,
     };
   }
 

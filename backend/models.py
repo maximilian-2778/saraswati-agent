@@ -27,6 +27,47 @@ class ChatRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class PersonaTemplateRecord(Base):
+    """可跨故事复用的玩家身份。"""
+
+    __tablename__ = "persona_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    avatar: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    identity: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    personality: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    appearance: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    speaking_style: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    world_book_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class StoryPersonaRecord(Base):
+    """创建故事时复制出的 Persona 私有快照。"""
+
+    __tablename__ = "story_personas"
+    __table_args__ = (UniqueConstraint("chat_id", name="uq_story_persona_chat"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    source_template_id: Mapped[str | None] = mapped_column(
+        ForeignKey("persona_templates.id", ondelete="SET NULL"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    avatar: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    identity: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    personality: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    appearance: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    speaking_style: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    world_book_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class CharacterTemplateRecord(Base):
     """可跨故事复用的角色原始设定。"""
 
@@ -39,6 +80,15 @@ class CharacterTemplateRecord(Base):
     speaking_style: Mapped[str] = mapped_column(Text, nullable=False, default="")
     scenario: Mapped[str] = mapped_column(Text, nullable=False, default="")
     avatar: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    appearance: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    first_message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    alternate_greetings_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    example_dialogue: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    creator_notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    system_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    world_book_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -51,9 +101,18 @@ class WorldBookTemplateRecord(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     title: Mapped[str] = mapped_column(String(120), nullable=False)
     keywords_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    secondary_keywords_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     content: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    constant: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    case_sensitive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    scan_depth: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
+    insertion_position: Mapped[str] = mapped_column(String(30), nullable=False, default="before_history")
+    group_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    recursive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=512)
+    scope: Mapped[str] = mapped_column(String(30), nullable=False, default="global")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -78,6 +137,15 @@ class StoryCharacterRecord(Base):
     speaking_style: Mapped[str] = mapped_column(Text, nullable=False, default="")
     scenario: Mapped[str] = mapped_column(Text, nullable=False, default="")
     avatar: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    appearance: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    first_message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    alternate_greetings_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    example_dialogue: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    creator_notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    system_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    world_book_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -98,9 +166,18 @@ class StoryWorldBookRecord(Base):
     )
     title: Mapped[str] = mapped_column(String(120), nullable=False)
     keywords_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    secondary_keywords_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     content: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    constant: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    case_sensitive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    scan_depth: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
+    insertion_position: Mapped[str] = mapped_column(String(30), nullable=False, default="before_history")
+    group_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    recursive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=512)
+    scope: Mapped[str] = mapped_column(String(30), nullable=False, default="story")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -135,9 +212,18 @@ class WorldBookEntryRecord(Base):
     )
     title: Mapped[str] = mapped_column(String(120), nullable=False)
     keywords_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    secondary_keywords_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     content: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    constant: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    case_sensitive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    scan_depth: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
+    insertion_position: Mapped[str] = mapped_column(String(30), nullable=False, default="before_history")
+    group_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    recursive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=512)
+    scope: Mapped[str] = mapped_column(String(30), nullable=False, default="story")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

@@ -42,6 +42,7 @@ class ChatCreate(BaseModel):
     system_prompt: str = Field(default="", max_length=20_000)
     character_template_ids: list[UUID] = Field(default_factory=list, max_length=50)
     world_book_template_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    persona_template_id: UUID | None = None
 
 
 class ChatRead(BaseModel):
@@ -59,6 +60,15 @@ class CharacterProfileUpdate(BaseModel):
     speaking_style: str = Field(default="", max_length=10_000)
     scenario: str = Field(default="", max_length=10_000)
     avatar: str = Field(default="", max_length=2_000_000)
+    appearance: str = Field(default="", max_length=10_000)
+    first_message: str = Field(default="", max_length=20_000)
+    alternate_greetings: list[str] = Field(default_factory=list, max_length=20)
+    example_dialogue: str = Field(default="", max_length=20_000)
+    tags: list[str] = Field(default_factory=list, max_length=50)
+    creator_notes: str = Field(default="", max_length=20_000)
+    system_prompt: str = Field(default="", max_length=20_000)
+    favorite: bool = False
+    world_book_ids: list[UUID] = Field(default_factory=list, max_length=100)
 
 
 class CharacterTemplateCreate(CharacterProfileUpdate):
@@ -85,12 +95,45 @@ class CharacterProfileRead(CharacterProfileUpdate):
     updated_at: datetime | None = None
 
 
+class PersonaCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    avatar: str = Field(default="", max_length=2_000_000)
+    identity: str = Field(default="", max_length=10_000)
+    personality: str = Field(default="", max_length=10_000)
+    appearance: str = Field(default="", max_length=10_000)
+    speaking_style: str = Field(default="", max_length=10_000)
+    world_book_ids: list[UUID] = Field(default_factory=list, max_length=100)
+
+
+class PersonaRead(PersonaCreate):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class StoryPersonaRead(PersonaCreate):
+    id: UUID
+    chat_id: UUID
+    source_template_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class WorldBookEntryCreate(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     keywords: list[str] = Field(default_factory=list, max_length=30)
+    secondary_keywords: list[str] = Field(default_factory=list, max_length=30)
     content: str = Field(min_length=1, max_length=20_000)
     priority: int = Field(default=50, ge=0, le=100)
     enabled: bool = True
+    constant: bool = False
+    case_sensitive: bool = False
+    scan_depth: int = Field(default=4, ge=1, le=100)
+    insertion_position: Literal["before_history", "after_history", "system"] = "before_history"
+    group_name: str = Field(default="", max_length=100)
+    recursive: bool = False
+    token_budget: int = Field(default=512, ge=64, le=20_000)
+    scope: Literal["global", "character", "persona", "story"] = "global"
 
 
 class WorldBookEntryUpdate(WorldBookEntryCreate):

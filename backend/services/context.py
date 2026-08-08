@@ -15,6 +15,7 @@ from backend.models import (
     MessageRecord,
     StateEntryRecord,
     StoryCharacterRecord,
+    StoryPersonaRecord,
     StoryWorldBookRecord,
 )
 from backend.schemas import MemoryKind
@@ -68,6 +69,9 @@ class ContextBuilder:
             .where(StoryCharacterRecord.chat_id == chat.id)
             .order_by(StoryCharacterRecord.created_at)
         ).all()
+        persona = db.scalar(
+            select(StoryPersonaRecord).where(StoryPersonaRecord.chat_id == chat.id)
+        )
         world_records = db.scalars(
             select(StoryWorldBookRecord)
             .where(
@@ -151,23 +155,19 @@ class ContextBuilder:
                 for item in [
                     f"身份与背景：{character.identity}" if character.identity else "",
                     f"性格：{character.personality}" if character.personality else "",
+                    f"外貌：{character.appearance}" if character.appearance else "",
                     f"说话风格：{character.speaking_style}" if character.speaking_style else "",
                     f"当前情境：{character.scenario}" if character.scenario else "",
+                    f"示例对话：{character.example_dialogue}" if character.example_dialogue else "",
                 ]
                 if item
             )
             character_lines.append(f"- {character.name}" + (f"｜{details}" if details else ""))
 
-        normalized_query = query.casefold()
-        active_world_entries: list[StoryWorldBookRecord] = []
-        for record in world_records:
-            keywords = json_loads(record.keywords_json) or []
-            if not keywords or any(
-                str(keyword).casefold() in normalized_query for keyword in keywords
-            ):
-                active_world_entries.append(record)
+        active_world_entries = _activate_world_entries(world_records, recent, query)
         world_lines = [
-            f"- [{record.title}｜优先级 {record.priority}] {record.content}"
+            f"- [{record.title}｜{record.insertion_position}｜优先级 {record.priority}] "
+            f"{record.content[: record.token_budget * 4]}"
             for record in active_world_entries[:12]
         ]
         roleplay_graph = self.graph_service.context_text(db, chat.id, query)
@@ -175,6 +175,20 @@ class ContextBuilder:
         system_prompt = "你正在进行长篇角色扮演。保持人物语气、剧情连贯和沉浸感。"
         if chat.system_prompt.strip():
             system_prompt += f"\n\n旧版补充设定：\n{chat.system_prompt.strip()}"
+        if persona:
+            persona_parts = [
+                f"身份：{persona.identity}" if persona.identity else "",
+                f"性格：{persona.personality}" if persona.personality else "",
+                f"外貌：{persona.appearance}" if persona.appearance else "",
+                f"说话方式：{persona.speaking_style}" if persona.speaking_style else "",
+            ]
+            system_prompt += "\n\n玩家身份：\n- " + persona.name
+            details = "；".join(item for item in persona_parts if item)
+            if details:
+                system_prompt += f"｜{details}"
+        character_prompts = [item.system_prompt.strip() for item in characters if item.system_prompt.strip()]
+        if character_prompts:
+            system_prompt += "\n\n角色专属指令：\n" + "\n".join(character_prompts)
         system_prompt += (
             "\n\n当前角色档案：\n"
             + ("\n".join(character_lines) if character_lines else "- 暂未设置")
@@ -255,6 +269,60 @@ def _select_state_entries(
         return points, entry.updated_at
 
     return sorted(entries, key=score, reverse=True)[:limit]
+
+
+def _activate_world_entries(
+    records: list[StoryWorldBookRecord],
+    recent: list[MessageRecord],
+    query: str,
+) -> list[StoryWorldBookRecord]:
+    """按每条词条的扫描范围激活，并处理递归和互斥组。"""
+    active: list[StoryWorldBookRecord] = []
+    active_ids: set[str] = set()
+
+    def matches(record: StoryWorldBookRecord, extra: str = "") -> bool:
+        history = "\n".join(item.content for item in recent[-record.scan_depth:])
+        haystack = f"{history}\n{query}\n{extra}"
+        if not record.case_sensitive:
+            haystack = haystack.casefold()
+        primary = [str(item) for item in (json_loads(record.keywords_json) or [])]
+        secondary = [str(item) for item in (json_loads(record.secondary_keywords_json) or [])]
+
+        def contains(value: str) -> bool:
+            needle = value if record.case_sensitive else value.casefold()
+            return needle in haystack
+
+        primary_ok = record.constant or not primary or any(contains(item) for item in primary)
+        secondary_ok = not secondary or any(contains(item) for item in secondary)
+        return primary_ok and secondary_ok
+
+    for record in records:
+        if matches(record):
+            active.append(record)
+            active_ids.add(record.id)
+
+    changed = True
+    while changed:
+        changed = False
+        recursive_text = "\n".join(item.content for item in active if item.recursive)
+        if not recursive_text:
+            break
+        for record in records:
+            if record.id not in active_ids and matches(record, recursive_text):
+                active.append(record)
+                active_ids.add(record.id)
+                changed = True
+
+    grouped: dict[str, StoryWorldBookRecord] = {}
+    ungrouped: list[StoryWorldBookRecord] = []
+    for record in active:
+        if record.group_name:
+            current = grouped.get(record.group_name)
+            if current is None or record.priority > current.priority:
+                grouped[record.group_name] = record
+        else:
+            ungrouped.append(record)
+    return sorted([*ungrouped, *grouped.values()], key=lambda item: item.priority, reverse=True)
 
 
 def _format_history_node(node: object) -> str:

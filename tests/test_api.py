@@ -553,6 +553,51 @@ def test_chat_candidates_bookmarks_branches_and_checkpoints(
     assert client.get(f"/api/chats/{story_id}/messages").json() == []
 
 
+def test_persona_character_card_and_advanced_world_book_snapshots(
+    client: TestClient,
+) -> None:
+    world = client.post("/api/world-book-templates", json={
+        "title": "银铃规则", "keywords": ["银铃"], "secondary_keywords": ["门"],
+        "content": "银铃只会在午夜响起。", "priority": 88, "constant": False,
+        "case_sensitive": True, "scan_depth": 8, "insertion_position": "system",
+        "group_name": "门铃", "recursive": True, "token_budget": 256,
+        "scope": "persona",
+    })
+    assert world.status_code == 201
+    world_id = world.json()["id"]
+    persona = client.post("/api/persona-templates", json={
+        "name": "林澈", "identity": "旅行者", "appearance": "银发",
+        "personality": "谨慎", "speaking_style": "简短", "world_book_ids": [world_id],
+    })
+    assert persona.status_code == 201
+    character = client.post("/api/character-templates", json={
+        "name": "守门人", "first_message": "夜深了，你为何而来？",
+        "alternate_greetings": ["门已经关了。"], "tags": ["奇幻", "NPC"],
+        "favorite": True, "world_book_ids": [world_id],
+    })
+    assert character.status_code == 201
+    duplicate = client.post(f"/api/character-templates/{character.json()['id']}/duplicate")
+    assert duplicate.status_code == 201
+    assert duplicate.json()["name"].endswith("副本")
+
+    story = client.post("/api/chats", json={
+        "title": "午夜门扉", "persona_template_id": persona.json()["id"],
+        "character_template_ids": [character.json()["id"]],
+    })
+    assert story.status_code == 201
+    story_id = story.json()["id"]
+    snapshot = client.get(f"/api/chats/{story_id}/persona")
+    assert snapshot.status_code == 200
+    assert snapshot.json()["name"] == "林澈"
+    story_world = client.get(f"/api/chats/{story_id}/world-books").json()
+    assert len(story_world) == 1
+    assert story_world[0]["scan_depth"] == 8
+    messages = client.get(f"/api/chats/{story_id}/messages").json()
+    assert messages[0]["content"] == "夜深了，你为何而来？"
+    variants = client.get(f"/api/chats/{story_id}/message-variants").json()
+    assert len(variants) == 2
+
+
 def test_chat_turn_can_stream_ndjson_events(
     client: TestClient,
     chat_id: str,

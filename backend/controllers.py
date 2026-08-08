@@ -29,11 +29,13 @@ from backend.models import (
     NarrativeLeafRecord,
     NarrativeDeltaRecord,
     NpcRecord,
+    PersonaTemplateRecord,
     SceneNodeRecord,
     RoleplayGraphEventRecord,
     StateChangeRecord,
     StoryCheckpointRecord,
     StoryCharacterRecord,
+    StoryPersonaRecord,
     StoryWorldBookRecord,
     TimelineAnchorRecord,
     WorldBookTemplateRecord,
@@ -67,6 +69,8 @@ from backend.schemas import (
     NarrativeDeltaRead,
     NpcRead,
     NpcUpsert,
+    PersonaCreate,
+    PersonaRead,
     MessageRead,
     MessageBookmarkRead,
     MessageRole,
@@ -85,6 +89,7 @@ from backend.schemas import (
     StateProposalCreate,
     StateResolution,
     StoryCharacterRead,
+    StoryPersonaRead,
     StoryBranchCreate,
     StoryWorldBookRead,
     TimelineAnchorCreate,
@@ -102,10 +107,12 @@ from backend.serializers import (
     memory_read,
     message_read,
     npc_read,
+    persona_template_read,
     scene_read,
     state_change_read,
     state_entry_read,
     story_character_read,
+    story_persona_read,
     story_world_book_read,
     timeline_anchor_read,
     trace_read,
@@ -402,8 +409,23 @@ def create_chat(payload: ChatCreate, db: Session = Depends(get_db)) -> ChatRead:
     character_templates = _records_by_ids(
         db, CharacterTemplateRecord, payload.character_template_ids, "角色模板"
     )
+    persona_template = (
+        db.get(PersonaTemplateRecord, str(payload.persona_template_id))
+        if payload.persona_template_id
+        else None
+    )
+    if payload.persona_template_id and not persona_template:
+        raise HTTPException(status_code=404, detail="Persona 不存在")
+    linked_world_ids = [str(item) for item in payload.world_book_template_ids]
+    for template in character_templates:
+        linked_world_ids.extend(json_loads(template.world_book_ids_json) or [])
+    if persona_template:
+        linked_world_ids.extend(json_loads(persona_template.world_book_ids_json) or [])
     world_templates = _records_by_ids(
-        db, WorldBookTemplateRecord, payload.world_book_template_ids, "世界书模板"
+        db,
+        WorldBookTemplateRecord,
+        [UUID(item) for item in dict.fromkeys(linked_world_ids)],
+        "世界书模板",
     )
     record = ChatRecord(
         id=str(uuid4()),
@@ -413,10 +435,27 @@ def create_chat(payload: ChatCreate, db: Session = Depends(get_db)) -> ChatRead:
         updated_at=now,
     )
     db.add(record)
+    if persona_template:
+        db.add(_copy_persona_to_story(persona_template, record.id, now))
     for template in character_templates:
         db.add(_copy_character_to_story(template, record.id, now))
     for template in world_templates:
         db.add(_copy_world_to_story(template, record.id, now))
+    if character_templates and character_templates[0].first_message.strip():
+        greeting = MessageRecord(
+            id=str(uuid4()), chat_id=record.id, role="assistant",
+            content=character_templates[0].first_message.strip(), created_at=now,
+        )
+        db.add(greeting)
+        greetings = [
+            character_templates[0].first_message.strip(),
+            *_clean_string_list(json_loads(character_templates[0].alternate_greetings_json) or []),
+        ]
+        for position, content in enumerate(dict.fromkeys(greetings)):
+            db.add(MessageVariantRecord(
+                id=str(uuid4()), chat_id=record.id, message_id=greeting.id,
+                position=position, content=content, selected=position == 0, created_at=now,
+            ))
     db.commit()
     db.refresh(record)
     return chat_read(record)
@@ -444,6 +483,181 @@ def delete_chat(chat_id: UUID, db: Session = Depends(get_db)) -> Response:
     db.delete(_chat_or_404(db, chat_id))
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/character-templates/{template_id}/duplicate",
+    response_model=CharacterTemplateRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["libraries"],
+)
+def duplicate_character_template(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+) -> CharacterTemplateRead:
+    source = db.get(CharacterTemplateRecord, str(template_id))
+    if not source:
+        raise HTTPException(status_code=404, detail="角色模板不存在")
+    now = datetime.now(UTC)
+    record = CharacterTemplateRecord(
+        id=str(uuid4()), name=f"{source.name} 副本",
+        identity=source.identity, personality=source.personality,
+        speaking_style=source.speaking_style, scenario=source.scenario,
+        avatar=source.avatar, appearance=source.appearance,
+        first_message=source.first_message,
+        alternate_greetings_json=source.alternate_greetings_json,
+        example_dialogue=source.example_dialogue, tags_json=source.tags_json,
+        creator_notes=source.creator_notes, system_prompt=source.system_prompt,
+        favorite=False, world_book_ids_json=source.world_book_ids_json,
+        created_at=now, updated_at=now,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return character_template_read(record)
+
+
+@router.get(
+    "/persona-templates",
+    response_model=list[PersonaRead],
+    tags=["libraries"],
+)
+def list_persona_templates(db: Session = Depends(get_db)) -> list[PersonaRead]:
+    records = db.scalars(
+        select(PersonaTemplateRecord).order_by(PersonaTemplateRecord.updated_at.desc())
+    ).all()
+    return [persona_template_read(item) for item in records]
+
+
+@router.post(
+    "/persona-templates",
+    response_model=PersonaRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["libraries"],
+)
+def create_persona_template(
+    payload: PersonaCreate,
+    db: Session = Depends(get_db),
+) -> PersonaRead:
+    now = datetime.now(UTC)
+    record = PersonaTemplateRecord(
+        id=str(uuid4()),
+        created_at=now,
+        updated_at=now,
+        **_persona_values(payload),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return persona_template_read(record)
+
+
+@router.put(
+    "/persona-templates/{persona_id}",
+    response_model=PersonaRead,
+    tags=["libraries"],
+)
+def update_persona_template(
+    persona_id: UUID,
+    payload: PersonaCreate,
+    db: Session = Depends(get_db),
+) -> PersonaRead:
+    record = db.get(PersonaTemplateRecord, str(persona_id))
+    if not record:
+        raise HTTPException(status_code=404, detail="Persona 不存在")
+    _apply_persona(record, payload)
+    record.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(record)
+    return persona_template_read(record)
+
+
+@router.delete(
+    "/persona-templates/{persona_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["libraries"],
+)
+def delete_persona_template(
+    persona_id: UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    record = db.get(PersonaTemplateRecord, str(persona_id))
+    if not record:
+        raise HTTPException(status_code=404, detail="Persona 不存在")
+    db.delete(record)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/chats/{chat_id}/persona",
+    response_model=StoryPersonaRead | None,
+    tags=["story-bindings"],
+)
+def get_story_persona(
+    chat_id: UUID,
+    db: Session = Depends(get_db),
+) -> StoryPersonaRead | None:
+    _chat_or_404(db, chat_id)
+    record = db.scalar(
+        select(StoryPersonaRecord).where(StoryPersonaRecord.chat_id == str(chat_id))
+    )
+    return story_persona_read(record) if record else None
+
+
+@router.post(
+    "/chats/{chat_id}/persona/from-template/{persona_id}",
+    response_model=StoryPersonaRead,
+    tags=["story-bindings"],
+)
+def attach_persona_template(
+    chat_id: UUID,
+    persona_id: UUID,
+    db: Session = Depends(get_db),
+) -> StoryPersonaRead:
+    chat = _chat_or_404(db, chat_id)
+    template = db.get(PersonaTemplateRecord, str(persona_id))
+    if not template:
+        raise HTTPException(status_code=404, detail="Persona 不存在")
+    old = db.scalar(select(StoryPersonaRecord).where(StoryPersonaRecord.chat_id == str(chat_id)))
+    if old:
+        db.delete(old)
+    now = datetime.now(UTC)
+    record = _copy_persona_to_story(template, str(chat_id), now)
+    db.add(record)
+    _attach_linked_world_books(db, str(chat_id), template.world_book_ids_json, now)
+    chat.updated_at = now
+    db.commit()
+    db.refresh(record)
+    return story_persona_read(record)
+
+
+@router.put(
+    "/chats/{chat_id}/persona",
+    response_model=StoryPersonaRead,
+    tags=["story-bindings"],
+)
+def update_story_persona(
+    chat_id: UUID,
+    payload: PersonaCreate,
+    db: Session = Depends(get_db),
+) -> StoryPersonaRead:
+    chat = _chat_or_404(db, chat_id)
+    record = db.scalar(select(StoryPersonaRecord).where(StoryPersonaRecord.chat_id == str(chat_id)))
+    if not record:
+        now = datetime.now(UTC)
+        record = StoryPersonaRecord(
+            id=str(uuid4()), chat_id=str(chat_id), source_template_id=None,
+            created_at=now, updated_at=now, **_persona_values(payload),
+        )
+        db.add(record)
+    else:
+        _apply_persona(record, payload)
+        record.updated_at = datetime.now(UTC)
+    chat.updated_at = record.updated_at
+    db.commit()
+    db.refresh(record)
+    return story_persona_read(record)
 
 
 @router.get(
@@ -481,6 +695,7 @@ def attach_character_template(
         raise HTTPException(status_code=404, detail="角色模板不存在")
     now = datetime.now(UTC)
     record = _copy_character_to_story(template, str(chat_id), now)
+    _attach_linked_world_books(db, str(chat_id), template.world_book_ids_json, now)
     chat.updated_at = now
     db.add(record)
     db.commit()
@@ -699,13 +914,9 @@ def create_world_book_entry(
     record = WorldBookEntryRecord(
         id=str(uuid4()),
         chat_id=str(chat_id),
-        title=payload.title.strip(),
-        keywords_json=json_dumps(_clean_keywords(payload.keywords)),
-        content=payload.content.strip(),
-        priority=payload.priority,
-        enabled=payload.enabled,
         created_at=now,
         updated_at=now,
+        **_world_values(payload),
     )
     chat.updated_at = now
     db.add(record)
@@ -728,11 +939,7 @@ def update_world_book_entry(
     chat = _chat_or_404(db, chat_id)
     record = _world_entry_or_404(db, chat_id, entry_id)
     now = datetime.now(UTC)
-    record.title = payload.title.strip()
-    record.keywords_json = json_dumps(_clean_keywords(payload.keywords))
-    record.content = payload.content.strip()
-    record.priority = payload.priority
-    record.enabled = payload.enabled
+    _apply_world(record, payload)
     record.updated_at = now
     chat.updated_at = now
     db.commit()
@@ -1973,7 +2180,7 @@ def _records_by_ids(
     return records
 
 
-def _character_values(payload: CharacterProfileUpdate) -> dict[str, str]:
+def _character_values(payload: CharacterProfileUpdate) -> dict[str, Any]:
     return {
         "name": payload.name.strip(),
         "identity": payload.identity.strip(),
@@ -1981,6 +2188,15 @@ def _character_values(payload: CharacterProfileUpdate) -> dict[str, str]:
         "speaking_style": payload.speaking_style.strip(),
         "scenario": payload.scenario.strip(),
         "avatar": payload.avatar.strip(),
+        "appearance": payload.appearance.strip(),
+        "first_message": payload.first_message.strip(),
+        "alternate_greetings_json": json_dumps(_clean_string_list(payload.alternate_greetings)),
+        "example_dialogue": payload.example_dialogue.strip(),
+        "tags_json": json_dumps(_clean_string_list(payload.tags)),
+        "creator_notes": payload.creator_notes.strip(),
+        "system_prompt": payload.system_prompt.strip(),
+        "favorite": payload.favorite,
+        "world_book_ids_json": json_dumps([str(item) for item in payload.world_book_ids]),
     }
 
 
@@ -2004,6 +2220,15 @@ def _copy_character_to_story(
         speaking_style=template.speaking_style,
         scenario=template.scenario,
         avatar=template.avatar,
+        appearance=template.appearance,
+        first_message=template.first_message,
+        alternate_greetings_json=template.alternate_greetings_json,
+        example_dialogue=template.example_dialogue,
+        tags_json=template.tags_json,
+        creator_notes=template.creator_notes,
+        system_prompt=template.system_prompt,
+        favorite=template.favorite,
+        world_book_ids_json=template.world_book_ids_json,
         created_at=now,
         updated_at=now,
     )
@@ -2013,9 +2238,18 @@ def _world_values(payload: WorldBookEntryCreate) -> dict[str, Any]:
     return {
         "title": payload.title.strip(),
         "keywords_json": json_dumps(_clean_keywords(payload.keywords)),
+        "secondary_keywords_json": json_dumps(_clean_keywords(payload.secondary_keywords)),
         "content": payload.content.strip(),
         "priority": payload.priority,
         "enabled": payload.enabled,
+        "constant": payload.constant,
+        "case_sensitive": payload.case_sensitive,
+        "scan_depth": payload.scan_depth,
+        "insertion_position": payload.insertion_position,
+        "group_name": payload.group_name.strip(),
+        "recursive": payload.recursive,
+        "token_budget": payload.token_budget,
+        "scope": payload.scope,
     }
 
 
@@ -2035,9 +2269,18 @@ def _copy_world_to_story(
         source_template_id=template.id,
         title=template.title,
         keywords_json=template.keywords_json,
+        secondary_keywords_json=template.secondary_keywords_json,
         content=template.content,
         priority=template.priority,
         enabled=template.enabled,
+        constant=template.constant,
+        case_sensitive=template.case_sensitive,
+        scan_depth=template.scan_depth,
+        insertion_position=template.insertion_position,
+        group_name=template.group_name,
+        recursive=template.recursive,
+        token_budget=template.token_budget,
+        scope="story",
         created_at=now,
         updated_at=now,
     )
@@ -2075,6 +2318,60 @@ def _message_or_404(
     return record
 
 
+def _persona_values(payload: PersonaCreate) -> dict[str, Any]:
+    return {
+        "name": payload.name.strip(),
+        "avatar": payload.avatar.strip(),
+        "identity": payload.identity.strip(),
+        "personality": payload.personality.strip(),
+        "appearance": payload.appearance.strip(),
+        "speaking_style": payload.speaking_style.strip(),
+        "world_book_ids_json": json_dumps([str(item) for item in payload.world_book_ids]),
+    }
+
+
+def _apply_persona(record: Any, payload: PersonaCreate) -> None:
+    for field, value in _persona_values(payload).items():
+        setattr(record, field, value)
+
+
+def _copy_persona_to_story(
+    template: PersonaTemplateRecord,
+    chat_id: str,
+    now: datetime,
+) -> StoryPersonaRecord:
+    return StoryPersonaRecord(
+        id=str(uuid4()), chat_id=chat_id, source_template_id=template.id,
+        name=template.name, avatar=template.avatar, identity=template.identity,
+        personality=template.personality, appearance=template.appearance,
+        speaking_style=template.speaking_style,
+        world_book_ids_json=template.world_book_ids_json,
+        created_at=now, updated_at=now,
+    )
+
+
+def _clean_string_list(values: list[Any]) -> list[str]:
+    return list(dict.fromkeys(str(item).strip() for item in values if str(item).strip()))
+
+
+def _attach_linked_world_books(
+    db: Session,
+    chat_id: str,
+    world_book_ids_json: str,
+    now: datetime,
+) -> None:
+    existing = set(db.scalars(
+        select(StoryWorldBookRecord.source_template_id).where(
+            StoryWorldBookRecord.chat_id == chat_id
+        )
+    ).all())
+    for template_id in _clean_string_list(json_loads(world_book_ids_json) or []):
+        if template_id in existing:
+            continue
+        template = db.get(WorldBookTemplateRecord, template_id)
+        if template:
+            db.add(_copy_world_to_story(template, chat_id, now))
+            existing.add(template_id)
 def _agent_turn_read(
     runtime: AgentRuntime,
     user_message: MessageRecord,
@@ -2341,6 +2638,15 @@ def _copy_story_branch(
                 speaking_style=item.speaking_style,
                 scenario=item.scenario,
                 avatar=item.avatar,
+                appearance=item.appearance,
+                first_message=item.first_message,
+                alternate_greetings_json=item.alternate_greetings_json,
+                example_dialogue=item.example_dialogue,
+                tags_json=item.tags_json,
+                creator_notes=item.creator_notes,
+                system_prompt=item.system_prompt,
+                favorite=item.favorite,
+                world_book_ids_json=item.world_book_ids_json,
                 created_at=now,
                 updated_at=now,
             )
@@ -2358,13 +2664,35 @@ def _copy_story_branch(
                 source_template_id=item.source_template_id,
                 title=item.title,
                 keywords_json=item.keywords_json,
+                secondary_keywords_json=item.secondary_keywords_json,
                 content=item.content,
                 priority=item.priority,
                 enabled=item.enabled,
+                constant=item.constant,
+                case_sensitive=item.case_sensitive,
+                scan_depth=item.scan_depth,
+                insertion_position=item.insertion_position,
+                group_name=item.group_name,
+                recursive=item.recursive,
+                token_budget=item.token_budget,
+                scope=item.scope,
                 created_at=now,
                 updated_at=now,
             )
         )
+    persona = db.scalar(
+        select(StoryPersonaRecord).where(StoryPersonaRecord.chat_id == source.id)
+    )
+    if persona:
+        db.add(StoryPersonaRecord(
+            id=str(uuid4()), chat_id=branch.id,
+            source_template_id=persona.source_template_id, name=persona.name,
+            avatar=persona.avatar, identity=persona.identity,
+            personality=persona.personality, appearance=persona.appearance,
+            speaking_style=persona.speaking_style,
+            world_book_ids_json=persona.world_book_ids_json,
+            created_at=now, updated_at=now,
+        ))
     messages = db.scalars(
         select(MessageRecord)
         .where(
