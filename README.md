@@ -9,8 +9,10 @@
 ## 功能
 
 - 多故事管理
+- 故事删除
 - 可复用的角色库和世界书库
 - 故事内独立的角色与世界书副本
+- 角色头像与用户头像
 - 逐轮摘要、章节回顾和长篇回顾
 - 场景层级、人物关系和故事时间记录
 - 物品、数值、人物状态、计划与悬念记录
@@ -100,6 +102,7 @@ frontend/src/
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - [`docs/SETTINGS.md`](docs/SETTINGS.md)
 - [`docs/PROJECT_SPEC.md`](docs/PROJECT_SPEC.md)
+- [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - [`CHANGELOG.md`](CHANGELOG.md)
 
 ## 开发状态

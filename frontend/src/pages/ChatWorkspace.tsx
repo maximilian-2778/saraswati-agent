@@ -59,6 +59,7 @@ export default function App() {
   const [libraryOpen, setLibraryOpen] = useState<LibraryKind | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [characterTemplates, setCharacterTemplates] = useState<CharacterTemplate[]>([]);
+  const [storyCharacters, setStoryCharacters] = useState<StoryCharacter[]>([]);
   const [worldBookTemplates, setWorldBookTemplates] = useState<WorldBookTemplate[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -106,9 +107,10 @@ export default function App() {
   async function loadChat(chatId: string) {
     try {
       setLoading(true);
-      const [messageList, memoryList, graph, coverage, deltaList, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] =
+      const [messageList, storyCharacterList, memoryList, graph, coverage, deltaList, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] =
         await Promise.all([
           api.messages(chatId),
+          api.storyCharacters(chatId),
           api.memories(chatId),
           api.memoryGraph(chatId),
           api.memoryCoverage(chatId),
@@ -122,6 +124,7 @@ export default function App() {
           api.traces(chatId),
         ]);
       setMessages(messageList);
+      setStoryCharacters(storyCharacterList);
       setMemories(memoryList);
       setMemoryGraph(graph);
       setMemoryCoverage(coverage);
@@ -182,6 +185,22 @@ export default function App() {
     }
   }
 
+  async function deleteChat(chatId: string) {
+    try {
+      await api.deleteChat(chatId);
+      const remaining = chats.filter((chat) => chat.id !== chatId);
+      setChats(remaining);
+      if (selectedChatId === chatId) {
+        setSelectedChatId(remaining[0]?.id ?? null);
+        setMessages([]);
+        setStoryCharacters([]);
+        setError(null);
+      }
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  }
+
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
     const content = draft.trim();
@@ -232,6 +251,7 @@ export default function App() {
         worldBookTemplates={worldBookTemplates}
         onSelect={(id) => { setSelectedChatId(id); setLibraryOpen(null); }}
         onCreate={createChat}
+        onDelete={deleteChat}
       />
 
       <main className="conversation-pane">
@@ -267,11 +287,11 @@ export default function App() {
           ) : messages.length === 0 ? (
             <EmptyState title="故事尚未开始" detail="在下方写下第一句话。" />
           ) : (
-            messages.map((message) => <MessageBubble key={message.id} message={message} onEdit={editMessage} />)
+            messages.map((message) => <MessageBubble key={message.id} message={message} character={storyCharacters[0] ?? null} userAvatar={uiPreferences.userAvatar} onEdit={editMessage} />)
           )}
           {sending && (
             <div className="message-row assistant">
-              <div className="avatar">S</div>
+              <Avatar value={storyCharacters[0]?.avatar ?? ""} fallback={(storyCharacters[0]?.name ?? "S").charAt(0)} />
               <div className="bubble thinking"><i /><i /><i /></div>
             </div>
           )}
@@ -334,6 +354,7 @@ export default function App() {
           characterTemplates={characterTemplates}
           worldBookTemplates={worldBookTemplates}
           onCharacters={setCharacterTemplates}
+          onStoryCharacters={setStoryCharacters}
           onWorldBooks={setWorldBookTemplates}
           onError={(reason) => setError(errorMessage(reason))}
           error={error}
@@ -367,6 +388,7 @@ function LibraryWorkspace(props: {
   characterTemplates: CharacterTemplate[];
   worldBookTemplates: WorldBookTemplate[];
   onCharacters: (items: CharacterTemplate[]) => void;
+  onStoryCharacters: (items: StoryCharacter[]) => void;
   onWorldBooks: (items: WorldBookTemplate[]) => void;
   onError: (reason: unknown) => void;
   error: string | null;
@@ -384,6 +406,7 @@ function LibraryWorkspace(props: {
           selectedChat={props.selectedChat}
           templates={props.characterTemplates}
           onTemplates={props.onCharacters}
+          onStoryItems={props.onStoryCharacters}
           onError={props.onError}
         />
       ) : (
@@ -399,12 +422,13 @@ function LibraryWorkspace(props: {
   );
 }
 
-const EMPTY_CHARACTER = { name: "", identity: "", personality: "", speaking_style: "", scenario: "" };
+const EMPTY_CHARACTER = { name: "", identity: "", personality: "", speaking_style: "", scenario: "", avatar: "" };
 
 function CharacterLibrary(props: {
   selectedChat: Chat | null;
   templates: CharacterTemplate[];
   onTemplates: (items: CharacterTemplate[]) => void;
+  onStoryItems: (items: StoryCharacter[]) => void;
   onError: (reason: unknown) => void;
 }) {
   const [storyItems, setStoryItems] = useState<StoryCharacter[]>([]);
@@ -412,7 +436,9 @@ function CharacterLibrary(props: {
   const [draft, setDraft] = useState(EMPTY_CHARACTER);
 
   async function refreshStory() {
-    setStoryItems(props.selectedChat ? await api.storyCharacters(props.selectedChat.id) : []);
+    const items = props.selectedChat ? await api.storyCharacters(props.selectedChat.id) : [];
+    setStoryItems(items);
+    props.onStoryItems(items);
   }
   useEffect(() => { void refreshStory().catch(props.onError); }, [props.selectedChat?.id]);
 
@@ -420,7 +446,7 @@ function CharacterLibrary(props: {
     setEditing({ scope, id: item?.id ?? null });
     setDraft(item ? {
       name: item.name, identity: item.identity, personality: item.personality,
-      speaking_style: item.speaking_style, scenario: item.scenario,
+      speaking_style: item.speaking_style, scenario: item.scenario, avatar: item.avatar,
     } : EMPTY_CHARACTER);
   }
 
@@ -462,7 +488,7 @@ function CharacterLibrary(props: {
     <div className="library-content">
       <LibraryColumn title="角色库" note="这里的角色可以添加到多个故事。" action="＋ 新建角色" onAction={() => edit("template")}>
         {props.templates.length === 0 ? <p className="muted">还没有角色模板。</p> : props.templates.map((item) => (
-          <LibraryCard key={item.id} title={item.name} detail={item.identity || item.personality || "暂无补充设定"} badge="模板">
+          <LibraryCard key={item.id} title={item.name} detail={item.identity || item.personality || "暂无补充设定"} badge="模板" avatar={item.avatar}>
             <button onClick={() => attach(item.id)} disabled={!props.selectedChat}>添加到故事</button>
             <button onClick={() => edit("template", item)}>编辑</button>
             <button className="delete-button" onClick={() => void remove("template", item.id)}>删除</button>
@@ -471,7 +497,7 @@ function CharacterLibrary(props: {
       </LibraryColumn>
       <LibraryColumn title={`当前故事中的角色${props.selectedChat ? ` · ${props.selectedChat.title}` : ""}`} note="这里的修改只影响当前故事。">
         {!props.selectedChat ? <p className="muted">请先从左侧选择一个故事。</p> : storyItems.length === 0 ? <p className="muted">这个故事尚未绑定角色。</p> : storyItems.map((item) => (
-          <LibraryCard key={item.id} title={item.name} detail={item.identity || item.personality || "暂无补充设定"} badge={item.source_template_id ? "当前故事" : "已有角色"}>
+          <LibraryCard key={item.id} title={item.name} detail={item.identity || item.personality || "暂无补充设定"} badge={item.source_template_id ? "当前故事" : "已有角色"} avatar={item.avatar}>
             <button onClick={() => edit("story", item)}>编辑</button>
             <button className="delete-button" onClick={() => void remove("story", item.id)}>移除</button>
           </LibraryCard>
@@ -493,6 +519,7 @@ function CharacterEditor(props: {
   return (
     <form className="library-editor" onSubmit={props.onSubmit}>
       <div className="action-heading"><h3>{props.scope === "template" ? "编辑角色" : "编辑当前故事中的角色"}</h3><button type="button" onClick={props.onCancel}>关闭</button></div>
+      <AvatarPicker value={props.draft.avatar} fallback={props.draft.name.charAt(0) || "角"} onChange={(value) => set("avatar", value)} />
       <input value={props.draft.name} onChange={(e) => set("name", e.target.value)} placeholder="角色名" autoFocus />
       <textarea value={props.draft.identity} onChange={(e) => set("identity", e.target.value)} placeholder="身份与背景" rows={3} />
       <textarea value={props.draft.personality} onChange={(e) => set("personality", e.target.value)} placeholder="性格" rows={3} />
@@ -583,11 +610,11 @@ function LibraryColumn(props: { title: string; note: string; action?: string; on
   return <section className="library-column"><div className="library-column-heading"><div><h2>{props.title}</h2><p>{props.note}</p></div>{props.action && <button onClick={props.onAction}>{props.action}</button>}</div><div className="library-card-list">{props.children}</div></section>;
 }
 
-function LibraryCard(props: { title: string; detail: string; badge: string; children: ReactNode }) {
-  return <article className="library-card"><header><div><strong>{props.title}</strong><span>{props.badge}</span></div></header><p>{props.detail}</p><footer>{props.children}</footer></article>;
+function LibraryCard(props: { title: string; detail: string; badge: string; avatar?: string; children: ReactNode }) {
+  return <article className="library-card"><header>{props.avatar !== undefined && <Avatar value={props.avatar} fallback={props.title.charAt(0)} />}<div><strong>{props.title}</strong><span>{props.badge}</span></div></header><p>{props.detail}</p><footer>{props.children}</footer></article>;
 }
 
-function MessageBubble({ message, onEdit }: { message: Message; onEdit: (id: string, content: string) => Promise<void> }) {
+function MessageBubble({ message, character, userAvatar, onEdit }: { message: Message; character: StoryCharacter | null; userAvatar: string; onEdit: (id: string, content: string) => Promise<void> }) {
   const assistant = message.role === "assistant";
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(message.content);
@@ -599,13 +626,38 @@ function MessageBubble({ message, onEdit }: { message: Message; onEdit: (id: str
   }
   return (
     <div className={`message-row ${assistant ? "assistant" : "user"}`}>
-      <div className="avatar">{assistant ? "S" : "你"}</div>
+      <Avatar value={assistant ? character?.avatar ?? "" : userAvatar} fallback={assistant ? (character?.name ?? "S").charAt(0) : "你"} />
       <div className="message-column">
-        <div className="message-meta">{assistant ? "Saraswati" : "你"}<span>{formatTime(message.created_at)} <button onClick={() => { setContent(message.content); setEditing((value) => !value); }}>改写</button></span></div>
+        <div className="message-meta">{assistant ? character?.name ?? "Saraswati" : "你"}<span>{formatTime(message.created_at)} <button onClick={() => { setContent(message.content); setEditing((value) => !value); }}>改写</button></span></div>
         {editing ? <form className="message-editor" onSubmit={save}><textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} /><footer><button type="button" onClick={() => setEditing(false)}>取消</button><button>保存修改</button></footer></form> : <div className="bubble">{message.content}</div>}
       </div>
     </div>
   );
+}
+
+function Avatar({ value, fallback }: { value: string; fallback: string }) {
+  return <div className={`avatar${value ? " has-image" : ""}`}>{value ? <img src={value} alt="" /> : fallback}</div>;
+}
+
+function AvatarPicker({ value, fallback, onChange }: { value: string; fallback: string; onChange: (value: string) => void }) {
+  const [fileError, setFileError] = useState("");
+  async function choose(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setFileError("请选择图片文件"); return; }
+    if (file.size > 1_500_000) { setFileError("图片不能超过 1.5 MB"); return; }
+    setFileError("");
+    onChange(await fileToDataUrl(file));
+  }
+  return <div className="avatar-picker"><Avatar value={value} fallback={fallback} /><div><label>选择图片<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void choose(event.target.files?.[0])} /></label>{value && <button type="button" onClick={() => onChange("")}>移除</button>}{fileError && <small>{fileError}</small>}</div></div>;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 function Inspector(props: {
@@ -1163,6 +1215,7 @@ function SettingsModal({
             ) : (
               <div className="settings-section">
                 <SettingsHeading title="界面" />
+                <div className="settings-field"><span>用户头像</span><AvatarPicker value={draftPreferences.userAvatar} fallback="你" onChange={(value) => setDraftPreferences((before) => ({ ...before, userAvatar: value }))} /></div>
                 <label className="settings-field"><span>配色主题</span><select value={draftPreferences.theme} onChange={(e) => setDraftPreferences((value) => ({ ...value, theme: e.target.value as ThemeName }))}><option value="ink">墨黑金色</option><option value="midnight">深夜蓝色</option></select></label>
                 <NumberSetting label="文字缩放" value={draftPreferences.fontScale} min={0.85} max={1.25} step={0.05} onChange={(value) => setDraftPreferences((before) => ({ ...before, fontScale: value }))} />
                 <label className="check-row"><input type="checkbox" checked={draftPreferences.compactMessages} onChange={(e) => setDraftPreferences((value) => ({ ...value, compactMessages: e.target.checked }))} /><span><strong>紧凑消息间距</strong></span></label>

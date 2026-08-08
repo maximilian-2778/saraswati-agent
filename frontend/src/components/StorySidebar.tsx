@@ -10,11 +10,13 @@ export function StorySidebar(props: {
   worldBookTemplates: WorldBookTemplate[];
   onSelect: (id: string) => void;
   onCreate: (title: string, characterIds: string[], worldBookIds: string[]) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
   const [characterIds, setCharacterIds] = useState<string[]>([]);
   const [worldBookIds, setWorldBookIds] = useState<string[]>([]);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -36,7 +38,7 @@ export function StorySidebar(props: {
       <button className="primary-button">创建</button>
     </form>}
     <p className="section-label">故事</p>
-    <nav className="chat-list">{props.chats.map((chat) => <button key={chat.id} className={chat.id === props.selectedChatId ? "chat-item active" : "chat-item"} onClick={() => props.onSelect(chat.id)}><span className="story-avatar">{chat.title.trim().charAt(0) || "故"}</span><span><strong>{chat.title}</strong><small>{formatDate(chat.updated_at)}</small></span></button>)}</nav>
+    <nav className="chat-list">{props.chats.map((chat) => <div className="chat-entry" key={chat.id}><button className={chat.id === props.selectedChatId ? "chat-item active" : "chat-item"} onClick={() => { props.onSelect(chat.id); setConfirmDeleteId(null); }}><span className="story-avatar">{chat.title.trim().charAt(0) || "故"}</span><span><strong>{chat.title}</strong><small>{formatDate(chat.updated_at)}</small></span></button><button className={`story-delete${confirmDeleteId === chat.id ? " confirming" : ""}`} aria-label={`删除故事 ${chat.title}`} title={confirmDeleteId === chat.id ? "再次点击确认删除" : "删除故事"} onClick={() => { if (confirmDeleteId === chat.id) { void props.onDelete(chat.id); setConfirmDeleteId(null); } else setConfirmDeleteId(chat.id); }}>{confirmDeleteId === chat.id ? "确认" : "×"}</button></div>)}</nav>
   </aside>;
 }
 

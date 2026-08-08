@@ -38,6 +38,7 @@ class CharacterTemplateRecord(Base):
     personality: Mapped[str] = mapped_column(Text, nullable=False, default="")
     speaking_style: Mapped[str] = mapped_column(Text, nullable=False, default="")
     scenario: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    avatar: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -76,6 +77,7 @@ class StoryCharacterRecord(Base):
     personality: Mapped[str] = mapped_column(Text, nullable=False, default="")
     speaking_style: Mapped[str] = mapped_column(Text, nullable=False, default="")
     scenario: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    avatar: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -118,6 +120,7 @@ class CharacterProfileRecord(Base):
     personality: Mapped[str] = mapped_column(Text, nullable=False, default="")
     speaking_style: Mapped[str] = mapped_column(Text, nullable=False, default="")
     scenario: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    avatar: Mapped[str] = mapped_column(Text, nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

@@ -65,6 +65,7 @@ def character_read(record: CharacterProfileRecord) -> CharacterProfileRead:
         personality=record.personality,
         speaking_style=record.speaking_style,
         scenario=record.scenario,
+        avatar=record.avatar,
         updated_at=record.updated_at,
     )
 
@@ -77,6 +78,7 @@ def character_template_read(record: CharacterTemplateRecord) -> CharacterTemplat
         personality=record.personality,
         speaking_style=record.speaking_style,
         scenario=record.scenario,
+        avatar=record.avatar,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -92,6 +94,7 @@ def story_character_read(record: StoryCharacterRecord) -> StoryCharacterRead:
         personality=record.personality,
         speaking_style=record.speaking_style,
         scenario=record.scenario,
+        avatar=record.avatar,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )

@@ -62,6 +62,7 @@ export const api = {
         world_book_template_ids: worldBookTemplateIds,
       }),
     }),
+  deleteChat: (id: string) => request<void>(`/chats/${id}`, { method: "DELETE" }),
   characterTemplates: () => request<CharacterTemplate[]>("/character-templates"),
   createCharacterTemplate: (payload: object) =>
     request<CharacterTemplate>("/character-templates", { method: "POST", body: JSON.stringify(payload) }),

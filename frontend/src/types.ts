@@ -113,6 +113,7 @@ export interface CharacterProfile {
   personality: string;
   speaking_style: string;
   scenario: string;
+  avatar: string;
   updated_at: string | null;
 }
 
@@ -123,6 +124,7 @@ export interface CharacterTemplate {
   personality: string;
   speaking_style: string;
   scenario: string;
+  avatar: string;
   created_at: string;
   updated_at: string;
 }

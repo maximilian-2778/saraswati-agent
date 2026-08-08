@@ -7,6 +7,7 @@ export interface UiPreferences {
   fontScale: number;
   compactMessages: boolean;
   reduceMotion: boolean;
+  userAvatar: string;
 }
 
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
@@ -14,6 +15,7 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   fontScale: 1,
   compactMessages: false,
   reduceMotion: false,
+  userAvatar: "",
 };
 
 export function useUiPreferences() {

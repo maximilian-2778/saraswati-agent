@@ -422,6 +422,17 @@ def get_chat(chat_id: UUID, db: Session = Depends(get_db)) -> ChatRead:
     return chat_read(_chat_or_404(db, chat_id))
 
 
+@router.delete(
+    "/chats/{chat_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["chats"],
+)
+def delete_chat(chat_id: UUID, db: Session = Depends(get_db)) -> Response:
+    db.delete(_chat_or_404(db, chat_id))
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get(
     "/chats/{chat_id}/characters",
     response_model=list[StoryCharacterRead],
@@ -1590,6 +1601,7 @@ def _character_values(payload: CharacterProfileUpdate) -> dict[str, str]:
         "personality": payload.personality.strip(),
         "speaking_style": payload.speaking_style.strip(),
         "scenario": payload.scenario.strip(),
+        "avatar": payload.avatar.strip(),
     }
 
 
@@ -1612,6 +1624,7 @@ def _copy_character_to_story(
         personality=template.personality,
         speaking_style=template.speaking_style,
         scenario=template.scenario,
+        avatar=template.avatar,
         created_at=now,
         updated_at=now,
     )

@@ -58,6 +58,7 @@ class CharacterProfileUpdate(BaseModel):
     personality: str = Field(default="", max_length=10_000)
     speaking_style: str = Field(default="", max_length=10_000)
     scenario: str = Field(default="", max_length=10_000)
+    avatar: str = Field(default="", max_length=2_000_000)
 
 
 class CharacterTemplateCreate(CharacterProfileUpdate):

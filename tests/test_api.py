@@ -431,3 +431,33 @@ def test_scene_npc_graph_is_available_to_story_runtime(
     assert turn.status_code == 200
     assert client.get(f"/api/chats/{chat_id}/scenes").json()[1]["is_current"] is True
     assert client.get(f"/api/chats/{chat_id}/npcs").json()[0]["presence"] == "present"
+
+
+def test_character_avatar_is_copied_and_story_can_be_deleted(
+    client: TestClient,
+) -> None:
+    avatar = "data:image/png;base64,c2FyYXN3YXRp"
+    template = client.post(
+        "/api/character-templates",
+        json={"name": "阿斯塔", "avatar": avatar},
+    )
+    assert template.status_code == 201
+    assert template.json()["avatar"] == avatar
+
+    story = client.post(
+        "/api/chats",
+        json={
+            "title": "可删除故事",
+            "character_template_ids": [template.json()["id"]],
+        },
+    )
+    story_id = story.json()["id"]
+    character = client.get(f"/api/chats/{story_id}/characters").json()[0]
+    assert character["avatar"] == avatar
+
+    assert client.post(
+        f"/api/chats/{story_id}/messages", json={"content": "测试"}
+    ).status_code == 200
+    assert client.delete(f"/api/chats/{story_id}").status_code == 204
+    assert client.get(f"/api/chats/{story_id}").status_code == 404
+    assert all(item["id"] != story_id for item in client.get("/api/chats").json())

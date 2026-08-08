@@ -4,7 +4,7 @@ from collections.abc import Generator
 from uuid import uuid4
 
 from fastapi import Request
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -35,7 +35,20 @@ class Database:
     def create_schema(self) -> None:
         """创建尚不存在的数据库表，并迁移 1.0 版故事内设定。"""
         Base.metadata.create_all(bind=self.engine)
+        self._migrate_avatar_columns()
         self._migrate_legacy_story_settings()
+
+    def _migrate_avatar_columns(self) -> None:
+        """为旧数据库补充角色头像字段。"""
+        tables = ("character_templates", "story_characters", "character_profiles")
+        with self.engine.begin() as connection:
+            inspector = inspect(connection)
+            for table in tables:
+                columns = {column["name"] for column in inspector.get_columns(table)}
+                if "avatar" not in columns:
+                    connection.execute(
+                        text(f"ALTER TABLE {table} ADD COLUMN avatar TEXT NOT NULL DEFAULT ''")
+                    )
 
     def _migrate_legacy_story_settings(self) -> None:
         """把旧版单角色/世界书数据复制到新的故事快照表，原表保留作兼容。"""
@@ -67,6 +80,7 @@ class Database:
                             personality=legacy.personality,
                             speaking_style=legacy.speaking_style,
                             scenario=legacy.scenario,
+                            avatar=legacy.avatar,
                             created_at=legacy.updated_at,
                             updated_at=legacy.updated_at,
                         )
