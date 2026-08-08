@@ -35,26 +35,27 @@ interface MemoryHubProps {
   traces: AgentTrace[];
   onRefresh: () => Promise<void> | void;
   onError: (reason: unknown) => void;
+  onClose: () => void;
 }
 
 export function MemoryHub(props: MemoryHubProps) {
   const tabs: { id: MemoryHubTab; label: string; count?: number }[] = [
-    { id: "summary", label: "摘要", count: props.memoryGraph.length },
-    { id: "delta", label: "变化", count: props.deltas.filter((item) => item.valid).length },
+    { id: "summary", label: "剧情摘要", count: props.memoryGraph.length },
+    { id: "delta", label: "本轮变化", count: props.deltas.filter((item) => item.valid).length },
     { id: "world", label: "世界", count: props.scenes.length + props.npcs.length },
     { id: "timeline", label: "时间线", count: props.timeline.length },
-    { id: "ledger", label: "台账", count: props.proposals.filter((item) => item.status === "pending").length },
-    { id: "retrieval", label: "召回", count: props.retrieved.length },
-    { id: "diagnostics", label: "诊断", count: props.audits.filter((item) => item.status === "open").length },
+    { id: "ledger", label: "记录", count: props.proposals.filter((item) => item.status === "pending").length },
+    { id: "retrieval", label: "相关回忆", count: props.retrieved.length },
+    { id: "diagnostics", label: "检查", count: props.audits.filter((item) => item.status === "open").length },
   ];
   return (
     <aside className="inspector memory-hub">
-      <div className="inspector-title"><div><span>记忆中枢</span><small>自动整理 · 按需想起</small></div><b className="memory-status">● 运行中</b></div>
+      <div className="inspector-title"><div><span>故事资料</span><small>需要时再打开</small></div><button className="icon-button" onClick={props.onClose} aria-label="收起故事资料">×</button></div>
       <div className="tabs memory-tabs">
         {tabs.map((tab) => <button key={tab.id} className={props.activeTab === tab.id ? "active" : ""} onClick={() => props.onTab(tab.id)}>{tab.label}{Boolean(tab.count) && <em>{tab.count}</em>}</button>)}
       </div>
       <div className="inspector-content">
-        {!props.chatId ? <Empty text="选择故事后，记忆中枢会自动开始整理。" />
+        {!props.chatId ? <Empty text="选择故事后，这里会显示整理好的剧情资料。" />
           : props.activeTab === "summary" ? <SummaryPanel {...props} chatId={props.chatId} />
           : props.activeTab === "delta" ? <DeltaPanel deltas={props.deltas} />
           : props.activeTab === "world" ? <WorldGraphPanel {...props} chatId={props.chatId} />
@@ -69,7 +70,7 @@ export function MemoryHub(props: MemoryHubProps) {
 
 function DeltaPanel({ deltas }: { deltas: NarrativeDelta[] }) {
   if (!deltas.length) return <Empty text="完成一轮对话后，这里会显示时间、事实、数值和图谱变化。" />;
-  return <div className="panel-stack delta-list">{[...deltas].reverse().map((delta) => <article key={delta.id} className={delta.valid ? "" : "invalid"}><header><strong>{delta.payload.summary || "本轮剧情变化"}</strong><span>{delta.valid ? "有效" : "原文已改写"}</span></header>{delta.payload.time_change && <p>时间：{delta.payload.time_change}</p>}{Boolean(delta.payload.facts?.length) && <ul>{delta.payload.facts?.map((fact) => <li key={fact}>{fact}</li>)}</ul>}{Boolean(delta.payload.numbers?.length) && <p>数值：{delta.payload.numbers?.map((item) => `${item.name} ${item.value}${item.unit}`).join("；")}</p>}<small>{new Date(delta.created_at).toLocaleString()}</small></article>)}</div>;
+  return <div className="panel-stack delta-list">{[...deltas].reverse().map((delta) => <article key={delta.id} className={delta.valid ? "" : "invalid"}><header><strong>{delta.payload.summary || "这一轮发生的事"}</strong><span>{delta.valid ? "当前版本" : "对应内容已改写"}</span></header>{delta.payload.time_change && <p>时间：{delta.payload.time_change}</p>}{Boolean(delta.payload.facts?.length) && <ul>{delta.payload.facts?.map((fact) => <li key={fact}>{fact}</li>)}</ul>}{Boolean(delta.payload.numbers?.length) && <p>数值：{delta.payload.numbers?.map((item) => `${item.name} ${item.value}${item.unit}`).join("；")}</p>}<small>{new Date(delta.created_at).toLocaleString()}</small></article>)}</div>;
 }
 
 function WorldGraphPanel(props: MemoryHubProps & { chatId: string }) {
@@ -136,9 +137,9 @@ function SummaryPanel(props: MemoryHubProps & { chatId: string }) {
   }
   const toggle = (id: string) => setSelected((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id]);
   return <div className="panel-stack summary-panel">
-    <div className="hub-intro"><strong>可信摘要森林</strong><p>每轮生成带原文指纹的叶子；上层总结引用子节点。原文变化后，损坏分支会自动降级。</p><div><span>楼层 {episodes.length}</span><span>章节 {levels.chapter.length}</span><span>篇章 {levels.arc.length}</span></div></div>
+    <div className="hub-intro"><strong>剧情摘要</strong><p>较早的对话会整理成摘要，给近期内容留出空间。改写消息后，相关摘要会重新整理。</p><div><span>逐轮 {episodes.length}</span><span>章节 {levels.chapter.length}</span><span>长篇 {levels.arc.length}</span></div></div>
     {props.coverage && <section className={`coverage-card ${props.coverage.coverage_ratio < 1 ? "warning" : "healthy"}`}><header><strong>摘要覆盖率</strong><b>{Math.round(props.coverage.coverage_ratio * 100)}%</b></header><div className="coverage-track"><i style={{ width: `${props.coverage.coverage_ratio * 100}%` }} /></div><p>{props.coverage.valid_floors}/{props.coverage.total_ai_floors} 个 AI 楼层有效{props.coverage.missing_message_ids.length ? ` · 漏摘 ${props.coverage.missing_message_ids.length}` : ""}{props.coverage.invalid_message_ids.length ? ` · 失效 ${props.coverage.invalid_message_ids.length}` : ""}</p>{props.coverage.missing_message_ids.length > 0 && <button disabled={busy} onClick={() => void backfill()}>补齐旧楼层</button>}</section>}
-    {graphLevels.map(([level, nodes]) => <section className="summary-section forest-level" key={level}><h3>{level === 0 ? "L0 · 楼层叶子" : `L${level} · ${level === 1 ? "章节总结" : "篇章概览"}`}<small>{nodes.length}</small></h3>{nodes.map((node) => <article className={`summary-card forest-node ${node.active ? "active" : ""} ${node.valid ? "" : "invalid"}`} key={node.id}><header><span>{node.active ? "本轮注入" : node.valid ? "已收纳" : "已失效"}</span>{node.child_ids.length > 0 && <small>包含 {node.child_ids.length} 个子节点</small>}</header><p>{node.content}</p>{(node.time_start || node.time_end) && <time>{node.time_start ?? "?"}{node.time_end && node.time_end !== node.time_start ? ` → ${node.time_end}` : ""}</time>}</article>)}</section>)}
+    {graphLevels.map(([level, nodes]) => <section className="summary-section forest-level" key={level}><h3>{level === 0 ? "逐轮摘要" : level === 1 ? "章节回顾" : "长篇回顾"}<small>{nodes.length}</small></h3>{nodes.map((node) => <article className={`summary-card forest-node ${node.active ? "active" : ""} ${node.valid ? "" : "invalid"}`} key={node.id}><header><span>{node.active ? "本轮会参考" : node.valid ? "已保存" : "等待重整"}</span>{node.child_ids.length > 0 && <small>整理自 {node.child_ids.length} 段摘要</small>}</header><p>{node.content}</p>{(node.time_start || node.time_end) && <time>{node.time_start ?? "?"}{node.time_end && node.time_end !== node.time_start ? ` → ${node.time_end}` : ""}</time>}</article>)}</section>)}
     <div className="summary-toolbar"><select value={detail} onChange={(e) => setDetail(e.target.value as "brief" | "detailed")}><option value="brief">精简摘要</option><option value="detailed">详细摘要</option></select><button disabled={busy} onClick={() => void run(() => api.summarizeWithDetail(props.chatId, detail))}>总结近期</button><button disabled={busy || selected.length < 2} onClick={() => void run(() => api.mergeMemories(props.chatId, selected, detail))}>合并所选 {selected.length || ""}</button></div>
     {editing && <form className="inline-memory-editor" onSubmit={saveEdit}><textarea value={editing.content} onChange={(e) => setEditing({ ...editing, content: e.target.value })} rows={6} /><label>重要度 <input type="number" min={0} max={1} step={0.1} value={editing.importance} onChange={(e) => setEditing({ ...editing, importance: Number(e.target.value) })} /></label><footer><button type="button" onClick={() => setEditing(null)}>取消</button><button>保存</button></footer></form>}
     <SummarySection title="手动总结" items={levels.manual} selected={selected} onToggle={toggle} onEdit={setEditing} onDelete={(id) => void run(() => api.deleteMemory(props.chatId, id))} />
@@ -170,14 +171,21 @@ function LedgerPanel(props: MemoryHubProps & { chatId: string }) {
   const grouped = useMemo(() => groupLedger(props.stateEntries), [props.stateEntries]);
   const pending = props.proposals.filter((item) => item.status === "pending");
   const history = props.proposals.filter((item) => item.status !== "pending").slice(0, 20);
+  const categories: { id: LedgerCategory; label: string }[] = [{ id: "item", label: "物品" }, { id: "npc", label: "人物" }, { id: "scene", label: "场景" }, { id: "thread", label: "悬念" }, { id: "other", label: "其他" }];
   async function resolve(id: string, action: "approve" | "reject") { try { await api.resolveProposal(props.chatId, id, action); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
   async function create(event: FormEvent) {
     event.preventDefault();
-    let parsed: unknown = value; try { parsed = JSON.parse(value); } catch { /* 保留文本 */ }
-    try { await api.createProposal(props.chatId, { entity: `${ledgerPrefix(category)}${entity}`, key, new_value: parsed, reason: "用户手动维护台账" }); setEntity(""); setValue(""); await props.onRefresh(); } catch (reason) { props.onError(reason); }
+    let parsed: unknown = value; try { parsed = JSON.parse(value); } catch { /* 普通文字可以直接保存 */ }
+    try { await api.createProposal(props.chatId, { entity: `${ledgerPrefix(category)}${entity}`, key, new_value: parsed, reason: "用户手动修改" }); setEntity(""); setValue(""); await props.onRefresh(); } catch (reason) { props.onError(reason); }
   }
-  const categories: { id: LedgerCategory; label: string }[] = [{ id: "item", label: "物品" }, { id: "npc", label: "人物" }, { id: "scene", label: "场景" }, { id: "thread", label: "悬念" }, { id: "other", label: "其他" }];
-  return <div className="panel-stack"><div className="hub-intro"><strong>剧情台账</strong><p>精确事实先进入待审核区，批准后才成为 Agent 的事实来源，避免重复结算。</p></div><div className="ledger-tabs">{categories.map((item) => <button className={category === item.id ? "active" : ""} onClick={() => setCategory(item.id)} key={item.id}>{item.label}<small>{grouped[item.id].length}</small></button>)}</div>{grouped[category].length === 0 ? <Empty text={`还没有${categories.find((item) => item.id === category)?.label}记录。`} /> : grouped[category].map((entry) => <article className="ledger-card" key={entry.id}><header><strong>{stripLedgerPrefix(entry.entity)}</strong><span>v{entry.version}</span></header><div><small>{entry.key}</small><code>{displayValue(entry.value)}</code></div></article>)}<section className="pending-ledger"><h3>待审核变更 <small>{pending.length}</small></h3>{pending.length === 0 ? <p className="muted">当前没有等待确认的变化。</p> : pending.map((item) => <article className="proposal-card" key={item.id}><header><strong>{stripLedgerPrefix(item.entity)} · {item.key}</strong><span>待审核</span></header><div className="value-change"><code>{displayValue(item.old_value)}</code><b>→</b><code>{displayValue(item.new_value)}</code></div><p>{item.reason}</p><footer><button onClick={() => void resolve(item.id, "reject")}>拒绝</button><button className="approve" onClick={() => void resolve(item.id, "approve")}>批准</button></footer></article>)}</section>{history.length > 0 && <details className="ledger-history"><summary>最近变动日志（{history.length}）</summary>{history.map((item) => <div key={item.id}><span>{item.status === "approved" ? "已批准" : "已拒绝"}</span><strong>{stripLedgerPrefix(item.entity)} · {item.key}</strong><code>{displayValue(item.new_value)}</code></div>)}</details>}<form className="mini-form" onSubmit={create}><h3>手动登记</h3><select value={category} onChange={(e) => setCategory(e.target.value as LedgerCategory)}>{categories.filter((item) => item.id !== "other").map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select><div className="two-columns"><input value={entity} onChange={(e) => setEntity(e.target.value)} placeholder="名称" required /><input value={key} onChange={(e) => setKey(e.target.value)} placeholder="字段" required /></div><input value={value} onChange={(e) => setValue(e.target.value)} placeholder="值" required /><button>提交审核</button></form></div>;
+  return <div className="panel-stack">
+    <div className="hub-intro"><strong>物品与状态</strong><p>金币、物品数量和人物状态都放在这里。有变化时先请你确认，再用于后续对话。</p></div>
+    <div className="ledger-tabs">{categories.map((item) => <button className={category === item.id ? "active" : ""} onClick={() => setCategory(item.id)} key={item.id}>{item.label}<small>{grouped[item.id].length}</small></button>)}</div>
+    {grouped[category].length === 0 ? <Empty text={`还没有${categories.find((item) => item.id === category)?.label}记录。`} /> : grouped[category].map((entry) => <article className="ledger-card" key={entry.id}><header><strong>{stripLedgerPrefix(entry.entity)}</strong><span>第 {entry.version} 版</span></header><div><small>{entry.key}</small><code>{displayValue(entry.value)}</code></div></article>)}
+    <section className="pending-ledger"><h3>等待确认 <small>{pending.length}</small></h3>{pending.length === 0 ? <p className="muted">目前没有需要确认的变化。</p> : pending.map((item) => <article className="proposal-card" key={item.id}><header><strong>{stripLedgerPrefix(item.entity)} · {item.key}</strong><span>待确认</span></header><div className="value-change"><code>{displayValue(item.old_value)}</code><b>→</b><code>{displayValue(item.new_value)}</code></div><p>{item.reason}</p><footer><button onClick={() => void resolve(item.id, "reject")}>不采用</button><button className="approve" onClick={() => void resolve(item.id, "approve")}>确认</button></footer></article>)}</section>
+    {history.length > 0 && <details className="ledger-history"><summary>最近修改（{history.length}）</summary>{history.map((item) => <div key={item.id}><span>{item.status === "approved" ? "已采用" : "未采用"}</span><strong>{stripLedgerPrefix(item.entity)} · {item.key}</strong><code>{displayValue(item.new_value)}</code></div>)}</details>}
+    <form className="mini-form" onSubmit={create}><h3>手动添加记录</h3><select value={category} onChange={(e) => setCategory(e.target.value as LedgerCategory)}>{categories.filter((item) => item.id !== "other").map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select><div className="two-columns"><input value={entity} onChange={(e) => setEntity(e.target.value)} placeholder="名称" required /><input value={key} onChange={(e) => setKey(e.target.value)} placeholder="项目" required /></div><input value={value} onChange={(e) => setValue(e.target.value)} placeholder="内容" required /><button>等待确认</button></form>
+  </div>;
 }
 
 function RetrievalPanel(props: MemoryHubProps & { chatId: string }) {

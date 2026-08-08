@@ -426,4 +426,4 @@ class SettingsTestResult(BaseModel):
 class HealthRead(BaseModel):
     status: str = "ok"
     service: str = "saraswati-agent-api"
-    version: str = "0.5.0"
+    version: str = "0.6.0"

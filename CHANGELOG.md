@@ -8,6 +8,16 @@ All notable changes to Saraswati Agent are documented in this file.
 
 - Streaming model responses.
 
+## [0.6.0] - 2026-08-08
+
+### Changed
+
+- 对话保持在主界面，故事资料改为可以随时收起的右侧抽屉。
+- 角色和世界书改为弹窗管理，关闭后仍停留在原来的对话位置。
+- `App.tsx` 缩为前端入口，聊天页面与界面偏好分别放入 `pages` 和 `hooks`。
+- 后端 API 按系统、模板、故事、记忆和状态分为五组路由，公开 URL 保持不变。
+- 重写客户端主要说明和 README，减少生硬的内部术语。
+
 ## [0.5.0] - 2026-08-08
 
 ### Added

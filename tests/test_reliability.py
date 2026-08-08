@@ -84,3 +84,16 @@ def test_fixed_rag_dataset_meets_regression_threshold() -> None:
     metrics = retrieval_metrics(json.loads(path.read_text(encoding="utf-8")), k=1)
     assert metrics["recall@1"] >= 0.8
     assert metrics["mrr"] >= 0.8
+
+
+def test_openapi_keeps_routes_from_every_domain(client: TestClient) -> None:
+    """路由拆分后，五个业务领域都必须继续出现在公开 API 中。"""
+    paths = client.get("/openapi.json").json()["paths"]
+    expected = {
+        "/api/health",
+        "/api/character-templates",
+        "/api/chats",
+        "/api/chats/{chat_id}/memories",
+        "/api/chats/{chat_id}/state",
+    }
+    assert expected <= set(paths)
