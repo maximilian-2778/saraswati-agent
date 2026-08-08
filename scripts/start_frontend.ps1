@@ -1,17 +1,26 @@
 # 从项目根目录启动 React/Vite 开发服务器。
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $frontendPath = Join-Path $projectRoot "frontend"
+$frontendPort = 5180
 
 if (-not (Test-Path -LiteralPath (Join-Path $frontendPath "node_modules"))) {
-    throw "Frontend dependencies not found. Run npm install in frontend first."
+    throw "没有找到前端依赖，请先进入 frontend 目录运行 npm install。"
 }
 
-$existingListener = Get-NetTCPConnection -State Listen -LocalPort 5173 -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($existingListener) {
-    Write-Host "前端已经在 http://localhost:5173 运行，请直接打开该地址。"
-    Write-Host "如需重新启动，请先在原来的前端终端按 Ctrl+C。"
-    exit 0
+$portProbe = [System.Net.Sockets.TcpListener]::new(
+    [System.Net.IPAddress]::Loopback,
+    $frontendPort
+)
+try {
+    $portProbe.Start()
+}
+catch {
+    throw "端口 $frontendPort 已被占用。请先在原前端终端按 Ctrl+C，再重新运行本脚本。"
+}
+finally {
+    $portProbe.Stop()
 }
 
 Set-Location -LiteralPath $frontendPath
+Write-Host "前端将运行在 http://localhost:$frontendPort"
 npm run dev
