@@ -59,7 +59,7 @@ API 文档：`http://127.0.0.1:8010/docs`
 也可以直接运行：
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8010
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --port 8010
 cd frontend
 npm run dev
 ```

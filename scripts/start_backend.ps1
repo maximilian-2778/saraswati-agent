@@ -1,5 +1,5 @@
-# Start the FastAPI development server from the project root.
-# Port 8010 avoids stale development processes left on port 8000.
+# Start one FastAPI process from the project root.
+# Avoid --reload on Windows because its worker can survive Ctrl+C.
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $pythonPath = Join-Path $projectRoot ".venv\Scripts\python.exe"
 $backendPort = 8010
@@ -25,4 +25,26 @@ finally {
 
 Set-Location -LiteralPath $projectRoot
 Write-Host "Backend: http://127.0.0.1:$backendPort"
-& $pythonPath -m uvicorn backend.main:app --reload --host 127.0.0.1 --port $backendPort
+$serverArguments = @(
+    "-m", "uvicorn",
+    "backend.main:app",
+    "--host", "127.0.0.1",
+    "--port", "$backendPort"
+)
+$serverProcess = Start-Process `
+    -FilePath $pythonPath `
+    -ArgumentList $serverArguments `
+    -NoNewWindow `
+    -PassThru
+
+try {
+    Wait-Process -Id $serverProcess.Id
+}
+finally {
+    $remainingProcess = Get-Process -Id $serverProcess.Id -ErrorAction SilentlyContinue
+    if ($remainingProcess) {
+        Write-Host "Stopping backend process $($serverProcess.Id)..."
+        Stop-Process -Id $serverProcess.Id -Force
+        Wait-Process -Id $serverProcess.Id -ErrorAction SilentlyContinue
+    }
+}
