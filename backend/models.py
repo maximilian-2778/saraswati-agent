@@ -279,6 +279,48 @@ class NpcRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class RoleplayGraphEventRecord(Base):
+    """场景/NPC 图的不可变事件；投影可由有效事件完整重建。"""
+
+    __tablename__ = "roleplay_graph_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    source_message_id: Mapped[str | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class NarrativeDeltaRecord(Base):
+    """一轮剧情造成的结构化变化，绑定用户与助手原文指纹。"""
+
+    __tablename__ = "narrative_deltas"
+    __table_args__ = (
+        UniqueConstraint("assistant_message_id", name="uq_delta_assistant_message"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_message_id: Mapped[str] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    assistant_message_id: Mapped[str] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class TimelineAnchorRecord(Base):
     """从剧情中提取或由用户补充的故事内时间锚点。"""
 

@@ -163,6 +163,11 @@ input:focus, textarea:focus, select:focus { border-color: #8b7447; box-shadow: 0
 .scene-tree article > button, .npc-graph article > button { position: absolute; right: 7px; bottom: 6px; border: 0; background: transparent; color: #8d6159; font-size: 8px; }
 .npc-graph dl { display: grid; grid-template-columns: 48px 1fr; gap: 4px 7px; margin: 7px 0 13px; font-size: 8px; }
 .npc-graph dt { color: #776f64; }.npc-graph dd { margin: 0; color: #aaa092; }
+.delta-list article { padding: 10px; border: 1px solid #373229; border-radius: 7px; background: #211f1b; }
+.delta-list article.invalid { opacity: .58; border-color: #744c48; }
+.delta-list header { display: flex; justify-content: space-between; gap: 8px; }
+.delta-list header span { color: var(--gold-bright); font-size: 8px; white-space: nowrap; }
+.delta-list p, .delta-list li, .delta-list small { color: #a69d90; font-size: 9px; line-height: 1.55; }
 .inline-memory-editor { display: grid; gap: 7px; padding: 10px; border: 1px solid #6b5735; border-radius: 8px; background: #201b14; }
 .inline-memory-editor textarea { font-size: 10px; }
 .inline-memory-editor label { display: flex; align-items: center; gap: 7px; color: #9c9284; font-size: 9px; }

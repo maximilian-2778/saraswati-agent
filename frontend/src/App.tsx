@@ -15,6 +15,7 @@ import type {
   MemoryKind,
   Message,
   NarrativeNode,
+  NarrativeDelta,
   Npc,
   RetrievedMemory,
   RuntimeInfo,
@@ -49,6 +50,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [memoryGraph, setMemoryGraph] = useState<NarrativeNode[]>([]);
+  const [deltas, setDeltas] = useState<NarrativeDelta[]>([]);
   const [memoryCoverage, setMemoryCoverage] = useState<MemoryCoverage | null>(null);
   const [scenes, setScenes] = useState<SceneNode[]>([]);
   const [npcs, setNpcs] = useState<Npc[]>([]);
@@ -108,12 +110,13 @@ export default function App() {
   async function loadChat(chatId: string) {
     try {
       setLoading(true);
-      const [messageList, memoryList, graph, coverage, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] =
+      const [messageList, memoryList, graph, coverage, deltaList, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] =
         await Promise.all([
           api.messages(chatId),
           api.memories(chatId),
           api.memoryGraph(chatId),
           api.memoryCoverage(chatId),
+          api.narrativeDeltas(chatId),
           api.scenes(chatId),
           api.npcs(chatId),
           api.timeline(chatId),
@@ -126,6 +129,7 @@ export default function App() {
       setMemories(memoryList);
       setMemoryGraph(graph);
       setMemoryCoverage(coverage);
+      setDeltas(deltaList);
       setScenes(sceneList);
       setNpcs(npcList);
       setTimeline(timelineList);
@@ -143,10 +147,11 @@ export default function App() {
   }
 
   async function refreshInspector(chatId: string) {
-    const [memoryList, graph, coverage, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] = await Promise.all([
+    const [memoryList, graph, coverage, deltaList, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] = await Promise.all([
       api.memories(chatId),
       api.memoryGraph(chatId),
       api.memoryCoverage(chatId),
+      api.narrativeDeltas(chatId),
       api.scenes(chatId),
       api.npcs(chatId),
       api.timeline(chatId),
@@ -158,6 +163,7 @@ export default function App() {
     setMemories(memoryList);
     setMemoryGraph(graph);
     setMemoryCoverage(coverage);
+    setDeltas(deltaList);
     setScenes(sceneList);
     setNpcs(npcList);
     setTimeline(timelineList);
@@ -303,6 +309,7 @@ export default function App() {
         onTab={setActiveTab}
         memories={memories}
         memoryGraph={memoryGraph}
+        deltas={deltas}
         coverage={memoryCoverage}
         scenes={scenes}
         npcs={npcs}
@@ -1171,6 +1178,7 @@ function SettingsModal({
       importance_weight: 0.15,
       recency_weight: 0.05,
       rerank_candidates: 20,
+      context_window_tokens: 32768,
     });
     setDraftPreferences(DEFAULT_UI_PREFERENCES);
     setNotice({ kind: "ok", text: "已恢复推荐值，点击“保存并应用”后生效。" });
@@ -1252,6 +1260,7 @@ function SettingsModal({
                 <div className="settings-grid"><label className="settings-field"><span>Rerank 模型</span><input value={form.rerank_model ?? ""} onChange={(e) => updateField("rerank_model", e.target.value || null)} placeholder="reranker-model" /></label><label className="settings-field"><span>Rerank API Key</span><small>{current.rerank_api_key_configured ? `已保存：${current.rerank_api_key_hint}；留空保持不变` : "尚未配置"}</small><input type="password" value={rerankApiKey} onChange={(e) => { setRerankApiKey(e.target.value); if (e.target.value) updateField("clear_rerank_api_key", false); }} placeholder="可与对话模型使用不同密钥" /></label></div>
                 {current.rerank_api_key_configured && <label className="check-row danger-check"><input type="checkbox" checked={form.clear_rerank_api_key} onChange={(e) => updateField("clear_rerank_api_key", e.target.checked)} /><span>保存时删除 Rerank API Key</span></label>}
                 <NumberSetting label="精排候选数" note="混合初排后送给 reranker 的候选数量" value={form.rerank_candidates} min={2} max={100} step={1} onChange={(value) => updateField("rerank_candidates", Math.round(value))} />
+                <NumberSetting label="上下文窗口" note="模型支持的总 Token 数；系统会为输出预留 max tokens" value={form.context_window_tokens} min={4096} max={2000000} step={1024} onChange={(value) => updateField("context_window_tokens", Math.round(value))} />
               </div>
             ) : (
               <div className="settings-section">
@@ -1327,6 +1336,7 @@ function settingsToUpdate(settings: AppSettings): SettingsUpdate {
     clear_rerank_api_key: false,
     rerank_model: settings.rerank_model,
     rerank_candidates: settings.rerank_candidates,
+    context_window_tokens: settings.context_window_tokens,
   };
 }
 

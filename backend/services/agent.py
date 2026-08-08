@@ -23,6 +23,7 @@ from backend.services.audit import AuditService
 from backend.services.context import ContextBuilder
 from backend.services.memory import MemoryService, RetrievedMemory
 from backend.services.narrative_memory import NarrativeMemoryService
+from backend.services.narrative_delta import NarrativeDeltaService
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
 from backend.services.tools import TOOL_SCHEMAS, ToolExecutor
@@ -52,6 +53,7 @@ class AgentRuntime:
         self.narrative_memory_service = NarrativeMemoryService(
             settings, self.memory_service
         )
+        self.narrative_delta_service = NarrativeDeltaService()
         self.context_builder = ContextBuilder(
             settings,
             self.memory_service,
@@ -85,6 +87,7 @@ class AgentRuntime:
                 "state_count": context.state_count,
                 "character_configured": context.character_configured,
                 "world_entry_ids": context.world_entry_ids,
+                "token_budget": context.diagnostics,
             },
         )
 
@@ -216,6 +219,18 @@ class AgentRuntime:
                 "memory_pipeline_error",
                 {"error": str(exc)},
             )
+
+        delta = await self.narrative_delta_service.process_turn(
+            db, self.model, chat.id, user_message, assistant_message
+        )
+        self._trace(
+            db,
+            chat.id,
+            turn_id,
+            self.settings.max_agent_steps + 1,
+            "narrative_delta_created",
+            {"delta_id": delta.id, "payload": json.loads(delta.payload_json)},
+        )
 
         state_entries = self.state_service.list_entries(db, chat.id)
         issues = self.audit_service.audit_message(

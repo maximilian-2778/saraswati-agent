@@ -39,6 +39,7 @@ export interface AppSettings {
   rerank_api_key_hint: string | null;
   rerank_model: string | null;
   rerank_candidates: number;
+  context_window_tokens: number;
 }
 
 export interface SettingsUpdate {
@@ -69,6 +70,24 @@ export interface SettingsUpdate {
   clear_rerank_api_key: boolean;
   rerank_model: string | null;
   rerank_candidates: number;
+  context_window_tokens: number;
+}
+
+export interface NarrativeDelta {
+  id: string;
+  chat_id: string;
+  user_message_id: string;
+  assistant_message_id: string;
+  payload: {
+    summary?: string;
+    time_change?: string;
+    facts?: string[];
+    open_threads?: string[];
+    numbers?: { name: string; value: string; unit: string }[];
+    graph_changes?: unknown[];
+  };
+  valid: boolean;
+  created_at: string;
 }
 
 export interface SettingsTestResult {
