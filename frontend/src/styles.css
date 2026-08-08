@@ -298,7 +298,8 @@ input:focus, textarea:focus, select:focus { border-color: #8b7447; box-shadow: 0
 .connection-state.demo { border-color: #55472c; background: #272116; }
 .connection-state strong, .connection-state small { display: block; }.connection-state strong { font-size: 11px; }.connection-state small { margin-top: 3px; color: #81796d; font-size: 9px; }
 .privacy-note { padding: 14px; border: 1px solid #3b352b; border-radius: 8px; background: #1d1a16; }
-.privacy-note strong { font-size: 11px; }.privacy-note p { margin: 7px 0 0; color: #91887b; font-size: 10px; line-height: 1.7; }.privacy-note code { color: var(--gold-bright); }
+.privacy-note summary { cursor: pointer; color: #c8c0b3; font-size: 11px; font-weight: 600; }
+.privacy-note p { margin: 7px 0 0; color: #91887b; font-size: 10px; line-height: 1.7; }.privacy-note code { color: var(--gold-bright); }
 .field-error { margin: 0; color: #df8a80; font-size: 10px; }
 .settings-loading { color: #898175; text-align: center; margin-top: 80px; }
 .settings-notice { padding: 10px 24px; border-top: 1px solid; font-size: 11px; }.settings-notice.ok { color: #9dc7a3; background: #18251a; border-color: #304735; }.settings-notice.error { color: #e5a097; background: #2c1917; border-color: #5d332e; }

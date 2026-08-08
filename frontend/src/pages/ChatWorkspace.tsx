@@ -1161,12 +1161,12 @@ function SettingsModal({
               </div>
             ) : (
               <div className="settings-section">
-                <SettingsHeading title="界面与隐私" detail="界面偏好保存在浏览器中，模型配置保存在本机后端。" />
-                <label className="settings-field"><span>配色主题</span><small>选择适合长时间阅读的背景</small><select value={draftPreferences.theme} onChange={(e) => setDraftPreferences((value) => ({ ...value, theme: e.target.value as ThemeName }))}><option value="ink">墨黑金色</option><option value="midnight">深夜蓝色</option></select></label>
-                <NumberSetting label="文字缩放" note="只影响客户端显示，不影响模型上下文" value={draftPreferences.fontScale} min={0.85} max={1.25} step={0.05} onChange={(value) => setDraftPreferences((before) => ({ ...before, fontScale: value }))} />
-                <label className="check-row"><input type="checkbox" checked={draftPreferences.compactMessages} onChange={(e) => setDraftPreferences((value) => ({ ...value, compactMessages: e.target.checked }))} /><span><strong>紧凑消息间距</strong><small>同屏显示更多对话内容</small></span></label>
-                <label className="check-row"><input type="checkbox" checked={draftPreferences.reduceMotion} onChange={(e) => setDraftPreferences((value) => ({ ...value, reduceMotion: e.target.checked }))} /><span><strong>减少动画</strong><small>关闭滚动和生成指示动画</small></span></label>
-                <div className="privacy-note"><strong>本地数据说明</strong><p>聊天、记忆和状态保存在 SQLite；模型配置保存在 <code>data/settings.json</code>。这两个位置都已被 Git 忽略。API Key 不会返回到前端页面，但本机配置文件不是加密保险箱，请勿共享该文件。</p></div>
+                <SettingsHeading title="界面" />
+                <label className="settings-field"><span>配色主题</span><select value={draftPreferences.theme} onChange={(e) => setDraftPreferences((value) => ({ ...value, theme: e.target.value as ThemeName }))}><option value="ink">墨黑金色</option><option value="midnight">深夜蓝色</option></select></label>
+                <NumberSetting label="文字缩放" value={draftPreferences.fontScale} min={0.85} max={1.25} step={0.05} onChange={(value) => setDraftPreferences((before) => ({ ...before, fontScale: value }))} />
+                <label className="check-row"><input type="checkbox" checked={draftPreferences.compactMessages} onChange={(e) => setDraftPreferences((value) => ({ ...value, compactMessages: e.target.checked }))} /><span><strong>紧凑消息间距</strong></span></label>
+                <label className="check-row"><input type="checkbox" checked={draftPreferences.reduceMotion} onChange={(e) => setDraftPreferences((value) => ({ ...value, reduceMotion: e.target.checked }))} /><span><strong>减少动画</strong></span></label>
+                <details className="privacy-note"><summary>数据与隐私</summary><p>聊天数据：<code>data/saraswati_v1.db</code></p><p>模型设置：<code>data/settings.json</code></p><p>API Key 保存在本机，请勿分享设置文件。</p></details>
               </div>
             )}
           </div>
@@ -1181,13 +1181,13 @@ function SettingsModal({
   );
 }
 
-function SettingsHeading({ title, detail }: { title: string; detail: string }) {
+function SettingsHeading({ title, detail }: { title: string; detail?: string }) {
   return <div className="settings-heading"><h3>{title}</h3>{detail && <p>{detail}</p>}</div>;
 }
 
 function NumberSetting({ label, note, value, min, max, step, onChange, compact = false }: {
   label: string;
-  note: string;
+  note?: string;
   value: number;
   min: number;
   max: number;
@@ -1197,7 +1197,7 @@ function NumberSetting({ label, note, value, min, max, step, onChange, compact =
 }) {
   return (
     <label className={`number-setting${compact ? " compact" : ""}`}>
-      <span><strong>{label}</strong><small>{note}</small></span>
+      <span><strong>{label}</strong>{note && <small>{note}</small>}</span>
       <input type="range" value={value} min={min} max={max} step={step} onChange={(e) => onChange(Number(e.target.value))} />
       <input type="number" value={value} min={min} max={max} step={step} onChange={(e) => onChange(Number(e.target.value))} />
     </label>
