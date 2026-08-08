@@ -79,6 +79,22 @@ export interface CharacterProfile {
   updated_at: string | null;
 }
 
+export interface CharacterTemplate {
+  id: string;
+  name: string;
+  identity: string;
+  personality: string;
+  speaking_style: string;
+  scenario: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoryCharacter extends CharacterTemplate {
+  chat_id: string;
+  source_template_id: string | null;
+}
+
 export interface WorldBookEntry {
   id: string;
   chat_id: string;
@@ -89,6 +105,12 @@ export interface WorldBookEntry {
   enabled: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export type WorldBookTemplate = Omit<WorldBookEntry, "chat_id">;
+
+export interface StoryWorldBook extends WorldBookEntry {
+  source_template_id: string | null;
 }
 
 export interface Message {

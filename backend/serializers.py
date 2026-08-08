@@ -6,11 +6,15 @@ from backend.models import (
     AgentTraceRecord,
     AuditIssueRecord,
     ChatRecord,
+    CharacterTemplateRecord,
     CharacterProfileRecord,
     MemoryRecord,
     MessageRecord,
     StateChangeRecord,
     StateEntryRecord,
+    StoryCharacterRecord,
+    StoryWorldBookRecord,
+    WorldBookTemplateRecord,
     WorldBookEntryRecord,
 )
 from backend.schemas import (
@@ -18,6 +22,7 @@ from backend.schemas import (
     AuditIssueRead,
     AuditStatus,
     ChatRead,
+    CharacterTemplateRead,
     CharacterProfileRead,
     MemoryKind,
     MemoryRead,
@@ -26,6 +31,9 @@ from backend.schemas import (
     ProposalStatus,
     StateChangeRead,
     StateEntryRead,
+    StoryCharacterRead,
+    StoryWorldBookRead,
+    WorldBookTemplateRead,
     WorldBookEntryRead,
 )
 from backend.utils import json_loads
@@ -54,10 +62,66 @@ def character_read(record: CharacterProfileRecord) -> CharacterProfileRead:
     )
 
 
+def character_template_read(record: CharacterTemplateRecord) -> CharacterTemplateRead:
+    return CharacterTemplateRead(
+        id=UUID(record.id),
+        name=record.name,
+        identity=record.identity,
+        personality=record.personality,
+        speaking_style=record.speaking_style,
+        scenario=record.scenario,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+def story_character_read(record: StoryCharacterRecord) -> StoryCharacterRead:
+    return StoryCharacterRead(
+        id=UUID(record.id),
+        chat_id=UUID(record.chat_id),
+        source_template_id=(UUID(record.source_template_id) if record.source_template_id else None),
+        name=record.name,
+        identity=record.identity,
+        personality=record.personality,
+        speaking_style=record.speaking_style,
+        scenario=record.scenario,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
 def world_book_read(record: WorldBookEntryRecord) -> WorldBookEntryRead:
     return WorldBookEntryRead(
         id=UUID(record.id),
         chat_id=UUID(record.chat_id),
+        title=record.title,
+        keywords=json_loads(record.keywords_json) or [],
+        content=record.content,
+        priority=record.priority,
+        enabled=record.enabled,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+def world_book_template_read(record: WorldBookTemplateRecord) -> WorldBookTemplateRead:
+    return WorldBookTemplateRead(
+        id=UUID(record.id),
+        title=record.title,
+        keywords=json_loads(record.keywords_json) or [],
+        content=record.content,
+        priority=record.priority,
+        enabled=record.enabled,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+def story_world_book_read(record: StoryWorldBookRecord) -> StoryWorldBookRead:
+    return StoryWorldBookRead(
+        id=UUID(record.id),
+        chat_id=UUID(record.chat_id),
+        source_template_id=(UUID(record.source_template_id) if record.source_template_id else None),
         title=record.title,
         keywords=json_loads(record.keywords_json) or [],
         content=record.content,

@@ -27,6 +27,82 @@ class ChatRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class CharacterTemplateRecord(Base):
+    """可跨故事复用的角色原始设定。"""
+
+    __tablename__ = "character_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    identity: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    personality: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    speaking_style: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    scenario: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class WorldBookTemplateRecord(Base):
+    """可跨故事复用的世界书词条原始设定。"""
+
+    __tablename__ = "world_book_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    keywords_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class StoryCharacterRecord(Base):
+    """创建故事时从角色模板复制出的私有快照。"""
+
+    __tablename__ = "story_characters"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    source_template_id: Mapped[str | None] = mapped_column(
+        ForeignKey("character_templates.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    identity: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    personality: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    speaking_style: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    scenario: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class StoryWorldBookRecord(Base):
+    """创建故事时从世界书模板复制出的私有快照。"""
+
+    __tablename__ = "story_world_books"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    source_template_id: Mapped[str | None] = mapped_column(
+        ForeignKey("world_book_templates.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    keywords_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class CharacterProfileRecord(Base):
     __tablename__ = "character_profiles"
     __table_args__ = (UniqueConstraint("chat_id", name="uq_character_chat"),)

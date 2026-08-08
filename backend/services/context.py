@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 from backend.config import Settings
 from backend.llm import ModelClient
 from backend.models import (
-    CharacterProfileRecord,
     ChatRecord,
     MessageRecord,
-    WorldBookEntryRecord,
+    StoryCharacterRecord,
+    StoryWorldBookRecord,
 )
 from backend.services.memory import MemoryService, RetrievedMemory
 from backend.services.state import StateService
@@ -56,18 +56,18 @@ class ContextBuilder:
             self.settings.rag_limit,
         )
         state_entries = self.state_service.list_entries(db, chat.id)
-        character = db.scalar(
-            select(CharacterProfileRecord).where(
-                CharacterProfileRecord.chat_id == chat.id
-            )
-        )
+        characters = db.scalars(
+            select(StoryCharacterRecord)
+            .where(StoryCharacterRecord.chat_id == chat.id)
+            .order_by(StoryCharacterRecord.created_at)
+        ).all()
         world_records = db.scalars(
-            select(WorldBookEntryRecord)
+            select(StoryWorldBookRecord)
             .where(
-                WorldBookEntryRecord.chat_id == chat.id,
-                WorldBookEntryRecord.enabled.is_(True),
+                StoryWorldBookRecord.chat_id == chat.id,
+                StoryWorldBookRecord.enabled.is_(True),
             )
-            .order_by(WorldBookEntryRecord.priority.desc())
+            .order_by(StoryWorldBookRecord.priority.desc())
         ).all()
         recent_desc = db.scalars(
             select(MessageRecord)
@@ -91,18 +91,21 @@ class ContextBuilder:
         ]
 
         character_lines: list[str] = []
-        if character:
-            character_lines = [
-                f"- 名称：{character.name}" if character.name else "",
-                f"- 身份与背景：{character.identity}" if character.identity else "",
-                f"- 性格：{character.personality}" if character.personality else "",
-                f"- 说话风格：{character.speaking_style}" if character.speaking_style else "",
-                f"- 当前情境：{character.scenario}" if character.scenario else "",
-            ]
-            character_lines = [line for line in character_lines if line]
+        for character in characters:
+            details = "；".join(
+                item
+                for item in [
+                    f"身份与背景：{character.identity}" if character.identity else "",
+                    f"性格：{character.personality}" if character.personality else "",
+                    f"说话风格：{character.speaking_style}" if character.speaking_style else "",
+                    f"当前情境：{character.scenario}" if character.scenario else "",
+                ]
+                if item
+            )
+            character_lines.append(f"- {character.name}" + (f"｜{details}" if details else ""))
 
         normalized_query = query.casefold()
-        active_world_entries: list[WorldBookEntryRecord] = []
+        active_world_entries: list[StoryWorldBookRecord] = []
         for record in world_records:
             keywords = json_loads(record.keywords_json) or []
             if not keywords or any(
