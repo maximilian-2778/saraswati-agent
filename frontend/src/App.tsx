@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { api } from "./api";
 import type {
   AgentTrace,
@@ -7,6 +7,7 @@ import type {
   AuditIssue,
   Chat,
   CharacterProfile,
+  CharacterTemplate,
   Memory,
   MemoryKind,
   Message,
@@ -15,10 +16,14 @@ import type {
   SettingsUpdate,
   StateEntry,
   StateProposal,
+  StoryCharacter,
+  StoryWorldBook,
   WorldBookEntry,
+  WorldBookTemplate,
 } from "./types";
 
-type InspectorTab = "character" | "world" | "state" | "memory" | "audit" | "trace";
+type InspectorTab = "state" | "memory" | "audit" | "trace";
+type AppPage = "story" | "characters" | "world";
 type SettingsTab = "model" | "generation" | "agent" | "appearance";
 type ThemeName = "ink" | "midnight";
 
@@ -40,7 +45,10 @@ export default function App() {
   const [proposals, setProposals] = useState<StateProposal[]>([]);
   const [audits, setAudits] = useState<AuditIssue[]>([]);
   const [traces, setTraces] = useState<AgentTrace[]>([]);
-  const [activeTab, setActiveTab] = useState<InspectorTab>("character");
+  const [activeTab, setActiveTab] = useState<InspectorTab>("state");
+  const [page, setPage] = useState<AppPage>("story");
+  const [characterTemplates, setCharacterTemplates] = useState<CharacterTemplate[]>([]);
+  const [worldBookTemplates, setWorldBookTemplates] = useState<WorldBookTemplate[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -69,9 +77,13 @@ export default function App() {
   async function initialize() {
     try {
       setLoading(true);
-      const [runtimeInfo, chatList] = await Promise.all([api.runtime(), api.chats()]);
+      const [runtimeInfo, chatList, characters, worldBooks] = await Promise.all([
+        api.runtime(), api.chats(), api.characterTemplates(), api.worldBookTemplates(),
+      ]);
       setRuntime(runtimeInfo);
       setChats(chatList);
+      setCharacterTemplates(characters);
+      setWorldBookTemplates(worldBooks);
       if (chatList.length) setSelectedChatId(chatList[0].id);
     } catch (reason) {
       setError(errorMessage(reason));
@@ -122,12 +134,13 @@ export default function App() {
     setTraces(traceList);
   }
 
-  async function createChat(title: string) {
+  async function createChat(title: string, characterIds: string[], worldBookIds: string[]) {
     try {
-      const chat = await api.createChat(title);
+      const chat = await api.createChat(title, characterIds, worldBookIds);
       setChats((current) => [chat, ...current]);
       setSelectedChatId(chat.id);
-      setActiveTab("character");
+      setActiveTab("state");
+      setPage("story");
       setError(null);
     } catch (reason) {
       setError(errorMessage(reason));
@@ -169,16 +182,20 @@ export default function App() {
       <Sidebar
         chats={chats}
         selectedChatId={selectedChatId}
-        onSelect={setSelectedChatId}
+        characterTemplates={characterTemplates}
+        worldBookTemplates={worldBookTemplates}
+        onSelect={(id) => { setSelectedChatId(id); setPage("story"); }}
         onCreate={createChat}
       />
 
+      {page === "story" ? <>
       <main className="conversation-pane">
         <header className="topbar">
           <div>
             <p className="eyebrow">SARASWATI AGENT</p>
             <h1>{selectedChat?.title ?? "选择或创建一个故事"}</h1>
           </div>
+          <GlobalNav page={page} onPage={setPage} />
           <div className="topbar-actions">
             <div className={`provider-badge ${runtime?.provider_mode === "demo" ? "demo" : "live"}`}>
               <span className="status-dot" />
@@ -251,6 +268,20 @@ export default function App() {
         }}
         onError={(reason) => setError(errorMessage(reason))}
       />
+      </> : (
+        <LibraryWorkspace
+          page={page}
+          onPage={setPage}
+          selectedChat={selectedChat}
+          characterTemplates={characterTemplates}
+          worldBookTemplates={worldBookTemplates}
+          onCharacters={setCharacterTemplates}
+          onWorldBooks={setWorldBookTemplates}
+          onSettings={() => setSettingsOpen(true)}
+          onError={(reason) => setError(errorMessage(reason))}
+          error={error}
+        />
+      )}
       {settingsOpen && (
         <SettingsModal
           preferences={uiPreferences}
@@ -266,22 +297,30 @@ export default function App() {
 function Sidebar({
   chats,
   selectedChatId,
+  characterTemplates,
+  worldBookTemplates,
   onSelect,
   onCreate,
 }: {
   chats: Chat[];
   selectedChatId: string | null;
+  characterTemplates: CharacterTemplate[];
+  worldBookTemplates: WorldBookTemplate[];
   onSelect: (id: string) => void;
-  onCreate: (title: string) => Promise<void>;
+  onCreate: (title: string, characterIds: string[], worldBookIds: string[]) => Promise<void>;
 }) {
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
+  const [characterIds, setCharacterIds] = useState<string[]>([]);
+  const [worldBookIds, setWorldBookIds] = useState<string[]>([]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!title.trim()) return;
-    await onCreate(title.trim());
+    await onCreate(title.trim(), characterIds, worldBookIds);
     setTitle("");
+    setCharacterIds([]);
+    setWorldBookIds([]);
     setCreating(false);
   }
 
@@ -297,6 +336,19 @@ function Sidebar({
       {creating && (
         <form className="create-card" onSubmit={submit}>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="存档标题" autoFocus />
+          <TemplateChecklist
+            label="选择角色模板（可多选）"
+            items={characterTemplates.map((item) => ({ id: item.id, label: item.name }))}
+            selected={characterIds}
+            onSelected={setCharacterIds}
+          />
+          <TemplateChecklist
+            label="选择世界书（可多选）"
+            items={worldBookTemplates.map((item) => ({ id: item.id, label: item.title }))}
+            selected={worldBookIds}
+            onSelected={setWorldBookIds}
+          />
+          <small className="snapshot-hint">创建时会复制设定；故事中的变化不会覆盖模板。</small>
           <button className="primary-button">创建</button>
         </form>
       )}
@@ -316,6 +368,268 @@ function Sidebar({
       <div className="sidebar-note">状态修改需要你的确认<br />记忆召回均可追溯来源</div>
     </aside>
   );
+}
+
+function GlobalNav({ page, onPage }: { page: AppPage; onPage: (page: AppPage) => void }) {
+  return (
+    <nav className="global-nav" aria-label="主导航">
+      <button className={page === "story" ? "active" : ""} onClick={() => onPage("story")}>故事</button>
+      <button className={page === "characters" ? "active" : ""} onClick={() => onPage("characters")}>角色库</button>
+      <button className={page === "world" ? "active" : ""} onClick={() => onPage("world")}>世界书库</button>
+    </nav>
+  );
+}
+
+function TemplateChecklist(props: {
+  label: string;
+  items: { id: string; label: string }[];
+  selected: string[];
+  onSelected: (ids: string[]) => void;
+}) {
+  return (
+    <fieldset className="template-checklist">
+      <legend>{props.label}</legend>
+      {props.items.length === 0 ? <small>模板库暂时为空</small> : props.items.map((item) => (
+        <label key={item.id}>
+          <input
+            type="checkbox"
+            checked={props.selected.includes(item.id)}
+            onChange={(event) => props.onSelected(event.target.checked
+              ? [...props.selected, item.id]
+              : props.selected.filter((id) => id !== item.id))}
+          />
+          <span>{item.label}</span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+function LibraryWorkspace(props: {
+  page: Exclude<AppPage, "story">;
+  onPage: (page: AppPage) => void;
+  selectedChat: Chat | null;
+  characterTemplates: CharacterTemplate[];
+  worldBookTemplates: WorldBookTemplate[];
+  onCharacters: (items: CharacterTemplate[]) => void;
+  onWorldBooks: (items: WorldBookTemplate[]) => void;
+  onSettings: () => void;
+  onError: (reason: unknown) => void;
+  error: string | null;
+}) {
+  return (
+    <main className="library-workspace">
+      <header className="topbar library-topbar">
+        <div><p className="eyebrow">REUSABLE LIBRARY</p><h1>{props.page === "characters" ? "角色库" : "世界书库"}</h1></div>
+        <GlobalNav page={props.page} onPage={props.onPage} />
+        <button className="settings-button" onClick={props.onSettings}>⚙ <span>设置</span></button>
+      </header>
+      {props.error && <div className="error-banner">{props.error}</div>}
+      {props.page === "characters" ? (
+        <CharacterLibrary
+          selectedChat={props.selectedChat}
+          templates={props.characterTemplates}
+          onTemplates={props.onCharacters}
+          onError={props.onError}
+        />
+      ) : (
+        <WorldLibrary
+          selectedChat={props.selectedChat}
+          templates={props.worldBookTemplates}
+          onTemplates={props.onWorldBooks}
+          onError={props.onError}
+        />
+      )}
+    </main>
+  );
+}
+
+const EMPTY_CHARACTER = { name: "", identity: "", personality: "", speaking_style: "", scenario: "" };
+
+function CharacterLibrary(props: {
+  selectedChat: Chat | null;
+  templates: CharacterTemplate[];
+  onTemplates: (items: CharacterTemplate[]) => void;
+  onError: (reason: unknown) => void;
+}) {
+  const [storyItems, setStoryItems] = useState<StoryCharacter[]>([]);
+  const [editing, setEditing] = useState<{ scope: "template" | "story"; id: string | null } | null>(null);
+  const [draft, setDraft] = useState(EMPTY_CHARACTER);
+
+  async function refreshStory() {
+    setStoryItems(props.selectedChat ? await api.storyCharacters(props.selectedChat.id) : []);
+  }
+  useEffect(() => { void refreshStory().catch(props.onError); }, [props.selectedChat?.id]);
+
+  function edit(scope: "template" | "story", item?: CharacterTemplate | StoryCharacter) {
+    setEditing({ scope, id: item?.id ?? null });
+    setDraft(item ? {
+      name: item.name, identity: item.identity, personality: item.personality,
+      speaking_style: item.speaking_style, scenario: item.scenario,
+    } : EMPTY_CHARACTER);
+  }
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!editing || !draft.name.trim()) return;
+    try {
+      if (editing.scope === "template") {
+        if (editing.id) await api.updateCharacterTemplate(editing.id, draft);
+        else await api.createCharacterTemplate(draft);
+        props.onTemplates(await api.characterTemplates());
+      } else if (props.selectedChat && editing.id) {
+        await api.updateStoryCharacter(props.selectedChat.id, editing.id, draft);
+        await refreshStory();
+      }
+      setEditing(null);
+    } catch (reason) { props.onError(reason); }
+  }
+
+  async function attach(id: string) {
+    if (!props.selectedChat) return;
+    try { await api.attachCharacter(props.selectedChat.id, id); await refreshStory(); }
+    catch (reason) { props.onError(reason); }
+  }
+
+  async function remove(scope: "template" | "story", id: string) {
+    try {
+      if (scope === "template") {
+        await api.deleteCharacterTemplate(id);
+        props.onTemplates(await api.characterTemplates());
+      } else if (props.selectedChat) {
+        await api.deleteStoryCharacter(props.selectedChat.id, id);
+        await refreshStory();
+      }
+    } catch (reason) { props.onError(reason); }
+  }
+
+  return (
+    <div className="library-content">
+      <LibraryColumn title="原始角色模板" note="可复用于任意故事；修改不会同步到已有故事。" action="＋ 新建角色" onAction={() => edit("template")}>
+        {props.templates.length === 0 ? <p className="muted">还没有角色模板。</p> : props.templates.map((item) => (
+          <LibraryCard key={item.id} title={item.name} detail={item.identity || item.personality || "暂无补充设定"} badge="模板">
+            <button onClick={() => attach(item.id)} disabled={!props.selectedChat}>绑定副本</button>
+            <button onClick={() => edit("template", item)}>编辑</button>
+            <button className="delete-button" onClick={() => void remove("template", item.id)}>删除</button>
+          </LibraryCard>
+        ))}
+      </LibraryColumn>
+      <LibraryColumn title={`故事角色副本${props.selectedChat ? ` · ${props.selectedChat.title}` : ""}`} note="剧情变化只修改这里，不会污染原始模板。">
+        {!props.selectedChat ? <p className="muted">请先从左侧选择一个故事。</p> : storyItems.length === 0 ? <p className="muted">这个故事尚未绑定角色。</p> : storyItems.map((item) => (
+          <LibraryCard key={item.id} title={item.name} detail={item.identity || item.personality || "暂无补充设定"} badge={item.source_template_id ? "故事副本" : "旧版迁移"}>
+            <button onClick={() => edit("story", item)}>编辑副本</button>
+            <button className="delete-button" onClick={() => void remove("story", item.id)}>移除</button>
+          </LibraryCard>
+        ))}
+      </LibraryColumn>
+      {editing && <CharacterEditor draft={draft} onDraft={setDraft} scope={editing.scope} onSubmit={save} onCancel={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+function CharacterEditor(props: {
+  draft: typeof EMPTY_CHARACTER;
+  onDraft: (value: typeof EMPTY_CHARACTER) => void;
+  scope: "template" | "story";
+  onSubmit: (event: FormEvent) => void;
+  onCancel: () => void;
+}) {
+  const set = (key: keyof typeof EMPTY_CHARACTER, value: string) => props.onDraft({ ...props.draft, [key]: value });
+  return (
+    <form className="library-editor" onSubmit={props.onSubmit}>
+      <div className="action-heading"><h3>{props.scope === "template" ? "编辑角色模板" : "编辑故事角色副本"}</h3><button type="button" onClick={props.onCancel}>关闭</button></div>
+      <input value={props.draft.name} onChange={(e) => set("name", e.target.value)} placeholder="角色名" autoFocus />
+      <textarea value={props.draft.identity} onChange={(e) => set("identity", e.target.value)} placeholder="身份与背景" rows={3} />
+      <textarea value={props.draft.personality} onChange={(e) => set("personality", e.target.value)} placeholder="性格" rows={3} />
+      <textarea value={props.draft.speaking_style} onChange={(e) => set("speaking_style", e.target.value)} placeholder="说话风格" rows={2} />
+      <textarea value={props.draft.scenario} onChange={(e) => set("scenario", e.target.value)} placeholder="当前情境" rows={3} />
+      <button className="primary-button">保存</button>
+    </form>
+  );
+}
+
+function WorldLibrary(props: {
+  selectedChat: Chat | null;
+  templates: WorldBookTemplate[];
+  onTemplates: (items: WorldBookTemplate[]) => void;
+  onError: (reason: unknown) => void;
+}) {
+  const [storyItems, setStoryItems] = useState<StoryWorldBook[]>([]);
+  const [editing, setEditing] = useState<{ scope: "template" | "story"; id: string | null } | null>(null);
+  const [draft, setDraft] = useState<WorldEntryDraft>(EMPTY_WORLD_ENTRY);
+  async function refreshStory() { setStoryItems(props.selectedChat ? await api.storyWorldBooks(props.selectedChat.id) : []); }
+  useEffect(() => { void refreshStory().catch(props.onError); }, [props.selectedChat?.id]);
+
+  function edit(scope: "template" | "story", item?: WorldBookTemplate | StoryWorldBook) {
+    setEditing({ scope, id: item?.id ?? null });
+    setDraft(item ? { title: item.title, keywords: item.keywords.join("，"), content: item.content, priority: item.priority, enabled: item.enabled } : EMPTY_WORLD_ENTRY);
+  }
+  const payload = () => ({
+    title: draft.title.trim(), content: draft.content.trim(), priority: draft.priority, enabled: draft.enabled,
+    keywords: draft.keywords.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean),
+  });
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!editing || !draft.title.trim() || !draft.content.trim()) return;
+    try {
+      if (editing.scope === "template") {
+        if (editing.id) await api.updateWorldBookTemplate(editing.id, payload());
+        else await api.createWorldBookTemplate(payload());
+        props.onTemplates(await api.worldBookTemplates());
+      } else if (props.selectedChat && editing.id) {
+        await api.updateStoryWorldBook(props.selectedChat.id, editing.id, payload());
+        await refreshStory();
+      }
+      setEditing(null);
+    } catch (reason) { props.onError(reason); }
+  }
+  async function attach(id: string) {
+    if (!props.selectedChat) return;
+    try { await api.attachWorldBook(props.selectedChat.id, id); await refreshStory(); }
+    catch (reason) { props.onError(reason); }
+  }
+  async function remove(scope: "template" | "story", id: string) {
+    try {
+      if (scope === "template") { await api.deleteWorldBookTemplate(id); props.onTemplates(await api.worldBookTemplates()); }
+      else if (props.selectedChat) { await api.deleteStoryWorldBook(props.selectedChat.id, id); await refreshStory(); }
+    } catch (reason) { props.onError(reason); }
+  }
+  return (
+    <div className="library-content">
+      <LibraryColumn title="原始世界书模板" note="这里保存可复用的设定母版。" action="＋ 新建世界书" onAction={() => edit("template")}>
+        {props.templates.length === 0 ? <p className="muted">还没有世界书模板。</p> : props.templates.map((item) => (
+          <LibraryCard key={item.id} title={item.title} detail={item.content} badge={`模板 · 优先级 ${item.priority}`}>
+            <button onClick={() => attach(item.id)} disabled={!props.selectedChat}>绑定副本</button><button onClick={() => edit("template", item)}>编辑</button><button className="delete-button" onClick={() => void remove("template", item.id)}>删除</button>
+          </LibraryCard>
+        ))}
+      </LibraryColumn>
+      <LibraryColumn title={`故事世界书副本${props.selectedChat ? ` · ${props.selectedChat.title}` : ""}`} note="可随故事演化，原始世界书保持不变。">
+        {!props.selectedChat ? <p className="muted">请先从左侧选择一个故事。</p> : storyItems.length === 0 ? <p className="muted">这个故事尚未绑定世界书。</p> : storyItems.map((item) => (
+          <LibraryCard key={item.id} title={item.title} detail={item.content} badge={item.source_template_id ? "故事副本" : "旧版迁移"}>
+            <button onClick={() => edit("story", item)}>编辑副本</button><button className="delete-button" onClick={() => void remove("story", item.id)}>移除</button>
+          </LibraryCard>
+        ))}
+      </LibraryColumn>
+      {editing && (
+        <form className="library-editor" onSubmit={save}>
+          <div className="action-heading"><h3>{editing.scope === "template" ? "编辑世界书模板" : "编辑故事世界书副本"}</h3><button type="button" onClick={() => setEditing(null)}>关闭</button></div>
+          <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="标题" autoFocus />
+          <input value={draft.keywords} onChange={(e) => setDraft({ ...draft, keywords: e.target.value })} placeholder="触发词，用逗号分隔；留空表示常驻" />
+          <textarea value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} placeholder="世界设定" rows={6} />
+          <div className="world-form-row"><label><span>优先级</span><input type="number" min={0} max={100} value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: Number(e.target.value) })} /></label><label className="inline-check"><input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })} />启用</label></div>
+          <button className="primary-button">保存</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function LibraryColumn(props: { title: string; note: string; action?: string; onAction?: () => void; children: ReactNode }) {
+  return <section className="library-column"><div className="library-column-heading"><div><h2>{props.title}</h2><p>{props.note}</p></div>{props.action && <button onClick={props.onAction}>{props.action}</button>}</div><div className="library-card-list">{props.children}</div></section>;
+}
+
+function LibraryCard(props: { title: string; detail: string; badge: string; children: ReactNode }) {
+  return <article className="library-card"><header><div><strong>{props.title}</strong><span>{props.badge}</span></div></header><p>{props.detail}</p><footer>{props.children}</footer></article>;
 }
 
 function MessageBubble({ message }: { message: Message }) {
@@ -345,8 +659,6 @@ function Inspector(props: {
   onError: (reason: unknown) => void;
 }) {
   const tabs: { id: InspectorTab; label: string; count?: number }[] = [
-    { id: "character", label: "角色" },
-    { id: "world", label: "世界书" },
     { id: "state", label: "状态", count: props.proposals.filter((item) => item.status === "pending").length },
     { id: "memory", label: "记忆", count: props.memories.length },
     { id: "audit", label: "审计", count: props.audits.filter((item) => item.status === "open").length },
@@ -366,10 +678,6 @@ function Inspector(props: {
       <div className="inspector-content">
         {!props.chatId ? (
           <EmptyState title="暂无数据" detail="选择存档后查看 Agent 的内部状态。" />
-        ) : props.activeTab === "character" ? (
-          <CharacterPanel chatId={props.chatId} onError={props.onError} />
-        ) : props.activeTab === "world" ? (
-          <WorldBookPanel chatId={props.chatId} onError={props.onError} />
         ) : props.activeTab === "state" ? (
           <StatePanel {...props} chatId={props.chatId} />
         ) : props.activeTab === "memory" ? (

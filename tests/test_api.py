@@ -146,16 +146,11 @@ def test_settings_update_masks_api_key_and_rebuilds_runtime(
     assert cleared.json()["provider_mode"] == "demo"
 
 
-def test_character_and_world_book_are_persisted(
+def test_templates_are_copied_into_isolated_story_snapshots(
     client: TestClient,
-    chat_id: str,
 ) -> None:
-    empty_character = client.get(f"/api/chats/{chat_id}/character")
-    assert empty_character.status_code == 200
-    assert empty_character.json()["id"] is None
-
-    character = client.put(
-        f"/api/chats/{chat_id}/character",
+    first_character = client.post(
+        "/api/character-templates",
         json={
             "name": "阿斯塔",
             "identity": "旧王都的守门人",
@@ -164,11 +159,12 @@ def test_character_and_world_book_are_persisted(
             "scenario": "正在看守银铃之门",
         },
     )
-    assert character.status_code == 200
-    assert character.json()["name"] == "阿斯塔"
-
-    created = client.post(
-        f"/api/chats/{chat_id}/world-book",
+    second_character = client.post(
+        "/api/character-templates",
+        json={"name": "旅人", "identity": "远方来客"},
+    )
+    world_template = client.post(
+        "/api/world-book-templates",
         json={
             "title": "银铃之门",
             "keywords": ["银铃", "旧王都"],
@@ -177,34 +173,54 @@ def test_character_and_world_book_are_persisted(
             "enabled": True,
         },
     )
-    assert created.status_code == 201
-    entry_id = created.json()["id"]
-    entries = client.get(f"/api/chats/{chat_id}/world-book").json()
-    assert entries[0]["keywords"] == ["银铃", "旧王都"]
+    assert first_character.status_code == 201
+    assert second_character.status_code == 201
+    assert world_template.status_code == 201
+
+    story = client.post(
+        "/api/chats",
+        json={
+            "title": "银铃纪事",
+            "character_template_ids": [
+                first_character.json()["id"],
+                second_character.json()["id"],
+            ],
+            "world_book_template_ids": [world_template.json()["id"]],
+        },
+    )
+    assert story.status_code == 201
+    story_id = story.json()["id"]
+
+    characters = client.get(f"/api/chats/{story_id}/characters").json()
+    world_books = client.get(f"/api/chats/{story_id}/world-books").json()
+    assert [item["name"] for item in characters] == ["阿斯塔", "旅人"]
+    assert characters[0]["source_template_id"] == first_character.json()["id"]
+    assert world_books[0]["keywords"] == ["银铃", "旧王都"]
+
+    changed_snapshot = {**characters[0], "personality": "因剧情发展变得信任旅人"}
+    updated = client.put(
+        f"/api/chats/{story_id}/characters/{characters[0]['id']}",
+        json=changed_snapshot,
+    )
+    assert updated.status_code == 200
+    templates = client.get("/api/character-templates").json()
+    original = next(item for item in templates if item["id"] == first_character.json()["id"])
+    assert original["personality"] == "克制而警惕"
 
     turn = client.post(
-        f"/api/chats/{chat_id}/messages",
+        f"/api/chats/{story_id}/messages",
         json={"content": "我来到银铃前。"},
     )
     context_trace = next(
         item for item in turn.json()["trace"] if item["event_type"] == "context_built"
     )
     assert context_trace["payload"]["character_configured"] is True
-    assert context_trace["payload"]["world_entry_ids"] == [entry_id]
+    assert context_trace["payload"]["world_entry_ids"] == [world_books[0]["id"]]
 
-    updated = client.put(
-        f"/api/chats/{chat_id}/world-book/{entry_id}",
-        json={
-            "title": "银铃之门",
-            "keywords": [],
-            "content": "这是一条常驻世界设定。",
-            "priority": 90,
-            "enabled": False,
-        },
+    deleted_template = client.delete(
+        f"/api/character-templates/{first_character.json()['id']}"
     )
-    assert updated.status_code == 200
-    assert updated.json()["enabled"] is False
-
-    deleted = client.delete(f"/api/chats/{chat_id}/world-book/{entry_id}")
-    assert deleted.status_code == 204
-    assert client.get(f"/api/chats/{chat_id}/world-book").json() == []
+    assert deleted_template.status_code == 204
+    remaining_snapshot = client.get(f"/api/chats/{story_id}/characters").json()[0]
+    assert remaining_snapshot["name"] == "阿斯塔"
+    assert remaining_snapshot["source_template_id"] is None

@@ -40,6 +40,8 @@ class AuditStatus(str, Enum):
 class ChatCreate(BaseModel):
     title: str = Field(min_length=1, max_length=100)
     system_prompt: str = Field(default="", max_length=20_000)
+    character_template_ids: list[UUID] = Field(default_factory=list, max_length=50)
+    world_book_template_ids: list[UUID] = Field(default_factory=list, max_length=100)
 
 
 class ChatRead(BaseModel):
@@ -58,6 +60,24 @@ class CharacterProfileUpdate(BaseModel):
     scenario: str = Field(default="", max_length=10_000)
 
 
+class CharacterTemplateCreate(CharacterProfileUpdate):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class CharacterTemplateRead(CharacterTemplateCreate):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class StoryCharacterRead(CharacterTemplateCreate):
+    id: UUID
+    chat_id: UUID
+    source_template_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class CharacterProfileRead(CharacterProfileUpdate):
     id: UUID | None = None
     chat_id: UUID
@@ -74,6 +94,20 @@ class WorldBookEntryCreate(BaseModel):
 
 class WorldBookEntryUpdate(WorldBookEntryCreate):
     pass
+
+
+class WorldBookTemplateRead(WorldBookEntryCreate):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class StoryWorldBookRead(WorldBookEntryCreate):
+    id: UUID
+    chat_id: UUID
+    source_template_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class WorldBookEntryRead(WorldBookEntryCreate):
@@ -269,4 +303,4 @@ class SettingsTestResult(BaseModel):
 class HealthRead(BaseModel):
     status: str = "ok"
     service: str = "saraswati-agent-api"
-    version: str = "1.0.0"
+    version: str = "0.2.0"

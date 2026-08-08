@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -15,10 +16,14 @@ from backend.models import (
     AgentTraceRecord,
     AuditIssueRecord,
     ChatRecord,
+    CharacterTemplateRecord,
     CharacterProfileRecord,
     MemoryRecord,
     MessageRecord,
     StateChangeRecord,
+    StoryCharacterRecord,
+    StoryWorldBookRecord,
+    WorldBookTemplateRecord,
     WorldBookEntryRecord,
 )
 from backend.schemas import (
@@ -29,6 +34,8 @@ from backend.schemas import (
     AuditStatus,
     ChatCreate,
     ChatRead,
+    CharacterTemplateCreate,
+    CharacterTemplateRead,
     CharacterProfileRead,
     CharacterProfileUpdate,
     HealthRead,
@@ -50,6 +57,9 @@ from backend.schemas import (
     StateEntryRead,
     StateProposalCreate,
     StateResolution,
+    StoryCharacterRead,
+    StoryWorldBookRead,
+    WorldBookTemplateRead,
     WorldBookEntryCreate,
     WorldBookEntryRead,
     WorldBookEntryUpdate,
@@ -57,13 +67,17 @@ from backend.schemas import (
 from backend.serializers import (
     audit_read,
     chat_read,
+    character_template_read,
     character_read,
     memory_read,
     message_read,
     state_change_read,
     state_entry_read,
+    story_character_read,
+    story_world_book_read,
     trace_read,
     world_book_read,
+    world_book_template_read,
 )
 from backend.services.agent import AgentRuntime
 from backend.utils import json_dumps
@@ -181,6 +195,153 @@ async def test_settings(request: Request) -> SettingsTestResult:
     )
 
 
+@router.get(
+    "/character-templates",
+    response_model=list[CharacterTemplateRead],
+    tags=["libraries"],
+)
+def list_character_templates(db: Session = Depends(get_db)) -> list[CharacterTemplateRead]:
+    records = db.scalars(
+        select(CharacterTemplateRecord).order_by(CharacterTemplateRecord.updated_at.desc())
+    ).all()
+    return [character_template_read(record) for record in records]
+
+
+@router.post(
+    "/character-templates",
+    response_model=CharacterTemplateRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["libraries"],
+)
+def create_character_template(
+    payload: CharacterTemplateCreate,
+    db: Session = Depends(get_db),
+) -> CharacterTemplateRead:
+    now = datetime.now(UTC)
+    record = CharacterTemplateRecord(
+        id=str(uuid4()),
+        created_at=now,
+        updated_at=now,
+        **_character_values(payload),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return character_template_read(record)
+
+
+@router.put(
+    "/character-templates/{template_id}",
+    response_model=CharacterTemplateRead,
+    tags=["libraries"],
+)
+def update_character_template(
+    template_id: UUID,
+    payload: CharacterTemplateCreate,
+    db: Session = Depends(get_db),
+) -> CharacterTemplateRead:
+    record = db.get(CharacterTemplateRecord, str(template_id))
+    if not record:
+        raise HTTPException(status_code=404, detail="角色模板不存在")
+    _apply_character(record, payload)
+    record.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(record)
+    return character_template_read(record)
+
+
+@router.delete(
+    "/character-templates/{template_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["libraries"],
+)
+def delete_character_template(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    record = db.get(CharacterTemplateRecord, str(template_id))
+    if not record:
+        raise HTTPException(status_code=404, detail="角色模板不存在")
+    db.delete(record)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/world-book-templates",
+    response_model=list[WorldBookTemplateRead],
+    tags=["libraries"],
+)
+def list_world_book_templates(db: Session = Depends(get_db)) -> list[WorldBookTemplateRead]:
+    records = db.scalars(
+        select(WorldBookTemplateRecord).order_by(
+            WorldBookTemplateRecord.priority.desc(),
+            WorldBookTemplateRecord.updated_at.desc(),
+        )
+    ).all()
+    return [world_book_template_read(record) for record in records]
+
+
+@router.post(
+    "/world-book-templates",
+    response_model=WorldBookTemplateRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["libraries"],
+)
+def create_world_book_template(
+    payload: WorldBookEntryCreate,
+    db: Session = Depends(get_db),
+) -> WorldBookTemplateRead:
+    now = datetime.now(UTC)
+    record = WorldBookTemplateRecord(
+        id=str(uuid4()),
+        created_at=now,
+        updated_at=now,
+        **_world_values(payload),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return world_book_template_read(record)
+
+
+@router.put(
+    "/world-book-templates/{template_id}",
+    response_model=WorldBookTemplateRead,
+    tags=["libraries"],
+)
+def update_world_book_template(
+    template_id: UUID,
+    payload: WorldBookEntryUpdate,
+    db: Session = Depends(get_db),
+) -> WorldBookTemplateRead:
+    record = db.get(WorldBookTemplateRecord, str(template_id))
+    if not record:
+        raise HTTPException(status_code=404, detail="世界书模板不存在")
+    _apply_world(record, payload)
+    record.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(record)
+    return world_book_template_read(record)
+
+
+@router.delete(
+    "/world-book-templates/{template_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["libraries"],
+)
+def delete_world_book_template(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    record = db.get(WorldBookTemplateRecord, str(template_id))
+    if not record:
+        raise HTTPException(status_code=404, detail="世界书模板不存在")
+    db.delete(record)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/chats",
     response_model=ChatRead,
@@ -188,8 +349,14 @@ async def test_settings(request: Request) -> SettingsTestResult:
     tags=["chats"],
 )
 def create_chat(payload: ChatCreate, db: Session = Depends(get_db)) -> ChatRead:
-    """创建一个新的角色扮演存档。"""
+    """创建故事，并把选中的角色与世界书模板复制为故事私有快照。"""
     now = datetime.now(UTC)
+    character_templates = _records_by_ids(
+        db, CharacterTemplateRecord, payload.character_template_ids, "角色模板"
+    )
+    world_templates = _records_by_ids(
+        db, WorldBookTemplateRecord, payload.world_book_template_ids, "世界书模板"
+    )
     record = ChatRecord(
         id=str(uuid4()),
         title=payload.title,
@@ -198,6 +365,10 @@ def create_chat(payload: ChatCreate, db: Session = Depends(get_db)) -> ChatRead:
         updated_at=now,
     )
     db.add(record)
+    for template in character_templates:
+        db.add(_copy_character_to_story(template, record.id, now))
+    for template in world_templates:
+        db.add(_copy_world_to_story(template, record.id, now))
     db.commit()
     db.refresh(record)
     return chat_read(record)
@@ -214,6 +385,164 @@ def list_chats(db: Session = Depends(get_db)) -> list[ChatRead]:
 @router.get("/chats/{chat_id}", response_model=ChatRead, tags=["chats"])
 def get_chat(chat_id: UUID, db: Session = Depends(get_db)) -> ChatRead:
     return chat_read(_chat_or_404(db, chat_id))
+
+
+@router.get(
+    "/chats/{chat_id}/characters",
+    response_model=list[StoryCharacterRead],
+    tags=["story-bindings"],
+)
+def list_story_characters(
+    chat_id: UUID,
+    db: Session = Depends(get_db),
+) -> list[StoryCharacterRead]:
+    _chat_or_404(db, chat_id)
+    records = db.scalars(
+        select(StoryCharacterRecord)
+        .where(StoryCharacterRecord.chat_id == str(chat_id))
+        .order_by(StoryCharacterRecord.created_at)
+    ).all()
+    return [story_character_read(record) for record in records]
+
+
+@router.post(
+    "/chats/{chat_id}/characters/from-template/{template_id}",
+    response_model=StoryCharacterRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["story-bindings"],
+)
+def attach_character_template(
+    chat_id: UUID,
+    template_id: UUID,
+    db: Session = Depends(get_db),
+) -> StoryCharacterRead:
+    chat = _chat_or_404(db, chat_id)
+    template = db.get(CharacterTemplateRecord, str(template_id))
+    if not template:
+        raise HTTPException(status_code=404, detail="角色模板不存在")
+    now = datetime.now(UTC)
+    record = _copy_character_to_story(template, str(chat_id), now)
+    chat.updated_at = now
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return story_character_read(record)
+
+
+@router.put(
+    "/chats/{chat_id}/characters/{character_id}",
+    response_model=StoryCharacterRead,
+    tags=["story-bindings"],
+)
+def update_story_character(
+    chat_id: UUID,
+    character_id: UUID,
+    payload: CharacterTemplateCreate,
+    db: Session = Depends(get_db),
+) -> StoryCharacterRead:
+    chat = _chat_or_404(db, chat_id)
+    record = _story_character_or_404(db, chat_id, character_id)
+    _apply_character(record, payload)
+    record.updated_at = datetime.now(UTC)
+    chat.updated_at = record.updated_at
+    db.commit()
+    db.refresh(record)
+    return story_character_read(record)
+
+
+@router.delete(
+    "/chats/{chat_id}/characters/{character_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["story-bindings"],
+)
+def delete_story_character(
+    chat_id: UUID,
+    character_id: UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    _chat_or_404(db, chat_id)
+    db.delete(_story_character_or_404(db, chat_id, character_id))
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/chats/{chat_id}/world-books",
+    response_model=list[StoryWorldBookRead],
+    tags=["story-bindings"],
+)
+def list_story_world_books(
+    chat_id: UUID,
+    db: Session = Depends(get_db),
+) -> list[StoryWorldBookRead]:
+    _chat_or_404(db, chat_id)
+    records = db.scalars(
+        select(StoryWorldBookRecord)
+        .where(StoryWorldBookRecord.chat_id == str(chat_id))
+        .order_by(StoryWorldBookRecord.priority.desc(), StoryWorldBookRecord.updated_at.desc())
+    ).all()
+    return [story_world_book_read(record) for record in records]
+
+
+@router.post(
+    "/chats/{chat_id}/world-books/from-template/{template_id}",
+    response_model=StoryWorldBookRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["story-bindings"],
+)
+def attach_world_book_template(
+    chat_id: UUID,
+    template_id: UUID,
+    db: Session = Depends(get_db),
+) -> StoryWorldBookRead:
+    chat = _chat_or_404(db, chat_id)
+    template = db.get(WorldBookTemplateRecord, str(template_id))
+    if not template:
+        raise HTTPException(status_code=404, detail="世界书模板不存在")
+    now = datetime.now(UTC)
+    record = _copy_world_to_story(template, str(chat_id), now)
+    chat.updated_at = now
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return story_world_book_read(record)
+
+
+@router.put(
+    "/chats/{chat_id}/world-books/{entry_id}",
+    response_model=StoryWorldBookRead,
+    tags=["story-bindings"],
+)
+def update_story_world_book(
+    chat_id: UUID,
+    entry_id: UUID,
+    payload: WorldBookEntryUpdate,
+    db: Session = Depends(get_db),
+) -> StoryWorldBookRead:
+    chat = _chat_or_404(db, chat_id)
+    record = _story_world_or_404(db, chat_id, entry_id)
+    _apply_world(record, payload)
+    record.updated_at = datetime.now(UTC)
+    chat.updated_at = record.updated_at
+    db.commit()
+    db.refresh(record)
+    return story_world_book_read(record)
+
+
+@router.delete(
+    "/chats/{chat_id}/world-books/{entry_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["story-bindings"],
+)
+def delete_story_world_book(
+    chat_id: UUID,
+    entry_id: UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    _chat_or_404(db, chat_id)
+    db.delete(_story_world_or_404(db, chat_id, entry_id))
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
@@ -719,6 +1048,121 @@ def _chat_or_404(db: Session, chat_id: UUID) -> ChatRecord:
     record = db.get(ChatRecord, str(chat_id))
     if not record:
         raise HTTPException(status_code=404, detail="聊天存档不存在")
+    return record
+
+
+def _records_by_ids(
+    db: Session,
+    model: type[Any],
+    ids: list[UUID],
+    label: str,
+) -> list[Any]:
+    """按请求顺序读取模板，并在任意模板不存在时拒绝创建故事。"""
+    unique_ids = list(dict.fromkeys(str(item) for item in ids))
+    records = [db.get(model, item) for item in unique_ids]
+    missing = [item for item, record in zip(unique_ids, records, strict=True) if not record]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"{label}不存在：{', '.join(missing)}")
+    return records
+
+
+def _character_values(payload: CharacterProfileUpdate) -> dict[str, str]:
+    return {
+        "name": payload.name.strip(),
+        "identity": payload.identity.strip(),
+        "personality": payload.personality.strip(),
+        "speaking_style": payload.speaking_style.strip(),
+        "scenario": payload.scenario.strip(),
+    }
+
+
+def _apply_character(record: Any, payload: CharacterProfileUpdate) -> None:
+    for field, value in _character_values(payload).items():
+        setattr(record, field, value)
+
+
+def _copy_character_to_story(
+    template: CharacterTemplateRecord,
+    chat_id: str,
+    now: datetime,
+) -> StoryCharacterRecord:
+    return StoryCharacterRecord(
+        id=str(uuid4()),
+        chat_id=chat_id,
+        source_template_id=template.id,
+        name=template.name,
+        identity=template.identity,
+        personality=template.personality,
+        speaking_style=template.speaking_style,
+        scenario=template.scenario,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _world_values(payload: WorldBookEntryCreate) -> dict[str, Any]:
+    return {
+        "title": payload.title.strip(),
+        "keywords_json": json_dumps(_clean_keywords(payload.keywords)),
+        "content": payload.content.strip(),
+        "priority": payload.priority,
+        "enabled": payload.enabled,
+    }
+
+
+def _apply_world(record: Any, payload: WorldBookEntryCreate) -> None:
+    for field, value in _world_values(payload).items():
+        setattr(record, field, value)
+
+
+def _copy_world_to_story(
+    template: WorldBookTemplateRecord,
+    chat_id: str,
+    now: datetime,
+) -> StoryWorldBookRecord:
+    return StoryWorldBookRecord(
+        id=str(uuid4()),
+        chat_id=chat_id,
+        source_template_id=template.id,
+        title=template.title,
+        keywords_json=template.keywords_json,
+        content=template.content,
+        priority=template.priority,
+        enabled=template.enabled,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _story_character_or_404(
+    db: Session,
+    chat_id: UUID,
+    character_id: UUID,
+) -> StoryCharacterRecord:
+    record = db.scalar(
+        select(StoryCharacterRecord).where(
+            StoryCharacterRecord.id == str(character_id),
+            StoryCharacterRecord.chat_id == str(chat_id),
+        )
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="故事角色不存在")
+    return record
+
+
+def _story_world_or_404(
+    db: Session,
+    chat_id: UUID,
+    entry_id: UUID,
+) -> StoryWorldBookRecord:
+    record = db.scalar(
+        select(StoryWorldBookRecord).where(
+            StoryWorldBookRecord.id == str(entry_id),
+            StoryWorldBookRecord.chat_id == str(chat_id),
+        )
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="故事世界书不存在")
     return record
 
 

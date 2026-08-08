@@ -4,6 +4,7 @@ import type {
   AppSettings,
   AuditIssue,
   Chat,
+  CharacterTemplate,
   CharacterProfile,
   Memory,
   RuntimeInfo,
@@ -11,8 +12,11 @@ import type {
   SettingsUpdate,
   StateEntry,
   StateProposal,
+  StoryCharacter,
+  StoryWorldBook,
   Message,
   WorldBookEntry,
+  WorldBookTemplate,
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000/api";
@@ -41,11 +45,44 @@ export const api = {
   testSettings: () =>
     request<SettingsTestResult>("/settings/test", { method: "POST" }),
   chats: () => request<Chat[]>("/chats"),
-  createChat: (title: string) =>
+  createChat: (title: string, characterTemplateIds: string[] = [], worldBookTemplateIds: string[] = []) =>
     request<Chat>("/chats", {
       method: "POST",
-      body: JSON.stringify({ title, system_prompt: "" }),
+      body: JSON.stringify({
+        title,
+        system_prompt: "",
+        character_template_ids: characterTemplateIds,
+        world_book_template_ids: worldBookTemplateIds,
+      }),
     }),
+  characterTemplates: () => request<CharacterTemplate[]>("/character-templates"),
+  createCharacterTemplate: (payload: object) =>
+    request<CharacterTemplate>("/character-templates", { method: "POST", body: JSON.stringify(payload) }),
+  updateCharacterTemplate: (id: string, payload: object) =>
+    request<CharacterTemplate>(`/character-templates/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteCharacterTemplate: (id: string) =>
+    request<void>(`/character-templates/${id}`, { method: "DELETE" }),
+  worldBookTemplates: () => request<WorldBookTemplate[]>("/world-book-templates"),
+  createWorldBookTemplate: (payload: object) =>
+    request<WorldBookTemplate>("/world-book-templates", { method: "POST", body: JSON.stringify(payload) }),
+  updateWorldBookTemplate: (id: string, payload: object) =>
+    request<WorldBookTemplate>(`/world-book-templates/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteWorldBookTemplate: (id: string) =>
+    request<void>(`/world-book-templates/${id}`, { method: "DELETE" }),
+  storyCharacters: (chatId: string) => request<StoryCharacter[]>(`/chats/${chatId}/characters`),
+  attachCharacter: (chatId: string, templateId: string) =>
+    request<StoryCharacter>(`/chats/${chatId}/characters/from-template/${templateId}`, { method: "POST" }),
+  updateStoryCharacter: (chatId: string, id: string, payload: object) =>
+    request<StoryCharacter>(`/chats/${chatId}/characters/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteStoryCharacter: (chatId: string, id: string) =>
+    request<void>(`/chats/${chatId}/characters/${id}`, { method: "DELETE" }),
+  storyWorldBooks: (chatId: string) => request<StoryWorldBook[]>(`/chats/${chatId}/world-books`),
+  attachWorldBook: (chatId: string, templateId: string) =>
+    request<StoryWorldBook>(`/chats/${chatId}/world-books/from-template/${templateId}`, { method: "POST" }),
+  updateStoryWorldBook: (chatId: string, id: string, payload: object) =>
+    request<StoryWorldBook>(`/chats/${chatId}/world-books/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteStoryWorldBook: (chatId: string, id: string) =>
+    request<void>(`/chats/${chatId}/world-books/${id}`, { method: "DELETE" }),
   character: (chatId: string) =>
     request<CharacterProfile>(`/chats/${chatId}/character`),
   updateCharacter: (chatId: string, payload: object) =>
