@@ -36,7 +36,7 @@
 
 | 模块 | 技术 |
 | --- | --- |
-| 后端 | Python 3.13、FastAPI、Pydantic、SQLAlchemy、SQLite、httpx |
+| 后端 | Python 3.13、FastAPI、Pydantic、SQLAlchemy、Alembic、SQLite、httpx |
 | Agent 编排 | LangGraph StateGraph、条件边、SQLite Checkpointer |
 | 前端 | React、TypeScript、Vite、CSS |
 | 模型接口 | OpenAI-compatible Chat Completions、Embeddings |
@@ -81,6 +81,26 @@ npm run dev
 
 API Key 以明文保存在本机配置文件中，请勿上传或分享该文件。
 
+## 数据库迁移
+
+后端启动时会自动执行尚未完成的 Alembic revision。常用开发命令：
+
+```powershell
+# 查看当前数据库版本
+.\.venv\Scripts\python.exe -m alembic current
+
+# 修改 ORM 模型后生成候选迁移
+.\.venv\Scripts\python.exe -m alembic revision --autogenerate -m "change description"
+
+# 检查 ORM 模型是否存在尚未生成的结构变化
+.\.venv\Scripts\python.exe -m alembic check
+
+# 手动升级到最新版本
+.\.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+`--autogenerate` 生成的是候选脚本。字段改名、数据搬迁和 SQLite 表重建需要检查后再提交。
+
 ## 测试
 
 ```powershell
@@ -101,6 +121,10 @@ backend/
   services/              对话、记忆、检索、状态和场景逻辑
     agent.py              LangGraph Runtime 生命周期与兼容入口
     agent_graph.py        状态、节点、条件边和工作流定义
+
+alembic/
+  env.py                  迁移运行环境
+  versions/               按顺序保存数据库 revision
 
 frontend/src/
   App.tsx                前端入口

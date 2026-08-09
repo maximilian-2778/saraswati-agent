@@ -21,6 +21,7 @@ flowchart LR
     LG --> DELTA[剧情 Delta 提取器]
     CTX --> BUDGET[Token 预算器]
     API --> DB[(SQLite)]
+    MIG[Alembic revisions] --> DB
     MEM --> DB
     STATE --> EVENTS[已批准状态事件]
     EVENTS --> DB
@@ -43,7 +44,8 @@ flowchart LR
 - `llm`：与厂商无关的模型接口，以及 OpenAI 兼容实现和演示实现。
 - `models`：SQLAlchemy 持久化模型，是数据库内部的数据表示。
 - `schemas`：Pydantic 请求和响应模型，是 API 对外的数据契约。
-- `database`：数据库引擎和单次请求的 Session 生命周期。
+- `database`：数据库引擎、单次请求的 Session 生命周期和旧库兼容补齐逻辑。
+- `migrations`：启动时执行 Alembic upgrade，并接管没有 revision 的旧数据库。
 - `config`：带安全默认值的环境配置。
 
 ## 一轮对话的数据流
@@ -105,4 +107,6 @@ MVP 将向量以 JSON 保存到 SQLite，不要求额外安装向量数据库。
 
 ## 数据库演进
 
-完整 1.0 使用新的 `saraswati_v1.db`，保留教程阶段的旧数据库。第一版干净结构由 SQLAlchemy 创建；1.0 表结构稳定后，再用 Alembic 管理后续数据库迁移。
+应用使用 Alembic 管理业务数据库结构。空数据库从 `0001` 依次升级到 head；已有业务表但没有 `alembic_version` 的旧库会先由兼容逻辑补齐 0.9 基线字段和数据，再 stamp 到 `0001`。后续模型变化必须增加 revision，不能继续在启动函数中追加临时 `ALTER TABLE`。
+
+SQLite 迁移启用 batch mode。自动生成脚本提交前需要检查字段改名、约束变化、数据搬迁和 downgrade 顺序；CI 通过 `alembic check` 发现 ORM Metadata 与迁移 head 的差异。

@@ -20,6 +20,12 @@ jobs:
           cache: pip
       - name: Install Python dependencies
         run: python -m pip install -r requirements.txt
+      - name: Verify database migrations
+        env:
+          SARASWATI_DATABASE_URL: sqlite:///migration_ci.db
+        run: |
+          python -m alembic upgrade head
+          python -m alembic check
       - name: Run tests
         run: python -m pytest -q
 

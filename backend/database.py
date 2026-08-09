@@ -17,6 +17,7 @@ class Database:
     """管理一个应用实例使用的数据库引擎和会话工厂。"""
 
     def __init__(self, database_url: str) -> None:
+        self.database_url = database_url
         connect_args = (
             {"check_same_thread": False}
             if database_url.startswith("sqlite")
@@ -32,8 +33,8 @@ class Database:
         if database_url.startswith("sqlite"):
             event.listen(self.engine, "connect", _enable_sqlite_foreign_keys)
 
-    def create_schema(self) -> None:
-        """创建尚不存在的数据库表，并迁移 1.0 版故事内设定。"""
+    def prepare_legacy_schema(self) -> None:
+        """把没有 Alembic 版本号的旧数据库补齐到 0.9 基线结构。"""
         Base.metadata.create_all(bind=self.engine)
         self._migrate_avatar_columns()
         self._migrate_roleplay_profile_columns()

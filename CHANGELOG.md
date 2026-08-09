@@ -2,6 +2,20 @@
 
 All notable changes to Saraswati Agent are documented in this file.
 
+## [0.10.0] - 2026-08-09
+
+### Added
+
+- 引入 Alembic 1.18 管理 SQLAlchemy 业务数据库结构。
+- 增加包含 25 张业务表、索引、外键和唯一约束的 `0001` 基线迁移。
+- 后端启动时自动执行尚未完成的 revision。
+- 增加空库升级、旧库接管、ORM 差异检查和 downgrade/upgrade 往返测试。
+
+### Changed
+
+- 没有 Alembic 版本号的旧数据库会先补齐现有字段和历史数据，再 stamp 到基线版本。
+- `database.py` 中的手写迁移只保留为旧库接管桥梁，新结构变化统一写入 Alembic revision。
+
 ## [0.9.0] - 2026-08-09
 
 ### Added

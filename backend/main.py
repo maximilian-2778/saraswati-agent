@@ -10,6 +10,7 @@ from backend.api import router
 from backend.config import Settings
 from backend.database import Database
 from backend.llm import build_model_client
+from backend.migrations import upgrade_database
 from backend.services.agent import AgentRuntime
 
 
@@ -22,7 +23,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        database.create_schema()
+        upgrade_database(database)
         await runtime.startup()
         try:
             yield
@@ -33,7 +34,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Saraswati Agent API",
-        version="0.9.0",
+        version="0.10.0",
         description="带分层记忆、状态账本和一致性审计的角色扮演 Agent 后端。",
         lifespan=lifespan,
     )
