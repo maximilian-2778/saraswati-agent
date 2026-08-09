@@ -28,13 +28,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Saraswati Agent API",
-        version="0.5.0",
+        version="0.8.1",
         description="带分层记忆、状态账本和一致性审计的角色扮演 Agent 后端。",
         lifespan=lifespan,
     )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

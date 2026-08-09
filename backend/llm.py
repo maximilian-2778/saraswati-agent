@@ -1,9 +1,11 @@
 """模型提供器抽象、OpenAI 兼容实现和本地演示实现。"""
 
+import asyncio
 import hashlib
 import json
 import math
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -41,6 +43,13 @@ class ModelClient(Protocol):
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+    ) -> ModelReply: ...
+
+    async def stream_complete(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        on_token: Callable[[str], Awaitable[None]],
     ) -> ModelReply: ...
 
     async def embed(self, text: str) -> list[float]: ...
@@ -86,6 +95,19 @@ class DemoModelClient:
 
     async def embed(self, text: str) -> list[float]:
         return local_embedding(text)
+
+    async def stream_complete(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        on_token: Callable[[str], Awaitable[None]],
+    ) -> ModelReply:
+        reply = await self.complete(messages, tools)
+        if reply.content and not reply.tool_calls:
+            for offset in range(0, len(reply.content), 6):
+                await on_token(reply.content[offset : offset + 6])
+                await asyncio.sleep(0.01)
+        return reply
 
 
 class OpenAICompatibleClient:
@@ -164,6 +186,74 @@ class OpenAICompatibleClient:
             return [float(value) for value in data["data"][0]["embedding"]]
         except (KeyError, IndexError, TypeError) as exc:
             raise ModelProviderError("Embedding 响应格式不正确") from exc
+
+    async def stream_complete(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        on_token: Callable[[str], Awaitable[None]],
+    ) -> ModelReply:
+        payload: dict[str, Any] = {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "max_tokens": self.max_output_tokens,
+            "presence_penalty": self.presence_penalty,
+            "frequency_penalty": self.frequency_penalty,
+            "stream": True,
+        }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+        url = f"{self.base_url}/chat/completions"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        content_parts: list[str] = []
+        tool_parts: dict[int, dict[str, str]] = {}
+        try:
+            async with httpx.AsyncClient(timeout=self.request_timeout) as client:
+                async with client.stream("POST", url, json=payload, headers=headers) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        raw = line[5:].strip()
+                        if not raw or raw == "[DONE]":
+                            continue
+                        data = json.loads(raw)
+                        delta = data.get("choices", [{}])[0].get("delta") or {}
+                        token = delta.get("content")
+                        if isinstance(token, str) and token:
+                            content_parts.append(token)
+                            await on_token(token)
+                        for item in delta.get("tool_calls") or []:
+                            index = int(item.get("index", 0))
+                            current = tool_parts.setdefault(
+                                index, {"id": "", "name": "", "arguments": ""}
+                            )
+                            if item.get("id"):
+                                current["id"] += str(item["id"])
+                            function = item.get("function") or {}
+                            current["name"] += str(function.get("name") or "")
+                            current["arguments"] += str(function.get("arguments") or "")
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+            raise ModelProviderError(f"模型流式请求失败：{exc}") from exc
+
+        tool_calls: list[ToolCall] = []
+        for index in sorted(tool_parts):
+            item = tool_parts[index]
+            try:
+                arguments = json.loads(item["arguments"] or "{}")
+            except json.JSONDecodeError:
+                arguments = {"_raw": item["arguments"]}
+            tool_calls.append(
+                ToolCall(
+                    id=item["id"] or f"tool-call-{index}",
+                    name=item["name"],
+                    arguments=arguments,
+                )
+            )
+        return ModelReply(content="".join(content_parts) or None, tool_calls=tool_calls)
 
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url}/{path}"

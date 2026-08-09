@@ -1,5 +1,7 @@
 """Saraswati Agent API 的核心端到端测试。"""
 
+import json
+
 from fastapi.testclient import TestClient
 
 
@@ -431,3 +433,186 @@ def test_scene_npc_graph_is_available_to_story_runtime(
     assert turn.status_code == 200
     assert client.get(f"/api/chats/{chat_id}/scenes").json()[1]["is_current"] is True
     assert client.get(f"/api/chats/{chat_id}/npcs").json()[0]["presence"] == "present"
+
+
+def test_character_avatar_is_copied_and_story_can_be_deleted(
+    client: TestClient,
+) -> None:
+    avatar = "data:image/png;base64,c2FyYXN3YXRp"
+    template = client.post(
+        "/api/character-templates",
+        json={"name": "阿斯塔", "avatar": avatar},
+    )
+    assert template.status_code == 201
+    assert template.json()["avatar"] == avatar
+
+    story = client.post(
+        "/api/chats",
+        json={
+            "title": "可删除故事",
+            "character_template_ids": [template.json()["id"]],
+        },
+    )
+    story_id = story.json()["id"]
+    character = client.get(f"/api/chats/{story_id}/characters").json()[0]
+    assert character["avatar"] == avatar
+
+    assert client.post(
+        f"/api/chats/{story_id}/messages", json={"content": "测试"}
+    ).status_code == 200
+    assert client.delete(f"/api/chats/{story_id}").status_code == 204
+    assert client.get(f"/api/chats/{story_id}").status_code == 404
+    assert all(item["id"] != story_id for item in client.get("/api/chats").json())
+
+
+def test_chat_candidates_bookmarks_branches_and_checkpoints(
+    client: TestClient,
+) -> None:
+    story = client.post("/api/chats", json={"title": "多结局测试"})
+    assert story.status_code == 201
+    story_id = story.json()["id"]
+
+    turn = client.post(
+        f"/api/chats/{story_id}/messages",
+        json={"content": "我推开了酒馆的门。"},
+    )
+    assert turn.status_code == 200
+    user_message = turn.json()["user_message"]
+    assistant_message = turn.json()["assistant_message"]
+
+    bookmark = client.post(
+        f"/api/chats/{story_id}/messages/{assistant_message['id']}/bookmark"
+    )
+    assert bookmark.status_code == 200
+    assert bookmark.json()["bookmarked"] is True
+    assert client.get(f"/api/chats/{story_id}/bookmarks").json()[0]["message_id"] == assistant_message["id"]
+
+    proposal = client.post(
+        f"/api/chats/{story_id}/state/proposals",
+        json={
+            "entity": "玩家",
+            "key": "金币",
+            "new_value": 20,
+            "reason": "原候选获得金币",
+            "source_message_id": user_message["id"],
+        },
+    )
+    assert proposal.status_code == 201
+    approved = client.post(
+        f"/api/chats/{story_id}/state/proposals/{proposal.json()['id']}/resolve",
+        json={"action": "approve"},
+    )
+    assert approved.status_code == 200
+    assert client.get(f"/api/chats/{story_id}/state").json()[0]["value"] == 20
+
+    candidate = client.post(
+        f"/api/chats/{story_id}/messages/{assistant_message['id']}/regenerate"
+    )
+    assert candidate.status_code == 200
+    assert candidate.json()["position"] == 1
+    variants = client.get(f"/api/chats/{story_id}/message-variants").json()
+    assert len(variants) == 2
+    assert variants[1]["selected"] is True
+    assert client.get(f"/api/chats/{story_id}/state").json() == []
+
+    selected = client.post(
+        f"/api/chats/{story_id}/messages/{assistant_message['id']}/variants/{variants[0]['id']}/select"
+    )
+    assert selected.status_code == 200
+    assert selected.json()["content"] == variants[0]["content"]
+    assert client.get(f"/api/chats/{story_id}/state").json()[0]["value"] == 20
+
+    checkpoint = client.post(
+        f"/api/chats/{story_id}/checkpoints",
+        json={"message_id": assistant_message["id"], "name": "进入酒馆"},
+    )
+    assert checkpoint.status_code == 201
+    restored = client.post(
+        f"/api/chats/{story_id}/checkpoints/{checkpoint.json()['id']}/restore"
+    )
+    assert restored.status_code == 201
+    restored_messages = client.get(
+        f"/api/chats/{restored.json()['id']}/messages"
+    ).json()
+    assert [item["content"] for item in restored_messages] == [
+        user_message["content"],
+        variants[0]["content"],
+    ]
+
+    branch = client.post(
+        f"/api/chats/{story_id}/branches",
+        json={"message_id": user_message["id"], "title": "门外支线"},
+    )
+    assert branch.status_code == 201
+    assert len(client.get(f"/api/chats/{branch.json()['id']}/messages").json()) == 1
+
+    deleted = client.delete(
+        f"/api/chats/{story_id}/messages/{user_message['id']}"
+    )
+    assert deleted.status_code == 204
+    assert client.get(f"/api/chats/{story_id}/messages").json() == []
+
+
+def test_persona_character_card_and_advanced_world_book_snapshots(
+    client: TestClient,
+) -> None:
+    world = client.post("/api/world-book-templates", json={
+        "title": "银铃规则", "keywords": ["银铃"], "secondary_keywords": ["门"],
+        "content": "银铃只会在午夜响起。", "priority": 88, "constant": False,
+        "case_sensitive": True, "scan_depth": 8, "insertion_position": "system",
+        "group_name": "门铃", "recursive": True, "token_budget": 256,
+        "scope": "persona",
+    })
+    assert world.status_code == 201
+    world_id = world.json()["id"]
+    persona = client.post("/api/persona-templates", json={
+        "name": "林澈", "identity": "旅行者", "appearance": "银发",
+        "personality": "谨慎", "speaking_style": "简短", "world_book_ids": [world_id],
+    })
+    assert persona.status_code == 201
+    character = client.post("/api/character-templates", json={
+        "name": "守门人", "first_message": "夜深了，你为何而来？",
+        "alternate_greetings": ["门已经关了。"], "tags": ["奇幻", "NPC"],
+        "favorite": True, "world_book_ids": [world_id],
+    })
+    assert character.status_code == 201
+    duplicate = client.post(f"/api/character-templates/{character.json()['id']}/duplicate")
+    assert duplicate.status_code == 201
+    assert duplicate.json()["name"].endswith("副本")
+
+    story = client.post("/api/chats", json={
+        "title": "午夜门扉", "persona_template_id": persona.json()["id"],
+        "character_template_ids": [character.json()["id"]],
+    })
+    assert story.status_code == 201
+    story_id = story.json()["id"]
+    snapshot = client.get(f"/api/chats/{story_id}/persona")
+    assert snapshot.status_code == 200
+    assert snapshot.json()["name"] == "林澈"
+    story_world = client.get(f"/api/chats/{story_id}/world-books").json()
+    assert len(story_world) == 1
+    assert story_world[0]["scan_depth"] == 8
+    messages = client.get(f"/api/chats/{story_id}/messages").json()
+    assert messages[0]["content"] == "夜深了，你为何而来？"
+    variants = client.get(f"/api/chats/{story_id}/message-variants").json()
+    assert len(variants) == 2
+    assert client.delete(f"/api/chats/{story_id}/persona").status_code == 204
+    assert client.get(f"/api/chats/{story_id}/persona").json() is None
+
+
+def test_chat_turn_can_stream_ndjson_events(
+    client: TestClient,
+    chat_id: str,
+) -> None:
+    with client.stream(
+        "POST",
+        f"/api/chats/{chat_id}/turns/stream",
+        json={"content": "沿着钟楼继续前进。"},
+    ) as response:
+        assert response.status_code == 200
+        events = [json.loads(line) for line in response.iter_lines() if line]
+
+    assert events[0]["type"] == "user"
+    assert any(item["type"] == "chunk" for item in events)
+    assert events[-1]["type"] == "done"
+    assert events[-1]["turn"]["assistant_message"]["content"]

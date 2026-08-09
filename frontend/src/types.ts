@@ -113,6 +113,7 @@ export interface CharacterProfile {
   personality: string;
   speaking_style: string;
   scenario: string;
+  avatar: string;
   updated_at: string | null;
 }
 
@@ -123,8 +124,36 @@ export interface CharacterTemplate {
   personality: string;
   speaking_style: string;
   scenario: string;
+  avatar: string;
+  appearance: string;
+  first_message: string;
+  alternate_greetings: string[];
+  example_dialogue: string;
+  tags: string[];
+  creator_notes: string;
+  system_prompt: string;
+  favorite: boolean;
+  world_book_ids: string[];
   created_at: string;
   updated_at: string;
+}
+
+export interface PersonaTemplate {
+  id: string;
+  name: string;
+  avatar: string;
+  identity: string;
+  personality: string;
+  appearance: string;
+  speaking_style: string;
+  world_book_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoryPersona extends PersonaTemplate {
+  chat_id: string;
+  source_template_id: string | null;
 }
 
 export interface StoryCharacter extends CharacterTemplate {
@@ -137,9 +166,18 @@ export interface WorldBookEntry {
   chat_id: string;
   title: string;
   keywords: string[];
+  secondary_keywords: string[];
   content: string;
   priority: number;
   enabled: boolean;
+  constant: boolean;
+  case_sensitive: boolean;
+  scan_depth: number;
+  insertion_position: "before_history" | "after_history" | "system";
+  group_name: string;
+  recursive: boolean;
+  token_budget: number;
+  scope: "global" | "character" | "persona" | "story";
   created_at: string;
   updated_at: string;
 }
@@ -155,6 +193,29 @@ export interface Message {
   chat_id: string;
   role: MessageRole;
   content: string;
+  created_at: string;
+}
+
+export interface MessageVariant {
+  id: string;
+  chat_id: string;
+  message_id: string;
+  position: number;
+  content: string;
+  selected: boolean;
+  created_at: string;
+}
+
+export interface MessageBookmark {
+  message_id: string;
+  bookmarked: boolean;
+}
+
+export interface StoryCheckpoint {
+  id: string;
+  chat_id: string;
+  message_id: string;
+  name: string;
   created_at: string;
 }
 

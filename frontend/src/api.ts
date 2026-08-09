@@ -8,9 +8,13 @@ import type {
   CharacterProfile,
   Memory,
   MemoryCoverage,
+  Message,
+  MessageBookmark,
+  MessageVariant,
   NarrativeNode,
   NarrativeDelta,
   Npc,
+  PersonaTemplate,
   RetrievedMemory,
   RuntimeInfo,
   SceneNode,
@@ -20,13 +24,14 @@ import type {
   StateProposal,
   TimelineAnchor,
   StoryCharacter,
+  StoryPersona,
+  StoryCheckpoint,
   StoryWorldBook,
-  Message,
   WorldBookEntry,
   WorldBookTemplate,
 } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000/api";
+const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -41,6 +46,53 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+type StreamTurnHandlers = {
+  onUser: (message: Message) => void;
+  onChunk: (content: string) => void;
+  onDone: (turn: AgentTurn) => void;
+};
+
+async function streamTurn(
+  chatId: string,
+  content: string,
+  handlers: StreamTurnHandlers,
+  signal?: AbortSignal,
+): Promise<AgentTurn> {
+  const response = await fetch(`${API_BASE}/chats/${chatId}/turns/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.detail ?? `请求失败：HTTP ${response.status}`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line) as { type: string; message?: Message; content?: string; turn?: AgentTurn; detail?: string };
+      if (event.type === "user" && event.message) handlers.onUser(event.message);
+      else if (event.type === "chunk" && event.content) handlers.onChunk(event.content);
+      else if (event.type === "done" && event.turn) {
+        handlers.onDone(event.turn);
+        await reader.cancel();
+        return event.turn;
+      }
+      else if (event.type === "error") throw new Error(event.detail || "生成失败");
+    }
+    if (done) break;
+  }
+  throw new Error("模型流已结束，但没有返回完整结果");
+}
+
 export const api = {
   runtime: () => request<RuntimeInfo>("/runtime"),
   settings: () => request<AppSettings>("/settings"),
@@ -52,7 +104,7 @@ export const api = {
   testSettings: () =>
     request<SettingsTestResult>("/settings/test", { method: "POST" }),
   chats: () => request<Chat[]>("/chats"),
-  createChat: (title: string, characterTemplateIds: string[] = [], worldBookTemplateIds: string[] = []) =>
+  createChat: (title: string, characterTemplateIds: string[] = [], worldBookTemplateIds: string[] = [], personaTemplateId: string | null = null) =>
     request<Chat>("/chats", {
       method: "POST",
       body: JSON.stringify({
@@ -60,8 +112,10 @@ export const api = {
         system_prompt: "",
         character_template_ids: characterTemplateIds,
         world_book_template_ids: worldBookTemplateIds,
+        persona_template_id: personaTemplateId,
       }),
     }),
+  deleteChat: (id: string) => request<void>(`/chats/${id}`, { method: "DELETE" }),
   characterTemplates: () => request<CharacterTemplate[]>("/character-templates"),
   createCharacterTemplate: (payload: object) =>
     request<CharacterTemplate>("/character-templates", { method: "POST", body: JSON.stringify(payload) }),
@@ -69,6 +123,22 @@ export const api = {
     request<CharacterTemplate>(`/character-templates/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteCharacterTemplate: (id: string) =>
     request<void>(`/character-templates/${id}`, { method: "DELETE" }),
+  duplicateCharacterTemplate: (id: string) =>
+    request<CharacterTemplate>(`/character-templates/${id}/duplicate`, { method: "POST" }),
+  personaTemplates: () => request<PersonaTemplate[]>("/persona-templates"),
+  createPersonaTemplate: (payload: object) =>
+    request<PersonaTemplate>("/persona-templates", { method: "POST", body: JSON.stringify(payload) }),
+  updatePersonaTemplate: (id: string, payload: object) =>
+    request<PersonaTemplate>(`/persona-templates/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deletePersonaTemplate: (id: string) =>
+    request<void>(`/persona-templates/${id}`, { method: "DELETE" }),
+  storyPersona: (chatId: string) => request<StoryPersona | null>(`/chats/${chatId}/persona`),
+  attachPersona: (chatId: string, personaId: string) =>
+    request<StoryPersona>(`/chats/${chatId}/persona/from-template/${personaId}`, { method: "POST" }),
+  updateStoryPersona: (chatId: string, payload: object) =>
+    request<StoryPersona>(`/chats/${chatId}/persona`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteStoryPersona: (chatId: string) =>
+    request<void>(`/chats/${chatId}/persona`, { method: "DELETE" }),
   worldBookTemplates: () => request<WorldBookTemplate[]>("/world-book-templates"),
   createWorldBookTemplate: (payload: object) =>
     request<WorldBookTemplate>("/world-book-templates", { method: "POST", body: JSON.stringify(payload) }),
@@ -114,11 +184,30 @@ export const api = {
   messages: (chatId: string) => request<Message[]>(`/chats/${chatId}/messages`),
   updateMessage: (chatId: string, messageId: string, content: string) =>
     request<Message>(`/chats/${chatId}/messages/${messageId}`, { method: "PUT", body: JSON.stringify({ content }) }),
-  sendMessage: (chatId: string, content: string) =>
+  deleteMessage: (chatId: string, messageId: string) =>
+    request<void>(`/chats/${chatId}/messages/${messageId}`, { method: "DELETE" }),
+  sendMessage: (chatId: string, content: string, signal?: AbortSignal) =>
     request<AgentTurn>(`/chats/${chatId}/messages`, {
       method: "POST",
       body: JSON.stringify({ content }),
+      signal,
     }),
+  streamMessage: streamTurn,
+  messageVariants: (chatId: string) => request<MessageVariant[]>(`/chats/${chatId}/message-variants`),
+  regenerateMessage: (chatId: string, messageId: string, signal?: AbortSignal) =>
+    request<MessageVariant>(`/chats/${chatId}/messages/${messageId}/regenerate`, { method: "POST", signal }),
+  selectMessageVariant: (chatId: string, messageId: string, variantId: string) =>
+    request<Message>(`/chats/${chatId}/messages/${messageId}/variants/${variantId}/select`, { method: "POST" }),
+  bookmarks: (chatId: string) => request<MessageBookmark[]>(`/chats/${chatId}/bookmarks`),
+  toggleBookmark: (chatId: string, messageId: string) =>
+    request<MessageBookmark>(`/chats/${chatId}/messages/${messageId}/bookmark`, { method: "POST" }),
+  createBranch: (chatId: string, messageId: string, title?: string) =>
+    request<Chat>(`/chats/${chatId}/branches`, { method: "POST", body: JSON.stringify({ message_id: messageId, title: title || null }) }),
+  checkpoints: (chatId: string) => request<StoryCheckpoint[]>(`/chats/${chatId}/checkpoints`),
+  createCheckpoint: (chatId: string, messageId: string, name: string) =>
+    request<StoryCheckpoint>(`/chats/${chatId}/checkpoints`, { method: "POST", body: JSON.stringify({ message_id: messageId, name }) }),
+  restoreCheckpoint: (chatId: string, checkpointId: string) =>
+    request<Chat>(`/chats/${chatId}/checkpoints/${checkpointId}/restore`, { method: "POST" }),
   memories: (chatId: string) => request<Memory[]>(`/chats/${chatId}/memories`),
   memoryGraph: (chatId: string) => request<NarrativeNode[]>(`/chats/${chatId}/memory-graph`),
   memoryCoverage: (chatId: string) => request<MemoryCoverage>(`/chats/${chatId}/memory-coverage`),

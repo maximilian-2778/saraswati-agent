@@ -4,7 +4,7 @@ from collections.abc import Generator
 from uuid import uuid4
 
 from fastapi import Request
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -35,7 +35,76 @@ class Database:
     def create_schema(self) -> None:
         """创建尚不存在的数据库表，并迁移 1.0 版故事内设定。"""
         Base.metadata.create_all(bind=self.engine)
+        self._migrate_avatar_columns()
+        self._migrate_roleplay_profile_columns()
+        self._migrate_message_variant_columns()
         self._migrate_legacy_story_settings()
+
+    def _migrate_avatar_columns(self) -> None:
+        """为旧数据库补充角色头像字段。"""
+        tables = ("character_templates", "story_characters", "character_profiles")
+        with self.engine.begin() as connection:
+            inspector = inspect(connection)
+            for table in tables:
+                columns = {column["name"] for column in inspector.get_columns(table)}
+                if "avatar" not in columns:
+                    connection.execute(
+                        text(f"ALTER TABLE {table} ADD COLUMN avatar TEXT NOT NULL DEFAULT ''")
+                    )
+
+    def _migrate_message_variant_columns(self) -> None:
+        """为早期 0.7 开发数据库补充候选回复的状态快照。"""
+        with self.engine.begin() as connection:
+            inspector = inspect(connection)
+            columns = {
+                column["name"]
+                for column in inspector.get_columns("message_variants")
+            }
+            for name in ("state_changes_json", "graph_events_json"):
+                if name not in columns:
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE message_variants ADD COLUMN {name} "
+                            "TEXT NOT NULL DEFAULT '[]'"
+                        )
+                    )
+
+    def _migrate_roleplay_profile_columns(self) -> None:
+        """为旧数据库补充角色卡和世界书高级字段。"""
+        character_columns = {
+            "appearance": "TEXT NOT NULL DEFAULT ''",
+            "first_message": "TEXT NOT NULL DEFAULT ''",
+            "alternate_greetings_json": "TEXT NOT NULL DEFAULT '[]'",
+            "example_dialogue": "TEXT NOT NULL DEFAULT ''",
+            "tags_json": "TEXT NOT NULL DEFAULT '[]'",
+            "creator_notes": "TEXT NOT NULL DEFAULT ''",
+            "system_prompt": "TEXT NOT NULL DEFAULT ''",
+            "favorite": "BOOLEAN NOT NULL DEFAULT 0",
+            "world_book_ids_json": "TEXT NOT NULL DEFAULT '[]'",
+        }
+        world_columns = {
+            "secondary_keywords_json": "TEXT NOT NULL DEFAULT '[]'",
+            "constant": "BOOLEAN NOT NULL DEFAULT 0",
+            "case_sensitive": "BOOLEAN NOT NULL DEFAULT 0",
+            "scan_depth": "INTEGER NOT NULL DEFAULT 4",
+            "insertion_position": "VARCHAR(30) NOT NULL DEFAULT 'before_history'",
+            "group_name": "VARCHAR(100) NOT NULL DEFAULT ''",
+            "recursive": "BOOLEAN NOT NULL DEFAULT 0",
+            "token_budget": "INTEGER NOT NULL DEFAULT 512",
+            "scope": "VARCHAR(30) NOT NULL DEFAULT 'global'",
+        }
+        with self.engine.begin() as connection:
+            inspector = inspect(connection)
+            for table in ("character_templates", "story_characters"):
+                existing = {item["name"] for item in inspector.get_columns(table)}
+                for name, definition in character_columns.items():
+                    if name not in existing:
+                        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {definition}"))
+            for table in ("world_book_templates", "story_world_books", "world_book_entries"):
+                existing = {item["name"] for item in inspector.get_columns(table)}
+                for name, definition in world_columns.items():
+                    if name not in existing:
+                        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {definition}"))
 
     def _migrate_legacy_story_settings(self) -> None:
         """把旧版单角色/世界书数据复制到新的故事快照表，原表保留作兼容。"""
@@ -67,6 +136,7 @@ class Database:
                             personality=legacy.personality,
                             speaking_style=legacy.speaking_style,
                             scenario=legacy.scenario,
+                            avatar=legacy.avatar,
                             created_at=legacy.updated_at,
                             updated_at=legacy.updated_at,
                         )

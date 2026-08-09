@@ -1,6 +1,7 @@
 """有状态、可追踪、带最大步数限制的 Agent Runtime。"""
 
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -67,6 +68,7 @@ class AgentRuntime:
         db: Session,
         chat: ChatRecord,
         user_message: MessageRecord,
+        on_token: Callable[[str], Awaitable[None]] | None = None,
     ) -> AgentTurnResult:
         turn_id = str(uuid4())
         context = await self.context_builder.build(
@@ -105,7 +107,13 @@ class AgentRuntime:
 
         for step in range(1, self.settings.max_agent_steps + 1):
             try:
-                reply = await self.model.complete(working_messages, TOOL_SCHEMAS)
+                reply = (
+                    await self.model.stream_complete(
+                        working_messages, TOOL_SCHEMAS, on_token
+                    )
+                    if on_token
+                    else await self.model.complete(working_messages, TOOL_SCHEMAS)
+                )
             except ModelProviderError as exc:
                 self._trace(
                     db,
@@ -184,7 +192,11 @@ class AgentRuntime:
                 }
             )
             try:
-                forced_reply = await self.model.complete(working_messages, None)
+                forced_reply = (
+                    await self.model.stream_complete(working_messages, None, on_token)
+                    if on_token
+                    else await self.model.complete(working_messages, None)
+                )
                 final_content = forced_reply.content or "本轮未生成最终回复。"
             except ModelProviderError as exc:
                 final_content = f"模型服务暂时不可用：{exc}"
@@ -267,6 +279,26 @@ class AgentRuntime:
             audit_issues=issues,
             traces=traces,
         )
+
+    async def generate_candidate(
+        self,
+        db: Session,
+        chat: ChatRecord,
+        user_message: MessageRecord,
+    ) -> str:
+        """基于原用户消息生成一个无副作用的候选回复。"""
+        context = await self.context_builder.build(
+            db,
+            self.model,
+            chat,
+            user_message.content,
+            through=user_message.created_at,
+        )
+        try:
+            reply = await self.model.complete(context.messages, None)
+        except ModelProviderError as exc:
+            raise ModelProviderError(f"候选回复生成失败：{exc}") from exc
+        return reply.content or "模型没有返回可显示的内容。"
 
     @staticmethod
     def _trace(
