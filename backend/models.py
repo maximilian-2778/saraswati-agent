@@ -27,6 +27,26 @@ class ChatRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class PromptPresetRecord(Base):
+    """可复用的写作提示词；采样字段仅用于酒馆 JSON 兼容。"""
+
+    __tablename__ = "prompt_presets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    temperature: Mapped[float] = mapped_column(Float, nullable=False, default=0.8)
+    top_p: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    max_output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=2048)
+    presence_penalty: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    frequency_penalty: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    context_window_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=32768)
+    prompts_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    extra_settings_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class PersonaTemplateRecord(Base):
     """可跨故事复用的玩家身份。"""
 
@@ -111,7 +131,7 @@ class WorldBookTemplateRecord(Base):
     insertion_position: Mapped[str] = mapped_column(String(30), nullable=False, default="before_history")
     group_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     recursive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=512)
+    token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=2048)
     scope: Mapped[str] = mapped_column(String(30), nullable=False, default="global")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -176,7 +196,7 @@ class StoryWorldBookRecord(Base):
     insertion_position: Mapped[str] = mapped_column(String(30), nullable=False, default="before_history")
     group_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     recursive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=512)
+    token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=2048)
     scope: Mapped[str] = mapped_column(String(30), nullable=False, default="story")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -222,7 +242,7 @@ class WorldBookEntryRecord(Base):
     insertion_position: Mapped[str] = mapped_column(String(30), nullable=False, default="before_history")
     group_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     recursive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=512)
+    token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=2048)
     scope: Mapped[str] = mapped_column(String(30), nullable=False, default="story")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -18,7 +18,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "upsert_scene",
-            "description": "发现新地点、进入新地点或场景描述发生变化时，维护层级场景树。",
+            "description": "发现新地点、进入新地点或场景描述发生变化时维护层级场景树。同一地点的简称、别称或店铺类型应复用已有节点，不要重复创建。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -89,7 +89,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "propose_state_change",
-            "description": "剧情造成明确状态变化时创建待用户审核的变更建议。",
+            "description": "剧情造成明确状态变化时写入状态事件。系统会自动采用，并保留来源和撤销记录。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -226,7 +226,7 @@ class ToolExecutor:
             ]
 
         if name == "propose_state_change":
-            proposal = self.state_service.propose(
+            proposal = self.state_service.apply(
                 self.db,
                 self.chat_id,
                 str(arguments["entity"]),

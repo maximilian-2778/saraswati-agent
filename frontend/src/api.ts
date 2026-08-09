@@ -15,6 +15,7 @@ import type {
   NarrativeDelta,
   Npc,
   PersonaTemplate,
+  PromptPreset,
   RetrievedMemory,
   RuntimeInfo,
   SceneNode,
@@ -49,6 +50,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 type StreamTurnHandlers = {
   onUser: (message: Message) => void;
   onChunk: (content: string) => void;
+  onPhase?: (phase: "generation_reset" | "postprocessing") => void;
   onDone: (turn: AgentTurn) => void;
 };
 
@@ -78,9 +80,10 @@ async function streamTurn(
     buffer = lines.pop() ?? "";
     for (const line of lines) {
       if (!line.trim()) continue;
-      const event = JSON.parse(line) as { type: string; message?: Message; content?: string; turn?: AgentTurn; detail?: string };
+      const event = JSON.parse(line) as { type: string; message?: Message; content?: string; phase?: "generation_reset" | "postprocessing"; turn?: AgentTurn; detail?: string };
       if (event.type === "user" && event.message) handlers.onUser(event.message);
       else if (event.type === "chunk" && event.content) handlers.onChunk(event.content);
+      else if (event.type === "phase" && event.phase) handlers.onPhase?.(event.phase);
       else if (event.type === "done" && event.turn) {
         handlers.onDone(event.turn);
         await reader.cancel();
@@ -103,6 +106,14 @@ export const api = {
     }),
   testSettings: () =>
     request<SettingsTestResult>("/settings/test", { method: "POST" }),
+  presets: () => request<PromptPreset[]>("/presets"),
+  createPreset: (payload: object) => request<PromptPreset>("/presets", { method: "POST", body: JSON.stringify(payload) }),
+  updatePreset: (id: string, payload: object) => request<PromptPreset>(`/presets/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  duplicatePreset: (id: string) => request<PromptPreset>(`/presets/${id}/duplicate`, { method: "POST" }),
+  activatePreset: (id: string) => request<PromptPreset>(`/presets/${id}/activate`, { method: "POST" }),
+  deletePreset: (id: string) => request<void>(`/presets/${id}`, { method: "DELETE" }),
+  importPreset: (data: object, name?: string) => request<PromptPreset>("/presets/import", { method: "POST", body: JSON.stringify({ data, name: name || null }) }),
+  exportPreset: (id: string) => request<Record<string, unknown>>(`/presets/${id}/export`),
   chats: () => request<Chat[]>("/chats"),
   createChat: (title: string, characterTemplateIds: string[] = [], worldBookTemplateIds: string[] = [], personaTemplateId: string | null = null) =>
     request<Chat>("/chats", {
@@ -216,6 +227,10 @@ export const api = {
   createScene: (chatId: string, payload: object) => request<SceneNode>(`/chats/${chatId}/scenes`, { method: "POST", body: JSON.stringify(payload) }),
   updateScene: (chatId: string, id: string, payload: object) => request<SceneNode>(`/chats/${chatId}/scenes/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteScene: (chatId: string, id: string) => request<void>(`/chats/${chatId}/scenes/${id}`, { method: "DELETE" }),
+  mergeScene: (chatId: string, sourceId: string, targetId: string) =>
+    request<SceneNode>(`/chats/${chatId}/scenes/${sourceId}/merge`, {
+      method: "POST", body: JSON.stringify({ target_id: targetId }),
+    }),
   npcs: (chatId: string) => request<Npc[]>(`/chats/${chatId}/npcs`),
   createNpc: (chatId: string, payload: object) => request<Npc>(`/chats/${chatId}/npcs`, { method: "POST", body: JSON.stringify(payload) }),
   updateNpc: (chatId: string, id: string, payload: object) => request<Npc>(`/chats/${chatId}/npcs/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
@@ -269,6 +284,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ action }),
     }),
+  undoStateChange: (chatId: string, proposalId: string) =>
+    request<StateProposal>(`/chats/${chatId}/state/proposals/${proposalId}/undo`, {
+      method: "POST",
+    }),
+  deleteStateEntry: (chatId: string, entryId: string) =>
+    request<void>(`/chats/${chatId}/state/${entryId}`, { method: "DELETE" }),
   audits: (chatId: string) => request<AuditIssue[]>(`/chats/${chatId}/audits`),
   resolveAudit: (chatId: string, auditId: string, action: "resolve" | "dismiss") =>
     request<AuditIssue>(`/chats/${chatId}/audits/${auditId}/resolve`, {

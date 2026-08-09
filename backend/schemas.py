@@ -29,6 +29,7 @@ class ProposalStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+    REVERTED = "reverted"
 
 
 class AuditStatus(str, Enum):
@@ -132,7 +133,7 @@ class WorldBookEntryCreate(BaseModel):
     insertion_position: Literal["before_history", "after_history", "system"] = "before_history"
     group_name: str = Field(default="", max_length=100)
     recursive: bool = False
-    token_budget: int = Field(default=512, ge=64, le=20_000)
+    token_budget: int = Field(default=2048, ge=64, le=20_000)
     scope: Literal["global", "character", "persona", "story"] = "global"
 
 
@@ -426,6 +427,46 @@ class RuntimeInfo(BaseModel):
     max_agent_steps: int
 
 
+class PresetPrompt(BaseModel):
+    identifier: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=120)
+    role: Literal["system", "assistant", "user"] = "system"
+    content: str = Field(default="", max_length=50_000)
+    enabled: bool = True
+    marker: bool = False
+    position: Literal["relative", "in_chat"] = "relative"
+    depth: int = Field(default=0, ge=0, le=100)
+
+
+class PromptPresetCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=5_000)
+    temperature: float = Field(default=0.8, ge=0.0, le=2.0)
+    top_p: float = Field(default=1.0, gt=0.0, le=1.0)
+    max_output_tokens: int = Field(default=2048, ge=64, le=32768)
+    presence_penalty: float = Field(default=0.0, ge=-2.0, le=2.0)
+    frequency_penalty: float = Field(default=0.0, ge=-2.0, le=2.0)
+    context_window_tokens: int = Field(default=32768, ge=4096, le=2_000_000)
+    prompts: list[PresetPrompt] = Field(default_factory=list, max_length=100)
+    extra_settings: dict[str, Any] = Field(default_factory=dict)
+
+
+class PromptPresetRead(PromptPresetCreate):
+    id: UUID
+    active: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+class SceneMergeRequest(BaseModel):
+    target_id: UUID
+
+
+class PromptPresetImport(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    data: dict[str, Any]
+
+
 class SettingsRead(BaseModel):
     """返回给前端的安全配置视图，不包含 API Key 明文。"""
 
@@ -458,6 +499,9 @@ class SettingsRead(BaseModel):
     rerank_model: str | None
     rerank_candidates: int
     context_window_tokens: int
+    input_price_per_million: float
+    output_price_per_million: float
+    active_preset_id: UUID | None = None
 
 
 class SettingsUpdate(BaseModel):
@@ -491,6 +535,8 @@ class SettingsUpdate(BaseModel):
     rerank_model: str | None = Field(default=None, max_length=200)
     rerank_candidates: int = Field(default=20, ge=2, le=100)
     context_window_tokens: int = Field(default=32768, ge=4096, le=2_000_000)
+    input_price_per_million: float = Field(default=0.0, ge=0.0, le=10_000.0)
+    output_price_per_million: float = Field(default=0.0, ge=0.0, le=10_000.0)
 
 
 class SettingsTestResult(BaseModel):

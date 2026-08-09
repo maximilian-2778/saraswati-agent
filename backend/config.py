@@ -45,6 +45,9 @@ class Settings:
     rerank_model: str | None = None
     rerank_candidates: int = 20
     context_window_tokens: int = 32768
+    input_price_per_million: float = 0.0
+    output_price_per_million: float = 0.0
+    active_preset_id: str | None = None
     settings_file: str | None = None
     langgraph_checkpoint_path: str | None = None
 
@@ -53,7 +56,7 @@ class Settings:
         """返回当前启用的模型提供方式。"""
         if self.llm_base_url and self.llm_api_key and self.llm_model:
             return "openai-compatible"
-        return "demo"
+        return "unconfigured"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -94,6 +97,8 @@ class Settings:
             rerank_model=_optional_env("SARASWATI_RERANK_MODEL"),
             rerank_candidates=int(os.getenv("SARASWATI_RERANK_CANDIDATES", "20")),
             context_window_tokens=int(os.getenv("SARASWATI_CONTEXT_WINDOW_TOKENS", "32768")),
+            input_price_per_million=float(os.getenv("SARASWATI_INPUT_PRICE_PER_MILLION", "0")),
+            output_price_per_million=float(os.getenv("SARASWATI_OUTPUT_PRICE_PER_MILLION", "0")),
             settings_file=str(settings_file),
             langgraph_checkpoint_path=(
                 _optional_env("SARASWATI_LANGGRAPH_CHECKPOINT_PATH")
@@ -130,6 +135,9 @@ EDITABLE_SETTING_NAMES = {
     "rerank_model",
     "rerank_candidates",
     "context_window_tokens",
+    "input_price_per_million",
+    "output_price_per_million",
+    "active_preset_id",
 }
 
 

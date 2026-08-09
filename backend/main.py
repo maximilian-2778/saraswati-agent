@@ -9,16 +9,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api import router
 from backend.config import Settings
 from backend.database import Database
-from backend.llm import build_model_client
+from backend.llm import ModelClient, build_model_client
 from backend.migrations import upgrade_database
 from backend.services.agent import AgentRuntime
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    model_client: ModelClient | None = None,
+) -> FastAPI:
     """创建相互隔离、便于测试的 FastAPI 应用实例。"""
     active_settings = settings or Settings.from_env()
     database = Database(active_settings.database_url)
-    model = build_model_client(active_settings)
+    model = model_client or build_model_client(active_settings)
     runtime = AgentRuntime(active_settings, model)
 
     @asynccontextmanager
@@ -34,7 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Saraswati Agent API",
-        version="0.10.0",
+        version="1.0.0",
         description="带分层记忆、状态账本和一致性审计的角色扮演 Agent 后端。",
         lifespan=lifespan,
     )

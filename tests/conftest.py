@@ -6,7 +6,32 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.config import Settings
+from backend.llm import ModelReply, local_embedding
 from backend.main import create_app
+
+
+class DeterministicTestModel:
+    mode = "test"
+    model_name = "deterministic-test-model"
+
+    async def complete(self, messages: list[dict], tools: list[dict] | None = None) -> ModelReply:
+        user_text = next((str(item.get("content", "")) for item in reversed(messages) if item.get("role") == "user"), "")
+        return ModelReply(content=f"测试回复：{user_text[:300]}")
+
+    async def stream_complete(self, messages: list[dict], tools: list[dict] | None, on_token: object) -> ModelReply:
+        reply = await self.complete(messages, tools)
+        if reply.content:
+            await on_token(reply.content)  # type: ignore[operator]
+        return reply
+
+    async def embed(self, text: str) -> list[float]:
+        return local_embedding(text)
+
+    async def check_connection(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
 
 
 @pytest.fixture
@@ -22,7 +47,7 @@ def client(tmp_path: object) -> Generator[TestClient, None, None]:
         recent_message_limit=12,
         rag_limit=4,
     )
-    with TestClient(create_app(settings)) as test_client:
+    with TestClient(create_app(settings, DeterministicTestModel())) as test_client:
         yield test_client
 
 

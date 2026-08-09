@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
@@ -35,6 +36,7 @@ from backend.services.audit import AuditService
 from backend.services.context import ContextBuilder
 from backend.services.memory import MemoryService, RetrievedMemory
 from backend.services.narrative_delta import NarrativeDeltaService
+from backend.services.narrative_delta_apply import NarrativeDeltaApplier
 from backend.services.narrative_memory import NarrativeMemoryService
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
@@ -67,6 +69,10 @@ class AgentRuntime:
             self.memory_service,
         )
         self.narrative_delta_service = NarrativeDeltaService()
+        self.narrative_delta_applier = NarrativeDeltaApplier(
+            self.state_service,
+            self.graph_service,
+        )
         self.context_builder = ContextBuilder(
             settings,
             self.memory_service,
@@ -97,11 +103,13 @@ class AgentRuntime:
         self.workflow = build_agent_graph(checkpointer)
 
     async def shutdown(self) -> None:
-        """关闭 LangGraph 检查点连接。"""
-        if self._checkpoint_connection is None:
-            return
-        await self._checkpoint_connection.close()
-        self._checkpoint_connection = None
+        """关闭 LangGraph 检查点和模型客户端持有的连接。"""
+        if self._checkpoint_connection is not None:
+            await self._checkpoint_connection.close()
+            self._checkpoint_connection = None
+        close_model = getattr(self.model, "close", None)
+        if close_model is not None:
+            await close_model()
 
     async def run_turn(
         self,
@@ -109,6 +117,7 @@ class AgentRuntime:
         chat: ChatRecord,
         user_message: MessageRecord,
         on_token: Callable[[str], Awaitable[None]] | None = None,
+        on_progress: Callable[[str], Awaitable[None]] | None = None,
     ) -> AgentTurnResult:
         """运行一轮已编译的 LangGraph 工作流，并恢复原有返回结构。"""
         turn_id = str(uuid4())
@@ -135,9 +144,11 @@ class AgentRuntime:
             graph_service=self.graph_service,
             narrative_memory_service=self.narrative_memory_service,
             narrative_delta_service=self.narrative_delta_service,
+            narrative_delta_applier=self.narrative_delta_applier,
             tool_executor=executor,
             trace=self._trace,
             on_token=on_token,
+            on_progress=on_progress,
         )
         initial_state: AgentGraphState = {
             "turn_id": turn_id,
@@ -154,6 +165,7 @@ class AgentRuntime:
             "memory_status": "pending",
             "delta_id": "",
             "error": "",
+            "turn_started_at": perf_counter(),
         }
         config = {
             "configurable": {"thread_id": f"turn:{turn_id}"},

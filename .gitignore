@@ -11,6 +11,9 @@ data/settings.json
 .idea/
 frontend/node_modules/
 frontend/dist/
+.research/
+Hermes Agent _ Nous Research.html
+Hermes Agent _ Nous Research_files/
 
 # Local third-party reference source
 SillyTavern-release/

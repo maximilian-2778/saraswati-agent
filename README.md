@@ -12,6 +12,9 @@
 - 多故事管理
 - 故事删除
 - 可复用的角色、主控人物和世界书资料库
+- 可复用的写作预设：主提示词、文风、禁写项和历史后指令
+- SillyTavern Chat Completion 预设 JSON 导入导出
+- 写作提示词排序、启停、消息角色、In-Chat Depth 和 `{{char}}` / `{{user}}` 宏
 - 故事创建时复制资料快照，故事内修改不会覆盖原模板
 - 角色开场白、备选开场白、示例对话、标签和专属提示词
 - SillyTavern V2 JSON 与 PNG 角色卡导入导出
@@ -25,12 +28,16 @@
 - 场景层级、人物关系和故事时间记录
 - 物品、数值、人物状态、计划与悬念记录
 - RAG 历史记忆检索和可选 Reranker
-- 数值冲突检查与修改确认
+- 物品与数值变化自动采用，保留修改历史并支持一键撤销
+- 生成后 Delta 自动补齐时间、场景、NPC、物品和精确状态
 - 消息改写后的相关记录更新
-- OpenAI 兼容的对话与 Embedding 接口
+- OpenAI 兼容的对话、结构化输出与 Embedding 接口
+- 按模型 tokenizer 管理上下文预算
+- 可选上下文调试模式：分段 Token、裁剪、世界书触发、RAG 分数和最终 Prompt
+- 模型调用耗时、输入输出 Token 与可配置费用估算
 - LangGraph 状态图编排、条件工具循环和本地节点检查点
 
-未配置模型时，程序使用本地演示模式。
+未配置模型时仍可管理故事资料，但发送消息前必须连接兼容的模型 API。
 
 ## 技术栈
 
@@ -38,7 +45,7 @@
 | --- | --- |
 | 后端 | Python 3.13、FastAPI、Pydantic、SQLAlchemy、Alembic、SQLite、httpx |
 | Agent 编排 | LangGraph StateGraph、条件边、SQLite Checkpointer |
-| 前端 | React、TypeScript、Vite、CSS |
+| 前端 | React、TypeScript、TanStack Query、Vite、CSS |
 | 模型接口 | OpenAI-compatible Chat Completions、Embeddings |
 | 测试 | pytest、FastAPI TestClient、TypeScript build、RAG 评测脚本 |
 
@@ -116,11 +123,14 @@ npm run build
 ```text
 backend/
   api.py                 路由入口
-  controllers.py         请求处理
-  routers/               按业务模块划分的路由
+  controller_helpers.py  路由共享的查询与回放函数
+  routers/               系统、模板、故事、记忆和状态接口
+  providers/             模型供应商适配器
   services/              对话、记忆、检索、状态和场景逻辑
     agent.py              LangGraph Runtime 生命周期与兼容入口
     agent_graph.py        状态、节点、条件边和工作流定义
+    narrative_delta_apply.py  生成后变化的去重与应用
+    presets.py            预设默认模块与酒馆 JSON 转换
 
 alembic/
   env.py                  迁移运行环境
@@ -128,9 +138,9 @@ alembic/
 
 frontend/src/
   App.tsx                前端入口
-  pages/                 页面
-  components/            通用组件
-  hooks/                 React hooks
+  pages/                 聊天工作区
+  components/            资料库、设置、消息与通用组件
+  hooks/                 TanStack Query 与界面偏好 hooks
   MemoryHub.tsx          故事资料面板
 ```
 

@@ -5,13 +5,97 @@ import json
 from fastapi.testclient import TestClient
 
 
-def test_health_and_runtime_use_demo_mode(client: TestClient) -> None:
+def test_health_and_runtime_use_injected_test_model(client: TestClient) -> None:
     health = client.get("/api/health")
     runtime = client.get("/api/runtime")
 
     assert health.status_code == 200
     assert health.json()["status"] == "ok"
-    assert runtime.json()["provider_mode"] == "demo"
+    assert runtime.json()["provider_mode"] == "test"
+
+
+def test_prompt_preset_activation_only_adds_writing_prompts(
+    client: TestClient,
+    chat_id: str,
+) -> None:
+    test_model = client.app.state.model
+    created = client.post(
+        "/api/presets",
+        json={
+            "name": "沉浸叙事",
+            "temperature": 1.05,
+            "top_p": 0.92,
+            "max_output_tokens": 1536,
+            "context_window_tokens": 48000,
+            "prompts": [
+                {"identifier": "main", "name": "主提示词", "content": "为 {{user}} 扮演 {{char}}。", "enabled": True, "marker": False},
+                {"identifier": "style", "name": "文风", "content": "使用克制的第三人称叙述。", "enabled": True, "marker": False},
+                {"identifier": "worldInfoBefore", "name": "世界书", "content": "不应由预设注入", "enabled": True, "marker": True},
+                {"identifier": "chatHistory", "name": "聊天记录", "content": "", "enabled": True, "marker": True},
+                {"identifier": "jailbreak", "name": "历史后指令", "role": "system", "content": "不要替 {{user}} 做决定。", "enabled": True, "marker": False, "position": "in_chat", "depth": 0},
+            ],
+        },
+    )
+    assert created.status_code == 201
+    preset = created.json()
+    activated = client.post(f"/api/presets/{preset['id']}/activate")
+    assert activated.status_code == 200
+    assert activated.json()["active"] is True
+    settings = client.get("/api/settings").json()
+    assert settings["active_preset_id"] == preset["id"]
+    assert settings["temperature"] == 0.8
+    assert settings["max_output_tokens"] == 2048
+
+    client.app.state.model = test_model
+    client.app.state.runtime.model = test_model
+
+    turn = client.post(f"/api/chats/{chat_id}/messages", json={"content": "继续。"}).json()
+    context = next(item for item in turn["trace"] if item["event_type"] == "context_built")
+    prompt = context["payload"]["token_budget"]["final_prompt"]
+    assert "长篇角色扮演" in prompt[0]["content"]
+    assert prompt[1]["content"] == "为 用户 扮演 角色。"
+    assert prompt[2]["content"] == "使用克制的第三人称叙述。"
+    assert prompt[-1]["content"] == "不要替 用户 做决定。"
+    assert all("不应由预设注入" not in item["content"] for item in prompt)
+    labels = [item["label"] for item in context["payload"]["token_budget"]["sections"]]
+    assert labels[:3] == ["系统规则", "预设 · 主提示词", "预设 · 文风"]
+    assert "当前主控人物" in labels
+    assert "激活的世界书" in labels
+    assert "预设 · 历史后指令" in labels
+
+
+def test_sillytavern_preset_import_export_keeps_order_and_extra_fields(
+    client: TestClient,
+) -> None:
+    imported = client.post(
+        "/api/presets/import",
+        json={
+            "name": "酒馆导入",
+            "data": {
+                "temperature": 1.1,
+                "top_p": 0.88,
+                "openai_max_context": 65536,
+                "openai_max_tokens": 2048,
+                "top_k": 40,
+                "prompts": [
+                    {"identifier": "main", "name": "Main", "role": "system", "content": "Hello {{char}}"},
+                    {"identifier": "chatHistory", "name": "History", "marker": True},
+                ],
+                "prompt_order": [{"character_id": 100001, "order": [
+                    {"identifier": "chatHistory", "enabled": True},
+                    {"identifier": "main", "enabled": False},
+                ]}],
+            },
+        },
+    )
+    assert imported.status_code == 201
+    body = imported.json()
+    assert [item["identifier"] for item in body["prompts"]] == ["main"]
+    assert body["prompts"][0]["enabled"] is False
+    exported = client.get(f"/api/presets/{body['id']}/export").json()
+    assert exported["top_k"] == 40
+    assert exported["openai_max_context"] == 65536
+    assert exported["prompt_order"][0]["order"][0]["identifier"] == "main"
 
 
 def test_chat_turn_persists_messages_and_episode_memory(
@@ -25,7 +109,7 @@ def test_chat_turn_persists_messages_and_episode_memory(
 
     assert turn.status_code == 200
     body = turn.json()
-    assert body["provider_mode"] == "demo"
+    assert body["provider_mode"] == "test"
     assert body["user_message"]["role"] == "user"
     assert body["assistant_message"]["role"] == "assistant"
     assert body["trace"]
@@ -115,7 +199,7 @@ def test_message_rewrite_invalidates_and_can_rebuild_memory_branch(
     assert client.get(f"/api/chats/{chat_id}/state").json() == []
     proposals = client.get(f"/api/chats/{chat_id}/state/proposals").json()
     reverted = next(item for item in proposals if item["id"] == proposal["id"])
-    assert reverted["status"] == "pending"
+    assert reverted["status"] == "reverted"
     assert reverted["reason"].startswith("源剧情已改写")
 
     repaired = client.post(
@@ -246,6 +330,79 @@ def test_state_must_be_approved_and_numeric_conflict_is_audited(
     assert turn.json()["audit_issues"][0]["expected_value"] == 80
 
 
+def test_item_state_normalizes_aliases_and_merges_structured_details(
+    client: TestClient,
+    chat_id: str,
+) -> None:
+    first = client.post(
+        f"/api/chats/{chat_id}/state/proposals",
+        json={
+            "entity": "item:小鱼干形状小蛋糕",
+            "key": "status",
+            "new_value": "已上桌，造型可爱",
+            "reason": "模型工具记录",
+        },
+    ).json()
+    client.post(
+        f"/api/chats/{chat_id}/state/proposals/{first['id']}/resolve",
+        json={"action": "approve"},
+    )
+    second = client.post(
+        f"/api/chats/{chat_id}/state/proposals",
+        json={
+            "entity": "物品:小鱼干小蛋糕",
+            "key": "状态",
+            "new_value": {
+                "owner": "小喵",
+                "quantity": "1",
+                "status": "",
+                "location": "桌上",
+            },
+            "reason": "生成后整理",
+        },
+    ).json()
+    client.post(
+        f"/api/chats/{chat_id}/state/proposals/{second['id']}/resolve",
+        json={"action": "approve"},
+    )
+
+    state = client.get(f"/api/chats/{chat_id}/state").json()
+    assert len(state) == 1
+    assert state[0]["entity"] == "物品:小鱼干小蛋糕"
+    assert state[0]["key"] == "状态"
+    assert state[0]["value"] == {
+        "owner": "小喵",
+        "quantity": "1",
+        "status": "已上桌，造型可爱",
+        "location": "桌上",
+    }
+
+
+def test_state_entry_can_be_deleted_and_no_longer_appears(
+    client: TestClient,
+    chat_id: str,
+) -> None:
+    proposal = client.post(
+        f"/api/chats/{chat_id}/state/proposals",
+        json={
+            "entity": "item:test-item",
+            "key": "status",
+            "new_value": "stored",
+            "reason": "test deletion",
+        },
+    ).json()
+    client.post(
+        f"/api/chats/{chat_id}/state/proposals/{proposal['id']}/resolve",
+        json={"action": "approve"},
+    )
+    entry = client.get(f"/api/chats/{chat_id}/state").json()[0]
+
+    deleted = client.delete(f"/api/chats/{chat_id}/state/{entry['id']}")
+
+    assert deleted.status_code == 204
+    assert client.get(f"/api/chats/{chat_id}/state").json() == []
+
+
 def test_settings_update_masks_api_key_and_rebuilds_runtime(
     client: TestClient,
 ) -> None:
@@ -305,7 +462,14 @@ def test_settings_update_masks_api_key_and_rebuilds_runtime(
     )
     cleared = client.put("/api/settings", json=payload)
     assert cleared.status_code == 200
-    assert cleared.json()["provider_mode"] == "demo"
+    assert cleared.json()["provider_mode"] == "unconfigured"
+    chat = client.post("/api/chats", json={"title": "未连接测试", "system_prompt": ""}).json()
+    blocked = client.post(
+        f"/api/chats/{chat['id']}/messages",
+        json={"content": "这条消息不应被保存。"},
+    )
+    assert blocked.status_code == 409
+    assert client.get(f"/api/chats/{chat['id']}/messages").json() == []
 
 
 def test_templates_are_copied_into_isolated_story_snapshots(
@@ -433,6 +597,46 @@ def test_scene_npc_graph_is_available_to_story_runtime(
     assert turn.status_code == 200
     assert client.get(f"/api/chats/{chat_id}/scenes").json()[1]["is_current"] is True
     assert client.get(f"/api/chats/{chat_id}/npcs").json()[0]["presence"] == "present"
+
+
+def test_duplicate_scenes_can_be_merged_with_children_and_npc_location(
+    client: TestClient,
+    chat_id: str,
+) -> None:
+    mall = client.post(
+        f"/api/chats/{chat_id}/scenes",
+        json={"name": "商场", "description": "热闹的商业区"},
+    ).json()
+    restaurant = client.post(
+        f"/api/chats/{chat_id}/scenes",
+        json={"name": "餐厅", "parent_id": mall["id"], "description": "正在点餐", "is_current": True},
+    ).json()
+    fish_shop = client.post(
+        f"/api/chats/{chat_id}/scenes",
+        json={"name": "烤鱼店", "parent_id": mall["id"], "description": "主营烤鱼"},
+    ).json()
+    table = client.post(
+        f"/api/chats/{chat_id}/scenes",
+        json={"name": "靠窗餐桌", "parent_id": restaurant["id"]},
+    ).json()
+    npc = client.post(
+        f"/api/chats/{chat_id}/npcs",
+        json={"name": "小喵", "presence": "present", "location_scene_id": restaurant["id"]},
+    ).json()
+
+    merged = client.post(
+        f"/api/chats/{chat_id}/scenes/{restaurant['id']}/merge",
+        json={"target_id": fish_shop["id"]},
+    )
+    assert merged.status_code == 200
+    assert merged.json()["name"] == "烤鱼店"
+    assert merged.json()["is_current"] is True
+    assert "正在点餐" in merged.json()["description"]
+    scenes = client.get(f"/api/chats/{chat_id}/scenes").json()
+    assert {item["name"] for item in scenes} == {"商场", "烤鱼店", "靠窗餐桌"}
+    assert next(item for item in scenes if item["id"] == table["id"])["parent_id"] == fish_shop["id"]
+    npcs = client.get(f"/api/chats/{chat_id}/npcs").json()
+    assert next(item for item in npcs if item["id"] == npc["id"])["location_scene_id"] == fish_shop["id"]
 
 
 def test_character_avatar_is_copied_and_story_can_be_deleted(
@@ -614,5 +818,30 @@ def test_chat_turn_can_stream_ndjson_events(
 
     assert events[0]["type"] == "user"
     assert any(item["type"] == "chunk" for item in events)
+    phase_index = next(index for index, item in enumerate(events) if item["type"] == "phase")
+    done_index = next(index for index, item in enumerate(events) if item["type"] == "done")
+    assert events[phase_index]["phase"] == "postprocessing"
+    assert phase_index < done_index
     assert events[-1]["type"] == "done"
     assert events[-1]["turn"]["assistant_message"]["content"]
+def test_approved_state_change_can_be_undone_and_projection_is_rebuilt(
+    client: TestClient,
+    chat_id: str,
+) -> None:
+    proposal = client.post(
+        f"/api/chats/{chat_id}/state/proposals",
+        json={"entity": "玩家", "key": "金币", "new_value": 12, "reason": "测试初始值"},
+    ).json()
+    approved = client.post(
+        f"/api/chats/{chat_id}/state/proposals/{proposal['id']}/resolve",
+        json={"action": "approve"},
+    )
+    assert approved.status_code == 200
+    assert client.get(f"/api/chats/{chat_id}/state").json()[0]["value"] == 12
+
+    undone = client.post(
+        f"/api/chats/{chat_id}/state/proposals/{proposal['id']}/undo"
+    )
+    assert undone.status_code == 200
+    assert undone.json()["status"] == "reverted"
+    assert client.get(f"/api/chats/{chat_id}/state").json() == []

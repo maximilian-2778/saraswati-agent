@@ -13,6 +13,7 @@ from backend.models import (
     ChatRecord,
     MemoryRecord,
     MessageRecord,
+    PromptPresetRecord,
     StateEntryRecord,
     StoryCharacterRecord,
     StoryPersonaRecord,
@@ -165,6 +166,12 @@ class ContextBuilder:
             character_lines.append(f"- {character.name}" + (f"｜{details}" if details else ""))
 
         active_world_entries = _activate_world_entries(world_records, recent, query)
+        world_trigger_log = _world_trigger_log(
+            world_records,
+            active_world_entries,
+            recent,
+            query,
+        )
         world_lines = [
             f"- [{record.title}｜{record.insertion_position}｜优先级 {record.priority}] "
             f"{record.content[: record.token_budget * 4]}"
@@ -200,13 +207,13 @@ class ContextBuilder:
         system_prompt += (
             "\n\n你可以调用工具查询记忆和精确状态。"
             "结构化状态是数值和物品的事实来源；不要擅自假设或覆盖。"
-            "剧情发生明确状态变化时，调用 propose_state_change 提出建议，"
-            "由用户审核后才会生效。"
-            "需要持续追踪的物品、NPC、场景、计划或悬念也使用状态建议维护；"
+            "剧情发生明确状态变化时，调用 propose_state_change 记录修改，系统会自动采用并保留撤销记录，"
+            "需要持续追踪的物品、NPC、场景、计划或悬念也使用结构化状态维护；"
             "实体名称分别以‘物品:’、‘NPC:’、‘场景:’、‘悬念:’开头，"
             "已完成的计划或悬念将 status 建议为 resolved。"
             "只有值得长期保留的信息才调用 write_memory。"
-            "发现地点层级或当前位置变化时调用 upsert_scene；NPC 登离场、位置、状态或关系变化时调用 upsert_npc。"
+            "发现地点层级或当前位置变化时调用 upsert_scene；同一地点出现简称或别称时复用现有节点，"
+            "只有明确移动到另一个地方才创建新节点。NPC 登离场、位置、状态或关系变化时调用 upsert_npc。"
             "\n\n当前已批准状态：\n"
             + ("\n".join(state_lines) if state_lines else "- 暂无")
             + "\n\n本轮召回记忆：\n"
@@ -227,17 +234,75 @@ class ContextBuilder:
             for record in recent
             if record.role in {"user", "assistant", "system"}
         )
-        section_texts = {
-            "角色档案": "\n".join(character_lines),
-            "世界书": "\n".join(world_lines),
-            "场景与NPC": roleplay_graph,
-            "精确状态": "\n".join(state_lines),
-            "RAG召回": "\n".join(memory_lines),
-            "窗口外摘要": "\n".join(_format_history_node(item) for item in history_nodes),
-            "近期原文": "\n".join(record.content for record in recent),
-        }
+        persona_text = ""
+        if persona:
+            persona_text = "\n".join(
+                item for item in [
+                    f"名称：{persona.name}",
+                    f"身份：{persona.identity}" if persona.identity else "",
+                    f"性格：{persona.personality}" if persona.personality else "",
+                    f"外貌：{persona.appearance}" if persona.appearance else "",
+                    f"说话方式：{persona.speaking_style}" if persona.speaking_style else "",
+                ] if item
+            )
+        latest_user = recent[-1] if recent and recent[-1].role == "user" else None
+        recent_dialogue = recent[:-1] if latest_user else recent
+        summary_text = "\n\n".join(_format_history_node(item) for item in history_nodes)
+        section_definitions = [
+            ("system", "系统规则", True, "角色扮演基础规则、故事补充规则和工具使用约束", _system_rules_preview(chat)),
+            ("persona", "当前主控人物", bool(persona_text), "故事绑定的主控人物快照", persona_text),
+            ("characters", "角色设定", bool(character_lines), "故事绑定的角色快照", "\n".join(character_lines)),
+            ("world_book", "激活的世界书", bool(world_lines), "关键词、常驻、递归和互斥规则筛选后的词条", "\n".join(world_lines)),
+            ("summary", "长期总结", bool(summary_text), "近期窗口之外的最高可信摘要节点", summary_text),
+            ("rag", "RAG 召回记忆", bool(memory_lines), "与用户最新消息相关的长期记忆", "\n".join(memory_lines)),
+            ("scene", "当前场景和人物", bool(roleplay_graph), "当前地点、在场 NPC 和相关人物关系", roleplay_graph),
+            ("state", "数值与物品状态", bool(state_lines), "与本轮话题相关的已批准精确状态", "\n".join(state_lines)),
+            ("recent", "最近对话", bool(recent_dialogue), "仍在原文窗口内的最近消息", "\n\n".join(f"{item.role}: {item.content}" for item in recent_dialogue)),
+            ("latest_user", "用户最新消息", bool(latest_user), "触发本轮生成的消息", latest_user.content if latest_user else query),
+        ]
+        preset = db.get(PromptPresetRecord, self.settings.active_preset_id) if self.settings.active_preset_id else None
+        if preset is not None:
+            messages, preset_sections = _apply_writing_preset(
+                preset=preset,
+                messages=messages,
+                persona=persona,
+                characters=characters,
+            )
+            section_definitions = [section_definitions[0], *preset_sections, *section_definitions[1:]]
+        section_texts = {label: content for _, label, _, _, content in section_definitions}
         input_budget = max(1024, self.settings.context_window_tokens - self.settings.max_output_tokens)
-        messages, diagnostics = self.budget_manager.fit(messages, input_budget, section_texts)
+        messages, diagnostics = self.budget_manager.fit(
+            messages,
+            input_budget,
+            section_texts,
+            model_name=model.model_name,
+        )
+        for key, label, enabled, reason, content in section_definitions:
+            section_diagnostics = diagnostics["sections"].get(label, {})
+            section_diagnostics.update(
+                {
+                    "key": key,
+                    "label": label,
+                    "enabled": enabled,
+                    "reason": reason if enabled else "本轮没有可加入的内容",
+                    "content": content,
+                }
+            )
+        diagnostics["sections"] = [
+            diagnostics["sections"][label]
+            for _, label, _, _, _ in section_definitions
+        ]
+        diagnostics["world_book_triggers"] = world_trigger_log
+        diagnostics["rag_retrieval"] = [
+            {
+                "memory_id": item.record.id,
+                "score": round(item.score, 6),
+                "reason": item.reason,
+                "preview": item.record.content[:240],
+            }
+            for item in retrieved
+        ]
+        diagnostics["final_prompt"] = messages
         return ContextBundle(
             messages,
             retrieved,
@@ -325,6 +390,47 @@ def _activate_world_entries(
     return sorted([*ungrouped, *grouped.values()], key=lambda item: item.priority, reverse=True)
 
 
+def _world_trigger_log(
+    records: list[StoryWorldBookRecord],
+    active: list[StoryWorldBookRecord],
+    recent: list[MessageRecord],
+    query: str,
+) -> list[dict[str, Any]]:
+    active_ids = {record.id for record in active}
+    history = "\n".join(item.content for item in recent)
+    result: list[dict[str, Any]] = []
+    for record in records:
+        haystack = f"{history}\n{query}"
+        if not record.case_sensitive:
+            haystack = haystack.casefold()
+        keywords = [str(item) for item in (json_loads(record.keywords_json) or [])]
+        matched = [
+            keyword for keyword in keywords
+            if (keyword if record.case_sensitive else keyword.casefold()) in haystack
+        ]
+        included = record.id in active_ids
+        if included and record.constant:
+            reason = "常驻条目"
+        elif included and matched:
+            reason = f"命中关键词：{'、'.join(matched[:5])}"
+        elif included:
+            reason = "由递归激活或无主关键词"
+        elif matched:
+            reason = "命中但因次要关键词或互斥组未加入"
+        else:
+            reason = "未命中本轮内容"
+        result.append(
+            {
+                "id": record.id,
+                "title": record.title,
+                "included": included,
+                "priority": record.priority,
+                "reason": reason,
+            }
+        )
+    return result
+
+
 def _format_history_node(node: object) -> str:
     level = getattr(node, "level")
     label = "楼层摘要" if level == 0 else f"剧情总结 L{level}"
@@ -334,3 +440,82 @@ def _format_history_node(node: object) -> str:
     if start or end:
         time_label = f"｜时间：{start or '?'}" + (f" → {end}" if end and end != start else "")
     return f"[{label}{time_label}] {getattr(node, 'content')}"
+
+
+def _system_rules_preview(chat: ChatRecord) -> str:
+    parts = ["你正在进行长篇角色扮演。保持人物语气、剧情连贯和沉浸感。"]
+    if chat.system_prompt.strip():
+        parts.append(f"旧版补充设定：\n{chat.system_prompt.strip()}")
+    parts.append(
+        "可以调用工具查询记忆和精确状态。结构化状态是数值和物品的事实来源；"
+        "明确状态变化会自动记录，并保留可撤销的修改历史。只有值得长期保留的信息才写入记忆；"
+        "场景层级、当前位置、NPC 状态和关系变化使用对应工具维护。"
+    )
+    return "\n\n".join(parts)
+
+
+_PRESET_DYNAMIC_SLOTS = {
+    "worldInfoBefore",
+    "worldInfoAfter",
+    "personaDescription",
+    "charDescription",
+    "charPersonality",
+    "scenario",
+    "dialogueExamples",
+    "longTermMemory",
+    "ragMemory",
+    "roleplayState",
+    "chatHistory",
+}
+
+
+def _apply_writing_preset(
+    *,
+    preset: PromptPresetRecord,
+    messages: list[dict[str, Any]],
+    persona: StoryPersonaRecord | None,
+    characters: list[StoryCharacterRecord],
+) -> tuple[list[dict[str, Any]], list[tuple[str, str, bool, str, str]]]:
+    """把写作提示词加入标准上下文，不接管角色、世界书或聊天记录。"""
+    prompts = json_loads(preset.prompts_json) or []
+    char_names = "、".join(item.name for item in characters) or "角色"
+    user_name = persona.name if persona else "用户"
+    result = [dict(item) for item in messages]
+    diagnostics: list[tuple[str, str, bool, str, str]] = []
+    relative: list[dict[str, Any]] = []
+    in_chat: list[tuple[int, dict[str, Any]]] = []
+    for index, raw in enumerate(prompts):
+        identifier = str(raw.get("identifier") or f"custom-{index}")
+        if bool(raw.get("marker", False)) or identifier in _PRESET_DYNAMIC_SLOTS:
+            continue
+        name = str(raw.get("name") or identifier)
+        enabled = bool(raw.get("enabled", True))
+        content = str(raw.get("content") or "")
+        content = _preset_macros(content, char_names, user_name)
+        diagnostics.append(
+            (
+                f"preset:{identifier}",
+                f"预设 · {name}",
+                enabled and bool(content),
+                f"写作预设：{preset.name}",
+                content,
+            )
+        )
+        if not enabled or not content:
+            continue
+        role = str(raw.get("role") or "system")
+        if role not in {"system", "user", "assistant"}:
+            role = "system"
+        message = {"role": role, "content": content}
+        if raw.get("position") == "in_chat":
+            in_chat.append((max(0, int(raw.get("depth", 0) or 0)), message))
+        else:
+            relative.append(message)
+    result[1:1] = relative
+    for depth, message in in_chat:
+        result.insert(max(1, len(result) - depth), message)
+    return result, diagnostics
+
+
+def _preset_macros(content: str, char_name: str, user_name: str) -> str:
+    return content.replace("{{char}}", char_name).replace("{{user}}", user_name)

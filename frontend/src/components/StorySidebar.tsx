@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 import type { Chat, CharacterTemplate, PersonaTemplate, WorldBookTemplate } from "../types";
+import { ArchiveDiagram } from "./ArchiveDiagram";
 
 export function StorySidebar(props: {
   chats: Chat[];
@@ -32,7 +33,8 @@ export function StorySidebar(props: {
   }
 
   return <aside className="sidebar">
-    <div className="brand"><div className="brand-mark">स</div><div><strong>Saraswati</strong><span>角色扮演</span></div></div>
+    <ArchiveDiagram />
+    <div className="brand"><div className="brand-mark">स</div><div><strong>Saraswati</strong></div></div>
     <button className="new-chat-button" onClick={() => setCreating((value) => !value)}><span>＋</span> 新建故事</button>
     {creating && <form className="create-card" onSubmit={submit}>
       <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="故事名称" autoFocus />

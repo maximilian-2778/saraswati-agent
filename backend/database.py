@@ -91,7 +91,7 @@ class Database:
             "insertion_position": "VARCHAR(30) NOT NULL DEFAULT 'before_history'",
             "group_name": "VARCHAR(100) NOT NULL DEFAULT ''",
             "recursive": "BOOLEAN NOT NULL DEFAULT 0",
-            "token_budget": "INTEGER NOT NULL DEFAULT 512",
+            "token_budget": "INTEGER NOT NULL DEFAULT 2048",
             "scope": "VARCHAR(30) NOT NULL DEFAULT 'global'",
         }
         with self.engine.begin() as connection:

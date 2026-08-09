@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from time import perf_counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -27,15 +28,18 @@ from backend.services.audit import AuditService
 from backend.services.context import ContextBuilder
 from backend.services.memory import MemoryService
 from backend.services.narrative_delta import NarrativeDeltaService
+from backend.services.narrative_delta_apply import NarrativeDeltaApplier
 from backend.services.narrative_memory import NarrativeMemoryService
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
 from backend.services.tools import TOOL_SCHEMAS, ToolExecutor
+from backend.services.token_budget import estimate_tokens
 from backend.utils import json_dumps
 
 
 TraceWriter = Callable[[Session, str, str, int, str, dict[str, Any]], None]
 TokenWriter = Callable[[str], Awaitable[None]]
+ProgressWriter = Callable[[str], Awaitable[None]]
 
 
 class AgentGraphState(TypedDict, total=False):
@@ -55,6 +59,7 @@ class AgentGraphState(TypedDict, total=False):
     memory_status: str
     delta_id: str
     error: str
+    turn_started_at: float
 
 
 @dataclass(slots=True)
@@ -73,9 +78,11 @@ class AgentGraphContext:
     graph_service: RoleplayGraphService
     narrative_memory_service: NarrativeMemoryService
     narrative_delta_service: NarrativeDeltaService
+    narrative_delta_applier: NarrativeDeltaApplier
     tool_executor: ToolExecutor
     trace: TraceWriter
     on_token: TokenWriter | None = None
+    on_progress: ProgressWriter | None = None
 
 
 def build_agent_graph(checkpointer: Any) -> Any:
@@ -89,6 +96,7 @@ def build_agent_graph(checkpointer: Any) -> Any:
     graph.add_node("persist_response", _persist_response)
     graph.add_node("update_memory", _update_memory)
     graph.add_node("extract_delta", _extract_delta)
+    graph.add_node("apply_narrative_delta", _apply_narrative_delta)
     graph.add_node("audit_response", _audit_response)
 
     graph.add_edge(START, "build_context")
@@ -106,7 +114,8 @@ def build_agent_graph(checkpointer: Any) -> Any:
     graph.add_edge("force_final_response", "persist_response")
     graph.add_edge("persist_response", "update_memory")
     graph.add_edge("update_memory", "extract_delta")
-    graph.add_edge("extract_delta", "audit_response")
+    graph.add_edge("extract_delta", "apply_narrative_delta")
+    graph.add_edge("apply_narrative_delta", "audit_response")
     graph.add_edge("audit_response", END)
     return graph.compile(checkpointer=checkpointer, name="saraswati_roleplay_agent")
 
@@ -161,29 +170,48 @@ async def _call_model(
     dependencies = runtime.context
     step = state.get("step", 0) + 1
     messages = list(state.get("working_messages", []))
+    started_at = perf_counter()
+    input_tokens = _message_tokens(messages, dependencies.model.model_name)
+    streamed_parts: list[str] = []
+
+    async def forward_token(token: str) -> None:
+        streamed_parts.append(token)
+
     try:
         reply = (
             await dependencies.model.stream_complete(
                 messages,
                 TOOL_SCHEMAS,
-                dependencies.on_token,
+                forward_token,
             )
             if dependencies.on_token
             else await dependencies.model.complete(messages, TOOL_SCHEMAS)
         )
     except ModelProviderError as exc:
+        # 请求尾部失败时，已经收到的正文仍然可以作为本轮结果使用。
+        if streamed_parts and dependencies.on_token is not None:
+            await dependencies.on_token("".join(streamed_parts))
         dependencies.trace(
             dependencies.db,
             state["chat_id"],
             state["turn_id"],
             step,
             "model_error",
-            {"error": str(exc)},
+            {
+                "error": str(exc),
+                "streamed_content_preserved": bool(streamed_parts),
+                **_call_metrics(
+                    dependencies.settings,
+                    input_tokens,
+                    estimate_tokens("".join(streamed_parts), dependencies.model.model_name),
+                    perf_counter() - started_at,
+                ),
+            },
         )
         return {
             "step": step,
             "pending_tool_calls": [],
-            "final_content": f"模型服务暂时不可用：{exc}",
+            "final_content": "".join(streamed_parts) or f"模型服务暂时不可用：{exc}",
             "error": str(exc),
         }
 
@@ -196,9 +224,20 @@ async def _call_model(
         {
             "has_content": bool(reply.content),
             "tool_names": [call.name for call in reply.tool_calls],
+            **_call_metrics(
+                dependencies.settings,
+                input_tokens,
+                _reply_tokens(reply.content, reply.tool_calls, dependencies.model.model_name),
+                perf_counter() - started_at,
+            ),
         },
     )
     if not reply.tool_calls:
+        # 工具调用信息可能直到流的末尾才出现，因此每次模型调用先在后端
+        # 暂存正文。只有确认这是最终回复后才交给前端，避免用户先看到一份
+        # 完整草稿，工具执行后又看到模型从头生成一次。
+        if streamed_parts and dependencies.on_token is not None:
+            await dependencies.on_token("".join(streamed_parts))
         return {
             "step": step,
             "pending_tool_calls": [],
@@ -293,12 +332,21 @@ async def _force_final_response(
             "content": "工具调用已达到步数上限，请直接给出最终角色回复。",
         }
     )
+    started_at = perf_counter()
+    input_tokens = _message_tokens(messages, dependencies.model.model_name)
+    streamed_parts: list[str] = []
+
+    async def forward_token(token: str) -> None:
+        streamed_parts.append(token)
+        if dependencies.on_token is not None:
+            await dependencies.on_token(token)
+
     try:
         reply = (
             await dependencies.model.stream_complete(
                 messages,
                 None,
-                dependencies.on_token,
+                forward_token,
             )
             if dependencies.on_token
             else await dependencies.model.complete(messages, None)
@@ -310,7 +358,15 @@ async def _force_final_response(
             state["turn_id"],
             state["step"] + 1,
             "forced_model_response",
-            {"has_content": bool(reply.content)},
+            {
+                "has_content": bool(reply.content),
+                **_call_metrics(
+                    dependencies.settings,
+                    input_tokens,
+                    estimate_tokens(reply.content or "", dependencies.model.model_name),
+                    perf_counter() - started_at,
+                ),
+            },
         )
         return {
             "working_messages": messages,
@@ -323,13 +379,61 @@ async def _force_final_response(
             state["turn_id"],
             state["step"] + 1,
             "model_error",
-            {"error": str(exc), "forced": True},
+            {
+                "error": str(exc),
+                "forced": True,
+                "streamed_content_preserved": bool(streamed_parts),
+                **_call_metrics(
+                    dependencies.settings,
+                    input_tokens,
+                    estimate_tokens("".join(streamed_parts), dependencies.model.model_name),
+                    perf_counter() - started_at,
+                ),
+            },
         )
         return {
             "working_messages": messages,
-            "final_content": f"模型服务暂时不可用：{exc}",
+            "final_content": "".join(streamed_parts) or f"模型服务暂时不可用：{exc}",
             "error": str(exc),
         }
+
+
+def _message_tokens(messages: list[dict[str, Any]], model_name: str | None) -> int:
+    return sum(
+        estimate_tokens(str(message.get("content") or ""), model_name)
+        for message in messages
+    )
+
+
+def _reply_tokens(content: str | None, tool_calls: list[Any], model_name: str | None) -> int:
+    text = content or ""
+    if tool_calls:
+        text += json.dumps(
+            [{"name": call.name, "arguments": call.arguments} for call in tool_calls],
+            ensure_ascii=False,
+        )
+    return estimate_tokens(text, model_name)
+
+
+def _call_metrics(
+    settings: Settings,
+    input_tokens: int,
+    output_tokens: int,
+    duration_seconds: float,
+) -> dict[str, Any]:
+    estimated_cost = (
+        input_tokens * settings.input_price_per_million
+        + output_tokens * settings.output_price_per_million
+    ) / 1_000_000
+    return {
+        "duration_ms": round(duration_seconds * 1000, 2),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "estimated_cost_usd": round(estimated_cost, 8),
+        "pricing_configured": bool(
+            settings.input_price_per_million or settings.output_price_per_million
+        ),
+    }
 
 
 async def _persist_response(
@@ -358,6 +462,8 @@ async def _persist_response(
         "response_persisted",
         {"assistant_message_id": message.id},
     )
+    if dependencies.on_progress is not None:
+        await dependencies.on_progress("postprocessing")
     return {"assistant_message_id": message.id}
 
 
@@ -425,6 +531,36 @@ async def _extract_delta(
     return {"delta_id": delta.id}
 
 
+async def _apply_narrative_delta(
+    state: AgentGraphState,
+    runtime: Runtime[AgentGraphContext],
+) -> dict[str, Any]:
+    dependencies = runtime.context
+    delta = dependencies.db.get(NarrativeDeltaRecord, state["delta_id"])
+    if delta is None:
+        return {}
+    result = dependencies.narrative_delta_applier.apply(dependencies.db, delta)
+    existing_ids = list(state.get("state_proposal_ids", []))
+    applied_ids = [item.id for item in result.state_changes]
+    proposal_ids = list(dict.fromkeys([*existing_ids, *applied_ids]))
+    dependencies.trace(
+        dependencies.db,
+        state["chat_id"],
+        state["turn_id"],
+        dependencies.settings.max_agent_steps + 1,
+        "narrative_delta_applied",
+        {
+            "delta_id": delta.id,
+            "timeline_count": result.timeline_count,
+            "scene_count": result.scene_count,
+            "npc_count": result.npc_count,
+            "state_change_ids": applied_ids,
+            "deduplicated_count": result.skipped_count,
+        },
+    )
+    return {"state_proposal_ids": proposal_ids}
+
+
 async def _audit_response(
     state: AgentGraphState,
     runtime: Runtime[AgentGraphContext],
@@ -450,9 +586,10 @@ async def _audit_response(
             assistant_message.content,
             entries,
         )
-    proposal_ids = [
-        record.id for record in dependencies.tool_executor.created_proposals
-    ] or list(state.get("state_proposal_ids", []))
+    proposal_ids = list(dict.fromkeys([
+        *state.get("state_proposal_ids", []),
+        *(record.id for record in dependencies.tool_executor.created_proposals),
+    ]))
     dependencies.trace(
         dependencies.db,
         state["chat_id"],
@@ -463,6 +600,10 @@ async def _audit_response(
             "assistant_message_id": assistant_message.id,
             "proposal_count": len(proposal_ids),
             "audit_count": len(issues),
+            "duration_ms": round(
+                (perf_counter() - state.get("turn_started_at", perf_counter())) * 1000,
+                2,
+            ),
         },
     )
     return {

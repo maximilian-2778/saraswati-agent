@@ -2,6 +2,89 @@
 
 All notable changes to Saraswati Agent are documented in this file.
 
+## [1.0.0] - 2026-08-09
+
+Saraswati Agent 的首个正式版本。该版本整合了独立角色扮演客户端、可复用资料库、分层长期记忆、RAG、结构化剧情状态和 LangGraph 生成后整理流程。
+
+### Added
+
+- 独立的多故事角色扮演聊天客户端，支持头像、消息编辑、重新生成、收藏、检查点和故事快照。
+- 可复用的角色、主控人物、世界书和写作预设资料库。
+- 分层摘要、时间锚点、向量记忆、RAG 召回、场景树、NPC 图谱、物品与精确状态管理。
+- LangGraph 对话编排、工具调用、结构化 Narrative Delta、自动采用、修改历史、一键撤销和回复审计。
+- OpenAI-compatible 对话、Embedding、结构化输出和独立 Reranker 配置。
+- 上下文预算、模型 tokenizer、世界书触发记录、Prompt 预览、耗时与费用估算。
+- Alembic 数据库迁移、模块化 FastAPI 路由、供应商适配器和完整回归测试。
+- React、TypeScript、TanStack Query 构建的古典档案风格界面，包含亮色与暗色主题。
+
+### Known issues
+
+- 控制台导航角标当前显示数据总量，尚未区分“新增未读”和“已经查看”。
+- 控制台标题装饰线、数字角标和关闭符号仍需进一步校正视觉对齐。
+
+## [0.14.0] - 2026-08-09
+
+### Added
+
+- 增加可复用的写作预设库，用于管理主提示词、文风、禁写项和历史后指令。
+- 写作提示词支持启停、System/User/Assistant 角色、顺序调整、自定义内容与 In-Chat Depth。
+- 预设可以复制、启用、删除，并支持 SillyTavern Chat Completion JSON 导入导出。
+- 支持 `{{char}}`、`{{user}}` 宏；角色、主控人物、世界书、长期总结、RAG 和聊天记录继续由故事上下文独立装配。
+- 增加 Alembic `0002` 迁移和预设启用、顺序、导入导出回归测试。
+
+### Changed
+
+- 预设移动到角色、主控人物和世界书同级的顶部导航，不再混入模型设置。
+- 启用预设不会修改 Temperature、Top-P、输出 Token、Penalty 或上下文窗口。
+- 上下文调试页分别显示写作预设和故事资料，便于发现重复注入。
+
+## [0.13.0] - 2026-08-09
+
+### Added
+
+- 生成后 Delta 增加场景、NPC、物品和通用状态变化。
+- LangGraph 增加 `apply_narrative_delta` 节点，在回复保存后补齐时间、场景、人物和精确状态。
+- Agent 产生的物品与数值变化默认自动采用，同时保留来源、旧值和完整修改记录。
+- 修改记录支持一键撤销；撤销后按剩余事件重建当前状态。
+- 增加生成后整理和状态撤销的端到端测试。
+
+### Changed
+
+- 主模型工具调用继续负责实时更新，生成后整理按当前投影和来源消息去重，避免重复写入。
+- 消息改写后，相关自动修改会标记为已撤销，不再重新堆进待确认列表。
+
+## [0.12.0] - 2026-08-09
+
+### Added
+
+- 设置中心增加可选的上下文调试模式，默认保持关闭。
+- 故事资料增加“上下文”页，按发送顺序展示系统规则、主控人物、角色、世界书、长期总结、RAG、场景、状态、近期对话和用户消息。
+- 每个上下文块显示启用状态、Token、加入原因和实际内容。
+- 增加总预算、剩余额度、裁剪记录、世界书触发记录、RAG 分数和最终 Prompt 预览。
+- 记录整轮耗时、每次模型调用耗时、输入输出 Token 和可配置的费用估算。
+- 模型设置增加每百万输入与输出 Token 单价；未配置时不显示虚假费用。
+
+### Changed
+
+- Token 预算诊断现在保留被裁剪消息的角色、Token 数和短预览。
+- 上下文调试页的详细模块可以分别开关，避免日常角色扮演界面过载。
+
+## [0.11.0] - 2026-08-09
+
+### Added
+
+- 使用模型 tokenizer 计算上下文占用，未知模型保留启发式回退。
+- 剧情 Delta 支持 JSON Schema 结构化输出，并通过 Pydantic 严格校验。
+- 前端接入 TanStack Query，统一缓存工作区和故事数据。
+- 为模型级 Token 计算和结构化剧情提取增加回归测试。
+
+### Changed
+
+- 将原有总控制器拆为系统、模板、故事、记忆和状态五组路由。
+- 将 OpenAI 兼容接口拆成独立供应商适配器，复用 HTTP 连接并重试暂时性故障。
+- 将聊天页中的资料库、设置中心、消息和头像拆成独立组件。
+- `ChatWorkspace.tsx` 从约 101 KB 缩减到约 46 KB。
+
 ## [0.10.0] - 2026-08-09
 
 ### Added
@@ -160,5 +243,5 @@ All notable changes to Saraswati Agent are documented in this file.
 - Layered long-term memory and explainable hybrid RAG retrieval.
 - Structured state ledger with human approval and numeric consistency audits.
 - Story-local character profiles and keyword-triggered world-book entries.
-- React client with trace inspection, runtime settings and local demo mode.
+- React client with trace inspection, runtime settings and local API configuration.
 - FastAPI test suite and production frontend build.

@@ -278,6 +278,17 @@ class RoleplayGraphService:
                 if scene:
                     db.delete(scene)
                     db.commit()
+            elif event.event_type == "scene_merge":
+                source = self._find_scene_by_path(
+                    db, chat_id, list(payload.get("source_path") or [])
+                )
+                target = self._find_scene_by_path(
+                    db, chat_id, list(payload.get("target_path") or [])
+                )
+                if source and target and source.id != target.id:
+                    self.merge_scene(
+                        db, chat_id, source.id, target.id, record_event=False
+                    )
             elif event.event_type == "npc_delete":
                 npc = db.scalar(
                     select(NpcRecord).where(
@@ -299,6 +310,54 @@ class RoleplayGraphService:
         self._record_event(db, chat_id, "scene_delete", {"path": path}, None)
         db.delete(scene)
         db.commit()
+
+    def merge_scene(
+        self,
+        db: Session,
+        chat_id: str,
+        source_id: str,
+        target_id: str,
+        record_event: bool = True,
+    ) -> SceneNodeRecord:
+        source = db.get(SceneNodeRecord, source_id)
+        target = db.get(SceneNodeRecord, target_id)
+        if not source or source.chat_id != chat_id:
+            raise ValueError("待合并地点不存在")
+        if not target or target.chat_id != chat_id:
+            raise ValueError("目标地点不存在")
+        if source.id == target.id:
+            raise ValueError("不能把地点合并到自身")
+        if self._would_cycle(db, source.id, target.id):
+            raise ValueError("不能把上级地点合并到自己的子地点")
+
+        records = self.list_scenes(db, chat_id)
+        by_id = {item.id: item for item in records}
+        source_path = self.scene_path(source, by_id)
+        target_path = self.scene_path(target, by_id)
+        for child in records:
+            if child.parent_id == source.id:
+                child.parent_id = target.id
+        for npc in self.list_npcs(db, chat_id):
+            if npc.location_scene_id == source.id:
+                npc.location_scene_id = target.id
+        if source.description.strip() and source.description.strip() not in target.description:
+            target.description = "\n\n".join(
+                item for item in (target.description.strip(), source.description.strip()) if item
+            )
+        target.is_current = target.is_current or source.is_current
+        target.updated_at = datetime.now(UTC)
+        db.delete(source)
+        db.commit()
+        db.refresh(target)
+        if record_event:
+            self._record_event(
+                db,
+                chat_id,
+                "scene_merge",
+                {"source_path": source_path, "target_path": target_path},
+                None,
+            )
+        return target
 
     def delete_npc(self, db: Session, chat_id: str, npc_id: str) -> None:
         npc = db.get(NpcRecord, npc_id)

@@ -1,6 +1,6 @@
 export type MessageRole = "user" | "assistant" | "system";
 export type MemoryKind = "episodic" | "semantic" | "summary" | "implicit";
-export type ProposalStatus = "pending" | "approved" | "rejected";
+export type ProposalStatus = "pending" | "approved" | "rejected" | "reverted";
 export type AuditStatus = "open" | "resolved" | "dismissed";
 
 export interface RuntimeInfo {
@@ -40,6 +40,9 @@ export interface AppSettings {
   rerank_model: string | null;
   rerank_candidates: number;
   context_window_tokens: number;
+  input_price_per_million: number;
+  output_price_per_million: number;
+  active_preset_id: string | null;
 }
 
 export interface SettingsUpdate {
@@ -71,6 +74,8 @@ export interface SettingsUpdate {
   rerank_model: string | null;
   rerank_candidates: number;
   context_window_tokens: number;
+  input_price_per_million: number;
+  output_price_per_million: number;
 }
 
 export interface NarrativeDelta {
@@ -134,6 +139,34 @@ export interface CharacterTemplate {
   system_prompt: string;
   favorite: boolean;
   world_book_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PresetPrompt {
+  identifier: string;
+  name: string;
+  role: "system" | "assistant" | "user";
+  content: string;
+  enabled: boolean;
+  marker: boolean;
+  position: "relative" | "in_chat";
+  depth: number;
+}
+
+export interface PromptPreset {
+  id: string;
+  name: string;
+  description: string;
+  temperature: number;
+  top_p: number;
+  max_output_tokens: number;
+  presence_penalty: number;
+  frequency_penalty: number;
+  context_window_tokens: number;
+  prompts: PresetPrompt[];
+  extra_settings: Record<string, unknown>;
+  active: boolean;
   created_at: string;
   updated_at: string;
 }

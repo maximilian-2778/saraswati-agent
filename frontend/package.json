@@ -1,7 +1,7 @@
 {
   "name": "saraswati-agent-web",
   "private": true,
-  "version": "0.10.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.90.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
