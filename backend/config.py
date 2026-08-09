@@ -46,6 +46,7 @@ class Settings:
     rerank_candidates: int = 20
     context_window_tokens: int = 32768
     settings_file: str | None = None
+    langgraph_checkpoint_path: str | None = None
 
     @property
     def provider_mode(self) -> str:
@@ -62,6 +63,7 @@ class Settings:
         default_db = f"sqlite:///{(data_dir / 'saraswati_v1.db').as_posix()}"
 
         settings_file = data_dir / "settings.json"
+        checkpoint_path = data_dir / "langgraph_checkpoints.db"
         settings = cls(
             database_url=os.getenv("SARASWATI_DATABASE_URL", default_db),
             llm_base_url=_optional_env("SARASWATI_LLM_BASE_URL"),
@@ -93,6 +95,10 @@ class Settings:
             rerank_candidates=int(os.getenv("SARASWATI_RERANK_CANDIDATES", "20")),
             context_window_tokens=int(os.getenv("SARASWATI_CONTEXT_WINDOW_TOKENS", "32768")),
             settings_file=str(settings_file),
+            langgraph_checkpoint_path=(
+                _optional_env("SARASWATI_LANGGRAPH_CHECKPOINT_PATH")
+                or str(checkpoint_path)
+            ),
         )
         return load_local_settings(settings)
 

@@ -6,17 +6,19 @@
 flowchart LR
     UI[React 客户端] -->|HTTP JSON| API[FastAPI 接口层]
     API --> RT[Agent Runtime]
-    RT --> LLM[OpenAI 兼容模型]
-    RT --> CTX[上下文组装器]
-    RT --> TOOLS[工具注册表]
+    RT --> LG[LangGraph StateGraph]
+    LG --> LLM[OpenAI 兼容模型]
+    LG --> CTX[上下文组装器]
+    LG --> TOOLS[工具注册表]
+    LG --> CP[(节点检查点)]
     CTX --> FOREST[摘要森林选择器]
     CTX --> MEM[分档 RAG 服务]
     CTX --> STATE[状态服务]
     CTX --> GRAPH[场景树 / NPC 图谱]
     TOOLS --> MEM
     TOOLS --> STATE
-    RT --> AUDIT[一致性审计器]
-    RT --> DELTA[剧情 Delta 提取器]
+    LG --> AUDIT[一致性审计器]
+    LG --> DELTA[剧情 Delta 提取器]
     CTX --> BUDGET[Token 预算器]
     API --> DB[(SQLite)]
     MEM --> DB
@@ -25,6 +27,7 @@ flowchart LR
     AUDIT --> DB
     GRAPH --> DB
     DELTA --> DB
+    CP --> DB2[(langgraph_checkpoints.db)]
     GRAPH --> GEVENTS[场景 / NPC 事件日志]
     GEVENTS --> DB
 ```
@@ -35,6 +38,8 @@ flowchart LR
 - `routers`：按系统、模板、故事、记忆和状态分组，公开 URL 保持稳定。
 - `controllers`：处理 HTTP 请求、依赖注入和响应转换；后续新增接口应先放入对应领域模块。
 - `services`：记忆检索、状态变更、审计、上下文组装和 Agent 执行等业务逻辑。
+- `services/agent_graph`：LangGraph 状态、节点和条件边；图状态只保存可序列化数据。
+- `services/agent`：工作流生命周期和原有 `run_turn` 接口；数据库会话、模型和工具执行器通过运行时上下文注入。
 - `llm`：与厂商无关的模型接口，以及 OpenAI 兼容实现和演示实现。
 - `models`：SQLAlchemy 持久化模型，是数据库内部的数据表示。
 - `schemas`：Pydantic 请求和响应模型，是 API 对外的数据契约。
@@ -48,27 +53,35 @@ sequenceDiagram
     participant U as 用户
     participant A as FastAPI
     participant D as SQLite
-    participant R as Agent Runtime
+    participant R as LangGraph Runtime
+    participant C as Checkpointer
     participant M as 记忆/状态工具
     participant L as LLM
 
     U->>A: POST /chats/{id}/messages
     A->>D: 保存用户消息
     A->>R: 执行一轮 Agent
+    R->>C: 保存初始状态
     R->>M: 组装角色、触发的世界书、近期消息、记忆和状态
+    R->>C: 保存上下文节点状态
     R->>L: 携带工具定义请求模型
     loop 最多执行配置的步数
         L-->>R: 返回工具调用
         R->>M: 执行工具并记录轨迹
         M-->>R: 返回工具结果
+        R->>C: 保存工具节点状态
         R->>L: 携带结果继续推理
     end
     L-->>R: 返回最终角色回复
     R->>D: 保存回复、记忆、剧情 Delta、轨迹和审计问题
+    R->>C: 保存完成状态
     A-->>U: 返回正文和调试面板数据
 ```
 
 ## 数据权威规则
+
+- LangGraph 检查点只保存消息、记录 ID、执行步数和路由结果；数据库会话、模型客户端、回调和 API Key 不进入图状态。
+- 每轮使用独立 `thread_id`，节点状态写入单独的本地 SQLite 文件；剧情长期记忆仍由业务数据库管理。
 
 - 原始消息允许用户显式改写；摘要叶子的原文指纹用于检测改写，而不是静默同步旧摘要。
 - 角色和世界书模板是跨故事复用的母版；故事只绑定创建时复制出的私有快照。

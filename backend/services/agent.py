@@ -1,12 +1,18 @@
-"""有状态、可追踪、带最大步数限制的 Agent Runtime。"""
+"""基于 LangGraph 的有状态 Agent Runtime。"""
 
-import json
+from __future__ import annotations
+
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import aiosqlite
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,18 +22,23 @@ from backend.models import (
     AgentTraceRecord,
     AuditIssueRecord,
     ChatRecord,
+    MemoryRecord,
     MessageRecord,
     StateChangeRecord,
 )
-from backend.schemas import MessageRole
+from backend.services.agent_graph import (
+    AgentGraphContext,
+    AgentGraphState,
+    build_agent_graph,
+)
 from backend.services.audit import AuditService
 from backend.services.context import ContextBuilder
 from backend.services.memory import MemoryService, RetrievedMemory
-from backend.services.narrative_memory import NarrativeMemoryService
 from backend.services.narrative_delta import NarrativeDeltaService
+from backend.services.narrative_memory import NarrativeMemoryService
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
-from backend.services.tools import TOOL_SCHEMAS, ToolExecutor
+from backend.services.tools import ToolExecutor
 from backend.utils import json_dumps
 
 
@@ -42,7 +53,7 @@ class AgentTurnResult:
 
 
 class AgentRuntime:
-    """负责上下文、模型调用、工具执行、记忆写入和一致性审计。"""
+    """通过 LangGraph 节点协调模型、工具、记忆和生成后审计。"""
 
     def __init__(self, settings: Settings, model: ModelClient) -> None:
         self.settings = settings
@@ -52,7 +63,8 @@ class AgentRuntime:
         self.audit_service = AuditService()
         self.graph_service = RoleplayGraphService()
         self.narrative_memory_service = NarrativeMemoryService(
-            settings, self.memory_service
+            settings,
+            self.memory_service,
         )
         self.narrative_delta_service = NarrativeDeltaService()
         self.context_builder = ContextBuilder(
@@ -62,6 +74,34 @@ class AgentRuntime:
             self.narrative_memory_service,
             self.graph_service,
         )
+        self._checkpoint_connection: aiosqlite.Connection | None = None
+        self._checkpointer: AsyncSqliteSaver | InMemorySaver = InMemorySaver(
+            serde=_safe_serializer()
+        )
+        self.workflow = build_agent_graph(self._checkpointer)
+
+    async def startup(self) -> None:
+        """打开本地检查点数据库，并用持久化图替换内存图。"""
+        if self._checkpoint_connection is not None:
+            return
+        checkpoint_path = self.settings.langgraph_checkpoint_path
+        if not checkpoint_path:
+            return
+        path = Path(checkpoint_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        connection = await aiosqlite.connect(path.as_posix())
+        checkpointer = AsyncSqliteSaver(connection, serde=_safe_serializer())
+        await checkpointer.setup()
+        self._checkpoint_connection = connection
+        self._checkpointer = checkpointer
+        self.workflow = build_agent_graph(checkpointer)
+
+    async def shutdown(self) -> None:
+        """关闭 LangGraph 检查点连接。"""
+        if self._checkpoint_connection is None:
+            return
+        await self._checkpoint_connection.close()
+        self._checkpoint_connection = None
 
     async def run_turn(
         self,
@@ -70,29 +110,9 @@ class AgentRuntime:
         user_message: MessageRecord,
         on_token: Callable[[str], Awaitable[None]] | None = None,
     ) -> AgentTurnResult:
+        """运行一轮已编译的 LangGraph 工作流，并恢复原有返回结构。"""
         turn_id = str(uuid4())
-        context = await self.context_builder.build(
-            db,
-            self.model,
-            chat,
-            user_message.content,
-        )
-        self._trace(
-            db,
-            chat.id,
-            turn_id,
-            0,
-            "context_built",
-            {
-                "message_count": len(context.messages),
-                "memory_ids": [item.record.id for item in context.retrieved_memories],
-                "state_count": context.state_count,
-                "character_configured": context.character_configured,
-                "world_entry_ids": context.world_entry_ids,
-                "token_budget": context.diagnostics,
-            },
-        )
-
+        assistant_message_id = str(uuid4())
         executor = ToolExecutor(
             db,
             self.model,
@@ -102,167 +122,65 @@ class AgentRuntime:
             self.state_service,
             self.graph_service,
         )
-        working_messages = list(context.messages)
-        final_content: str | None = None
-
-        for step in range(1, self.settings.max_agent_steps + 1):
-            try:
-                reply = (
-                    await self.model.stream_complete(
-                        working_messages, TOOL_SCHEMAS, on_token
-                    )
-                    if on_token
-                    else await self.model.complete(working_messages, TOOL_SCHEMAS)
-                )
-            except ModelProviderError as exc:
-                self._trace(
-                    db,
-                    chat.id,
-                    turn_id,
-                    step,
-                    "model_error",
-                    {"error": str(exc)},
-                )
-                final_content = f"模型服务暂时不可用：{exc}"
-                break
-
-            self._trace(
-                db,
-                chat.id,
-                turn_id,
-                step,
-                "model_response",
-                {
-                    "has_content": bool(reply.content),
-                    "tool_names": [call.name for call in reply.tool_calls],
-                },
-            )
-            if not reply.tool_calls:
-                final_content = reply.content or "模型没有返回可显示的内容。"
-                break
-
-            working_messages.append(
-                {
-                    "role": "assistant",
-                    "content": reply.content,
-                    "tool_calls": [
-                        {
-                            "id": call.id,
-                            "type": "function",
-                            "function": {
-                                "name": call.name,
-                                "arguments": json.dumps(
-                                    call.arguments,
-                                    ensure_ascii=False,
-                                ),
-                            },
-                        }
-                        for call in reply.tool_calls
-                    ],
-                }
-            )
-            for call in reply.tool_calls:
-                try:
-                    result = await executor.execute(call.name, call.arguments)
-                    event_type = "tool_result"
-                except (KeyError, TypeError, ValueError) as exc:
-                    result = {"error": str(exc)}
-                    event_type = "tool_error"
-                self._trace(
-                    db,
-                    chat.id,
-                    turn_id,
-                    step,
-                    event_type,
-                    {"tool": call.name, "arguments": call.arguments, "result": result},
-                )
-                working_messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": call.id,
-                        "content": json_dumps(result),
-                    }
-                )
-
-        if final_content is None:
-            working_messages.append(
-                {
-                    "role": "system",
-                    "content": "工具调用已达到步数上限，请直接给出最终角色回复。",
-                }
-            )
-            try:
-                forced_reply = (
-                    await self.model.stream_complete(working_messages, None, on_token)
-                    if on_token
-                    else await self.model.complete(working_messages, None)
-                )
-                final_content = forced_reply.content or "本轮未生成最终回复。"
-            except ModelProviderError as exc:
-                final_content = f"模型服务暂时不可用：{exc}"
-
-        assistant_message = MessageRecord(
-            id=str(uuid4()),
-            chat_id=chat.id,
-            role=MessageRole.ASSISTANT.value,
-            content=final_content,
-            created_at=datetime.now(UTC),
+        dependencies = AgentGraphContext(
+            db=db,
+            chat=chat,
+            user_message=user_message,
+            settings=self.settings,
+            model=self.model,
+            context_builder=self.context_builder,
+            memory_service=self.memory_service,
+            state_service=self.state_service,
+            audit_service=self.audit_service,
+            graph_service=self.graph_service,
+            narrative_memory_service=self.narrative_memory_service,
+            narrative_delta_service=self.narrative_delta_service,
+            tool_executor=executor,
+            trace=self._trace,
+            on_token=on_token,
         )
-        db.add(assistant_message)
-        chat.updated_at = assistant_message.created_at
-        db.commit()
-        db.refresh(assistant_message)
-
-        try:
-            await self.narrative_memory_service.process_turn(
-                db,
-                self.model,
-                chat.id,
-                user_message,
-                assistant_message,
-            )
-        except ModelProviderError as exc:
-            # 自动整理属于辅助流程；失败时保留正文，不能让已经完成的对话报错。
-            self._trace(
-                db,
-                chat.id,
-                turn_id,
-                self.settings.max_agent_steps + 1,
-                "memory_pipeline_error",
-                {"error": str(exc)},
-            )
-
-        delta = await self.narrative_delta_service.process_turn(
-            db, self.model, chat.id, user_message, assistant_message
+        initial_state: AgentGraphState = {
+            "turn_id": turn_id,
+            "chat_id": chat.id,
+            "user_message_id": user_message.id,
+            "assistant_message_id": assistant_message_id,
+            "working_messages": [],
+            "pending_tool_calls": [],
+            "retrieved_memories": [],
+            "state_proposal_ids": [],
+            "audit_issue_ids": [],
+            "step": 0,
+            "final_content": "",
+            "memory_status": "pending",
+            "delta_id": "",
+            "error": "",
+        }
+        config = {
+            "configurable": {"thread_id": f"turn:{turn_id}"},
+            "recursion_limit": self.settings.max_agent_steps * 3 + 12,
+        }
+        state: AgentGraphState = await self.workflow.ainvoke(
+            initial_state,
+            config=config,
+            context=dependencies,
         )
-        self._trace(
+        assistant_message = db.get(MessageRecord, state["assistant_message_id"])
+        if assistant_message is None:
+            raise RuntimeError("LangGraph 已结束，但没有保存助手回复")
+
+        retrieved_memories = _retrieved_memories(
             db,
-            chat.id,
-            turn_id,
-            self.settings.max_agent_steps + 1,
-            "narrative_delta_created",
-            {"delta_id": delta.id, "payload": json.loads(delta.payload_json)},
+            state.get("retrieved_memories", []),
         )
-
-        state_entries = self.state_service.list_entries(db, chat.id)
-        issues = self.audit_service.audit_message(
+        state_proposals = _records_by_id(
             db,
-            chat.id,
-            assistant_message.id,
-            assistant_message.content,
-            state_entries,
+            StateChangeRecord,
+            state.get("state_proposal_ids", []),
         )
-        self._trace(
+        audit_issues = _records_by_id(
             db,
-            chat.id,
-            turn_id,
-            self.settings.max_agent_steps + 1,
-            "turn_completed",
-            {
-                "assistant_message_id": assistant_message.id,
-                "proposal_count": len(executor.created_proposals),
-                "audit_count": len(issues),
-            },
+            AuditIssueRecord,
+            state.get("audit_issue_ids", []),
         )
         traces = list(
             db.scalars(
@@ -274,9 +192,9 @@ class AgentRuntime:
         return AgentTurnResult(
             turn_id=turn_id,
             assistant_message=assistant_message,
-            retrieved_memories=context.retrieved_memories,
-            state_proposals=executor.created_proposals,
-            audit_issues=issues,
+            retrieved_memories=retrieved_memories,
+            state_proposals=state_proposals,
+            audit_issues=audit_issues,
             traces=traces,
         )
 
@@ -321,3 +239,46 @@ class AgentRuntime:
             )
         )
         db.commit()
+
+
+def _safe_serializer() -> JsonPlusSerializer:
+    """只允许 LangGraph 内置安全类型进入检查点反序列化流程。"""
+    return JsonPlusSerializer(
+        pickle_fallback=False,
+        allowed_msgpack_modules=None,
+    )
+
+
+def _retrieved_memories(
+    db: Session,
+    values: list[dict[str, Any]],
+) -> list[RetrievedMemory]:
+    records = _records_by_id(
+        db,
+        MemoryRecord,
+        [str(item["id"]) for item in values],
+    )
+    by_id = {record.id: record for record in records}
+    return [
+        RetrievedMemory(
+            record=by_id[str(item["id"])],
+            score=float(item.get("score", 0.0)),
+            reason=str(item.get("reason", "")),
+        )
+        for item in values
+        if str(item["id"]) in by_id
+    ]
+
+
+def _records_by_id(
+    db: Session,
+    model_type: Any,
+    record_ids: list[str],
+) -> list[Any]:
+    if not record_ids:
+        return []
+    records = list(
+        db.scalars(select(model_type).where(model_type.id.in_(record_ids))).all()
+    )
+    by_id = {record.id: record for record in records}
+    return [by_id[record_id] for record_id in record_ids if record_id in by_id]

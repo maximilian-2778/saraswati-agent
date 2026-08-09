@@ -5,6 +5,8 @@ __pycache__/
 .env
 data/*.db
 data/*.db-*
+data/*.sqlite
+data/*.sqlite-*
 data/settings.json
 .idea/
 frontend/node_modules/

@@ -3,6 +3,7 @@
 [![CI](https://github.com/maximilian-2778/saraswati-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/maximilian-2778/saraswati-agent/actions/workflows/ci.yml)
 ![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
 ![React](https://img.shields.io/badge/React-TypeScript-61DAFB?logo=react&logoColor=black)
+![LangGraph](https://img.shields.io/badge/Agent-LangGraph-1C3C3C)
 
 用于长篇角色扮演的本地聊天客户端，支持剧情摘要、状态记录和历史记忆检索。
 
@@ -27,6 +28,7 @@
 - 数值冲突检查与修改确认
 - 消息改写后的相关记录更新
 - OpenAI 兼容的对话与 Embedding 接口
+- LangGraph 状态图编排、条件工具循环和本地节点检查点
 
 未配置模型时，程序使用本地演示模式。
 
@@ -35,6 +37,7 @@
 | 模块 | 技术 |
 | --- | --- |
 | 后端 | Python 3.13、FastAPI、Pydantic、SQLAlchemy、SQLite、httpx |
+| Agent 编排 | LangGraph StateGraph、条件边、SQLite Checkpointer |
 | 前端 | React、TypeScript、Vite、CSS |
 | 模型接口 | OpenAI-compatible Chat Completions、Embeddings |
 | 测试 | pytest、FastAPI TestClient、TypeScript build、RAG 评测脚本 |
@@ -73,6 +76,7 @@ npm run dev
 
 - 模型配置保存在 `data/settings.json`
 - 聊天数据保存在 `data/saraswati_v1.db`
+- Agent 节点检查点保存在 `data/langgraph_checkpoints.db`
 - 以上文件已加入 `.gitignore`
 
 API Key 以明文保存在本机配置文件中，请勿上传或分享该文件。
@@ -95,6 +99,8 @@ backend/
   controllers.py         请求处理
   routers/               按业务模块划分的路由
   services/              对话、记忆、检索、状态和场景逻辑
+    agent.py              LangGraph Runtime 生命周期与兼容入口
+    agent_graph.py        状态、节点、条件边和工作流定义
 
 frontend/src/
   App.tsx                前端入口

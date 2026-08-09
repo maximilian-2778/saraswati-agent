@@ -23,12 +23,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         database.create_schema()
-        yield
-        database.close()
+        await runtime.startup()
+        try:
+            yield
+        finally:
+            active_runtime: AgentRuntime = _app.state.runtime
+            await active_runtime.shutdown()
+            database.close()
 
     app = FastAPI(
         title="Saraswati Agent API",
-        version="0.8.1",
+        version="0.9.0",
         description="带分层记忆、状态账本和一致性审计的角色扮演 Agent 后端。",
         lifespan=lifespan,
     )

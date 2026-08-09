@@ -155,7 +155,7 @@ def read_settings(request: Request) -> SettingsRead:
 
 
 @router.put("/settings", response_model=SettingsRead, tags=["system"])
-def update_settings(payload: SettingsUpdate, request: Request) -> SettingsRead:
+async def update_settings(payload: SettingsUpdate, request: Request) -> SettingsRead:
     """保存设置并立即重建模型客户端和 Agent Runtime。"""
     current: Settings = request.app.state.settings
     api_key = current.llm_api_key
@@ -211,10 +211,14 @@ def update_settings(payload: SettingsUpdate, request: Request) -> SettingsRead:
         context_window_tokens=payload.context_window_tokens,
     )
     model = build_model_client(updated)
+    runtime = AgentRuntime(updated, model)
+    await runtime.startup()
     save_local_settings(updated)
+    previous_runtime: AgentRuntime = request.app.state.runtime
     request.app.state.settings = updated
     request.app.state.model = model
-    request.app.state.runtime = AgentRuntime(updated, model)
+    request.app.state.runtime = runtime
+    await previous_runtime.shutdown()
     return _settings_read(updated)
 
 

@@ -2,6 +2,21 @@
 
 All notable changes to Saraswati Agent are documented in this file.
 
+## [0.9.0] - 2026-08-09
+
+### Added
+
+- 使用 LangGraph StateGraph 编排完整对话流程。
+- 为上下文、模型、工具、强制收尾、回复保存、记忆、剧情 Delta 和审计建立独立节点。
+- 模型结果通过条件边进入工具循环或回复保存流程。
+- 使用独立 SQLite Checkpointer 保存每个节点完成后的可序列化状态。
+- 增加工具循环、步数上限、模型失败和持久化检查点回归测试。
+
+### Changed
+
+- 保留原有 `AgentRuntime.run_turn` 接口，FastAPI、前端、RAG、记忆和状态服务无需改动。
+- 更新本机模型设置时会安全替换 LangGraph Runtime，并关闭旧检查点连接。
+
 ## [0.8.1] - 2026-08-09
 
 ### Changed
