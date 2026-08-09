@@ -1,5 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "./api";
+import { useConsoleSeenState } from "./hooks/useConsoleSeenState";
 import type {
   AgentTrace,
   AuditIssue,
@@ -40,17 +42,29 @@ interface MemoryHubProps {
 }
 
 export function MemoryHub(props: MemoryHubProps) {
+  const noticeCounts = useConsoleSeenState(props.chatId, props.activeTab, {
+    world: [
+      ...props.scenes.map((item) => `${item.updated_at || item.created_at}|${item.id}`),
+      ...props.npcs.map((item) => `${item.updated_at || item.created_at}|${item.id}`),
+    ],
+    events: [
+      ...props.deltas.map((item) => `${item.created_at}|${item.id}`),
+      ...props.timeline.map((item) => `${item.updated_at || item.created_at}|${item.id}`),
+    ],
+    memory: props.memoryGraph.map((item) => `${item.created_at}|${item.id}`),
+    diagnostics: props.audits.map((item) => `${item.created_at}|${item.id}`),
+  });
   const tabs: { id: MemoryHubTab; label: string; count?: number }[] = [
     { id: "overview", label: "概览" },
-    { id: "world", label: "世界", count: props.scenes.length + props.npcs.length },
-    { id: "events", label: "事件", count: eventCount(props.deltas, props.timeline) },
-    { id: "memory", label: "记忆", count: props.memoryGraph.length },
+    { id: "world", label: "世界", count: noticeCounts.world },
+    { id: "events", label: "事件", count: noticeCounts.events },
+    { id: "memory", label: "记忆", count: noticeCounts.memory },
     ...(props.debugMode ? [{ id: "context" as const, label: "上下文" }] : []),
-    { id: "diagnostics", label: "检查", count: props.audits.filter((item) => item.status === "open").length },
+    { id: "diagnostics", label: "检查", count: noticeCounts.diagnostics },
   ];
   return (
     <aside className="inspector memory-hub">
-      <div className="inspector-title"><span>控制台</span><button className="icon-button" onClick={props.onClose} aria-label="关闭控制台">×</button></div>
+      <div className="inspector-title"><span>控制台</span><button className="icon-button" onClick={props.onClose} aria-label="关闭控制台"><span className="close-glyph" aria-hidden="true"><i /><i /></span></button></div>
       <div className="tabs memory-tabs">
         {tabs.map((tab) => <button key={tab.id} className={props.activeTab === tab.id ? "active" : ""} onClick={() => props.onTab(tab.id)}>{tab.label}{Boolean(tab.count) && <em>{tab.count}</em>}</button>)}
       </div>
@@ -143,17 +157,53 @@ function WorldGraphPanel(props: MemoryHubProps & { chatId: string }) {
 }
 
 function SceneWindow(props: { scene: SceneNode; scenes: SceneNode[]; npcs: Npc[]; items: StateEntry[]; chatId: string; mergeTarget: string; onMergeTarget: (id: string) => void; onMerge: () => Promise<void>; onClose: () => void; onRefresh: () => Promise<void> | void; onError: (reason: unknown) => void }) {
+  const [tab, setTab] = useState<"intro" | "attributes" | "inventory">("intro");
   const [description, setDescription] = useState(props.scene.description);
   const [parentId, setParentId] = useState(props.scene.parent_id ?? "");
   const [current, setCurrent] = useState(props.scene.is_current);
   async function save(event: FormEvent) { event.preventDefault(); try { await api.updateScene(props.chatId, props.scene.id, { name: props.scene.name, description, parent_id: parentId || null, is_current: current }); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
-  return <div className="rpg-window-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}><section className="rpg-window"><header><div><small>地点档案</small><h2>{props.scene.name}</h2><p>{props.scene.path.join(" › ")}</p></div><button className="rpg-close" onClick={props.onClose}>×</button></header><div className="rpg-columns scene-columns"><form className="rpg-profile-form" onSubmit={save}><section><h3>介绍</h3><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={8} placeholder="地点介绍" /><div className="field-row"><select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">顶层地点</option>{props.scenes.filter((item) => item.id !== props.scene.id).map((item) => <option value={item.id} key={item.id}>{item.path.join(" › ")}</option>)}</select><label><input type="checkbox" checked={current} onChange={(event) => setCurrent(event.target.checked)} /> 当前位置</label></div><p className="rpg-related">在场人物：{props.npcs.filter((npc) => npc.location_scene_id === props.scene.id).map((npc) => npc.name).join("、") || "暂无"}</p></section><footer><button>保存地点资料</button></footer></form><InventoryEditor chatId={props.chatId} holderType="scene" holderName={props.scene.name} items={props.items} onRefresh={props.onRefresh} onError={props.onError} /></div><details className="merge-place"><summary>合并重复地点</summary><select value={props.mergeTarget} onChange={(event) => props.onMergeTarget(event.target.value)}><option value="">选择保留的地点</option>{props.scenes.filter((scene) => scene.id !== props.scene.id).map((scene) => <option value={scene.id} key={scene.id}>{scene.path.join(" › ")}</option>)}</select><button disabled={!props.mergeTarget} onClick={() => void props.onMerge()}>合并</button></details></section></div>;
+  return createPortal(
+    <div className="rpg-window-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}>
+      <section className="rpg-window" role="dialog" aria-modal="true" aria-label={`${props.scene.name}地点档案`}>
+        <header><div><small>地点档案</small><h2>{props.scene.name}</h2><p>{props.scene.path.join(" › ")}</p></div><button type="button" className="rpg-close" onClick={props.onClose} aria-label="关闭地点档案">×</button></header>
+        <nav className="rpg-window-tabs" aria-label="地点档案页面">
+          <button type="button" className={tab === "intro" ? "active" : ""} onClick={() => setTab("intro")}>介绍</button>
+          <button type="button" className={tab === "attributes" ? "active" : ""} onClick={() => setTab("attributes")}>属性</button>
+          <button type="button" className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>物品</button>
+        </nav>
+        <div className="rpg-window-page">
+          {tab === "intro" ? <form className="rpg-profile-form" onSubmit={save}><section><h3>地点介绍</h3><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={12} placeholder="地点介绍" /><p className="rpg-related">在场人物：{props.npcs.filter((npc) => npc.location_scene_id === props.scene.id).map((npc) => npc.name).join("、") || "暂无"}</p></section><footer><button>保存地点资料</button></footer></form>
+            : tab === "attributes" ? <form className="rpg-profile-form" onSubmit={save}><section><h3>地点属性</h3><label>上级地点<select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">顶层地点</option>{props.scenes.filter((item) => item.id !== props.scene.id).map((item) => <option value={item.id} key={item.id}>{item.path.join(" › ")}</option>)}</select></label><label className="rpg-check"><input type="checkbox" checked={current} onChange={(event) => setCurrent(event.target.checked)} /> 设为当前位置</label></section><footer><button>保存地点属性</button></footer><details className="merge-place"><summary>合并重复地点</summary><select value={props.mergeTarget} onChange={(event) => props.onMergeTarget(event.target.value)}><option value="">选择保留的地点</option>{props.scenes.filter((scene) => scene.id !== props.scene.id).map((scene) => <option value={scene.id} key={scene.id}>{scene.path.join(" › ")}</option>)}</select><button type="button" disabled={!props.mergeTarget} onClick={() => void props.onMerge()}>合并</button></details></form>
+            : <InventoryEditor chatId={props.chatId} holderType="scene" holderName={props.scene.name} items={props.items} onRefresh={props.onRefresh} onError={props.onError} />}
+        </div>
+      </section>
+    </div>,
+    document.querySelector(".app-shell") ?? document.body,
+  );
 }
 
 function NpcWindow(props: { npc: Npc; scenes: SceneNode[]; items: StateEntry[]; chatId: string; onClose: () => void; onRefresh: () => Promise<void> | void; onError: (reason: unknown) => void }) {
+  const [tab, setTab] = useState<"intro" | "attributes" | "inventory">("intro");
   const [draft, setDraft] = useState(props.npc);
   async function save(event: FormEvent) { event.preventDefault(); try { await api.updateNpc(props.chatId, props.npc.id, draft); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
-  return <div className="rpg-window-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}><section className="rpg-window"><header><div><small>人物档案</small><h2>{props.npc.name}</h2><p>{importanceLabel(props.npc.importance)} · {presenceLabel(props.npc.presence)}</p></div><button className="rpg-close" onClick={props.onClose}>×</button></header><div className="rpg-columns"><form className="rpg-profile-form" onSubmit={save}><div className="rpg-profile-sections"><section><h3>介绍</h3><textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} rows={5} placeholder="身份、经历与人物介绍" /><label>外观与穿着<textarea value={draft.outfit} onChange={(event) => setDraft({ ...draft, outfit: event.target.value })} rows={4} /></label></section><section><h3>属性</h3><label>当前状态<input value={draft.condition} onChange={(event) => setDraft({ ...draft, condition: event.target.value })} /></label><label>与主控人物的关系<input value={draft.relation_to_user} onChange={(event) => setDraft({ ...draft, relation_to_user: event.target.value })} /></label><label>重要程度<select value={draft.importance} onChange={(event) => setDraft({ ...draft, importance: event.target.value as Npc["importance"] })}><option value="core">核心人物</option><option value="supporting">重要配角</option><option value="minor">次要人物</option></select></label><label>出场状态<select value={draft.presence} onChange={(event) => setDraft({ ...draft, presence: event.target.value as Npc["presence"] })}><option value="present">在场</option><option value="nearby">附近</option><option value="away">离场</option><option value="unknown">未知</option></select></label><label>所在地点<select value={draft.location_scene_id ?? ""} onChange={(event) => setDraft({ ...draft, location_scene_id: event.target.value || null })}><option value="">未知</option>{props.scenes.map((scene) => <option value={scene.id} key={scene.id}>{scene.path.join(" › ")}</option>)}</select></label></section></div><footer><button>保存人物资料</button></footer></form><InventoryEditor chatId={props.chatId} holderType="npc" holderName={props.npc.name} items={props.items} onRefresh={props.onRefresh} onError={props.onError} /></div></section></div>;
+  return createPortal(
+    <div className="rpg-window-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}>
+      <section className="rpg-window" role="dialog" aria-modal="true" aria-label={`${props.npc.name}人物档案`}>
+        <header><div><small>人物档案</small><h2>{props.npc.name}</h2><p>{importanceLabel(draft.importance)} · {presenceLabel(draft.presence)}</p></div><button type="button" className="rpg-close" onClick={props.onClose} aria-label="关闭人物档案">×</button></header>
+        <nav className="rpg-window-tabs" aria-label="人物档案页面">
+          <button type="button" className={tab === "intro" ? "active" : ""} onClick={() => setTab("intro")}>介绍</button>
+          <button type="button" className={tab === "attributes" ? "active" : ""} onClick={() => setTab("attributes")}>属性</button>
+          <button type="button" className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>物品</button>
+        </nav>
+        <div className="rpg-window-page">
+          {tab === "intro" ? <form className="rpg-profile-form" onSubmit={save}><section><h3>人物介绍</h3><textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} rows={8} placeholder="身份、经历与人物介绍" /><label>外观与穿着<textarea value={draft.outfit} onChange={(event) => setDraft({ ...draft, outfit: event.target.value })} rows={5} /></label></section><footer><button>保存人物资料</button></footer></form>
+            : tab === "attributes" ? <form className="rpg-profile-form" onSubmit={save}><section><h3>人物属性</h3><label>当前状态<input value={draft.condition} onChange={(event) => setDraft({ ...draft, condition: event.target.value })} /></label><label>与主控人物的关系<input value={draft.relation_to_user} onChange={(event) => setDraft({ ...draft, relation_to_user: event.target.value })} /></label><label>重要程度<select value={draft.importance} onChange={(event) => setDraft({ ...draft, importance: event.target.value as Npc["importance"] })}><option value="core">核心人物</option><option value="supporting">重要配角</option><option value="minor">次要人物</option></select></label><label>出场状态<select value={draft.presence} onChange={(event) => setDraft({ ...draft, presence: event.target.value as Npc["presence"] })}><option value="present">在场</option><option value="nearby">附近</option><option value="away">离场</option><option value="unknown">未知</option></select></label><label>所在地点<select value={draft.location_scene_id ?? ""} onChange={(event) => setDraft({ ...draft, location_scene_id: event.target.value || null })}><option value="">未知</option>{props.scenes.map((scene) => <option value={scene.id} key={scene.id}>{scene.path.join(" › ")}</option>)}</select></label></section><footer><button>保存人物属性</button></footer></form>
+            : <InventoryEditor chatId={props.chatId} holderType="npc" holderName={props.npc.name} items={props.items} onRefresh={props.onRefresh} onError={props.onError} />}
+        </div>
+      </section>
+    </div>,
+    document.querySelector(".app-shell") ?? document.body,
+  );
 }
 
 function InventoryEditor(props: { chatId: string; holderType: "npc" | "scene"; holderName: string; items: StateEntry[]; onRefresh: () => Promise<void> | void; onError: (reason: unknown) => void }) {
@@ -351,7 +401,6 @@ function ContextDebugPanel({ traces }: { traces: AgentTrace[] }) {
 }
 
 type LedgerCategory = "item" | "npc" | "scene" | "thread" | "other";
-function eventCount(deltas: NarrativeDelta[], timeline: TimelineAnchor[]) { const valid = deltas.filter((item) => item.valid); const sources = new Set(valid.map((item) => item.assistant_message_id)); return valid.length + timeline.filter((item) => !item.source_message_id || !sources.has(item.source_message_id)).length; }
 type ItemRecord = { owner: string; quantity: string; status: string; location: string; description: string };
 function itemEntries(entries: StateEntry[]) { return entries.filter((entry) => /^(物品|item)\s*[:：]/i.test(entry.entity)); }
 function itemValue(value: unknown): ItemRecord {

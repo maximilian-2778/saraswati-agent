@@ -627,7 +627,7 @@ export default function App() {
           ) : loading && messages.length === 0 ? (
             <EmptyState title="正在载入…" detail="" />
           ) : messages.length === 0 ? (
-            <EmptyState title="故事尚未开始" detail="在下方写下第一句话。" />
+            <EmptyState title="故事尚未开始" detail="" />
           ) : (
             messages.map((message) => <MessageBubble
               key={message.id}
@@ -662,7 +662,6 @@ export default function App() {
         }}>回到底部 ↓</button>}
 
         <form className="composer" onSubmit={sendMessage}>
-          <button type="button" className="composer-memory" onClick={() => setInspectorOpen(true)} disabled={!selectedChatId} aria-label="打开控制台" title="控制台">◫</button>
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -672,7 +671,7 @@ export default function App() {
                 event.currentTarget.form?.requestSubmit();
               }
             }}
-            placeholder={selectedChatId ? "继续你的故事…" : "请先创建存档"}
+            placeholder={selectedChatId ? (!loading && messages.length === 0 ? "写下故事的开篇" : "继续你的故事…") : "请先创建存档"}
             disabled={!selectedChatId || sending}
             rows={1}
           />
