@@ -2,6 +2,7 @@
 
 import os
 import json
+import sys
 from dataclasses import asdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,8 +11,23 @@ from typing import Any
 from dotenv import load_dotenv
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+IS_PACKAGED = bool(getattr(sys, "frozen", False))
 load_dotenv(PROJECT_ROOT / ".env")
+
+
+def _default_data_dir() -> Path:
+    override = os.getenv("SARASWATI_DATA_DIR", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    if IS_PACKAGED:
+        local_app_data = os.getenv("LOCALAPPDATA", "").strip()
+        base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+        return base / "Saraswati Agent"
+    return PROJECT_ROOT / "data"
+
+
+DATA_ROOT = _default_data_dir()
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,8 +77,8 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         """从系统环境变量和 `.env` 文件加载配置。"""
-        data_dir = PROJECT_ROOT / "data"
-        data_dir.mkdir(exist_ok=True)
+        data_dir = DATA_ROOT
+        data_dir.mkdir(parents=True, exist_ok=True)
         default_db = f"sqlite:///{(data_dir / 'saraswati_v1.db').as_posix()}"
 
         settings_file = data_dir / "settings.json"

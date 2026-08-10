@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+import re
+import secrets
 from typing import Any
 
 from sqlalchemy import select
@@ -20,10 +22,16 @@ from backend.models import (
     StoryWorldBookRecord,
 )
 from backend.schemas import MemoryKind
+
+
+# Per-process activation windows. They are deliberately ephemeral: lorebook timing
+# affects generation, but does not become canonical story data or pollute exports.
+_WORLD_ENTRY_WINDOWS: dict[str, tuple[int, int]] = {}
 from backend.services.memory import MemoryService, RetrievedMemory
 from backend.services.narrative_memory import NarrativeMemoryService
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
+from backend.services.timeline import timeline_service
 from backend.services.world_engine import WorldEngineService
 from backend.services.token_budget import TokenBudgetManager
 from backend.utils import clean_story_text, json_loads
@@ -65,6 +73,7 @@ class ContextBuilder:
         model: ModelClient,
         chat: ChatRecord,
         query: str,
+        include_debug_content: bool = False,
         through: datetime | None = None,
     ) -> ContextBundle:
         state_entries = self.state_service.list_entries(db, chat.id)
@@ -181,6 +190,7 @@ class ContextBuilder:
             for record in active_world_entries[:12]
         ]
         roleplay_graph = self.graph_service.context_text(db, chat.id, query)
+        timeline_context = timeline_service.context_text(db, chat.id)
         evolving_world = self.world_engine_service.context_text(db, chat.id)
 
         system_prompt = "你正在进行长篇角色扮演。保持人物语气、剧情连贯和沉浸感。"
@@ -200,6 +210,14 @@ class ContextBuilder:
         character_prompts = [item.system_prompt.strip() for item in characters if item.system_prompt.strip()]
         if character_prompts:
             system_prompt += "\n\n角色专属指令：\n" + "\n".join(character_prompts)
+        post_history_prompts = []
+        for item in characters:
+            compatibility = json_loads(item.compatibility_data_json) or {}
+            value = str((compatibility.get("saraswati_fields") or {}).get("post_history_instructions", "")).strip()
+            if value:
+                post_history_prompts.append(value)
+        if post_history_prompts:
+            system_prompt += "\n\n对话历史后的角色指令：\n" + "\n".join(post_history_prompts)
         system_prompt += (
             "\n\n当前角色档案：\n"
             + ("\n".join(character_lines) if character_lines else "- 暂未设置")
@@ -207,6 +225,8 @@ class ContextBuilder:
             + ("\n".join(world_lines) if world_lines else "- 本轮没有触发词条")
             + "\n\n当前场景与人物关系：\n"
             + (roleplay_graph or "- 暂无结构化场景或 NPC 记录")
+            + "\n\n故事时间线：\n"
+            + (timeline_context or "- 暂无明确的故事时间锚点")
             + "\n\n持续演化的世界状态：\n"
             + (evolving_world or "- 尚未启用世界推演")
         )
@@ -262,6 +282,7 @@ class ContextBuilder:
             ("summary", "长期总结", bool(summary_text), "近期窗口之外的最高可信摘要节点", summary_text),
             ("rag", "RAG 召回记忆", bool(memory_lines), "与用户最新消息相关的长期记忆", "\n".join(memory_lines)),
             ("scene", "当前场景和人物", bool(roleplay_graph), "当前地点、在场 NPC 和相关人物关系", roleplay_graph),
+            ("timeline", "故事时间线", bool(timeline_context), "当前故事时间、最近推进与时间矛盾", timeline_context),
             ("evolving_world", "世界演化状态", bool(evolving_world), "势力、持续事件和正在传播的信息", evolving_world),
             ("state", "数值与物品状态", bool(state_lines), "与本轮话题相关的已批准精确状态", "\n".join(state_lines)),
             ("recent", "最近对话", bool(recent_dialogue), "仍在原文窗口内的最近消息", "\n\n".join(f"{item.role}: {item.content}" for item in recent_dialogue)),
@@ -283,6 +304,7 @@ class ContextBuilder:
             input_budget,
             section_texts,
             model_name=model.model_name,
+            include_debug_content=include_debug_content,
         )
         for key, label, enabled, reason, content in section_definitions:
             section_diagnostics = diagnostics["sections"].get(label, {})
@@ -292,24 +314,31 @@ class ContextBuilder:
                     "label": label,
                     "enabled": enabled,
                     "reason": reason if enabled else "本轮没有可加入的内容",
-                    "content": content,
                 }
             )
+            if include_debug_content:
+                section_diagnostics["content"] = content
         diagnostics["sections"] = [
             diagnostics["sections"][label]
             for _, label, _, _, _ in section_definitions
         ]
-        diagnostics["world_book_triggers"] = world_trigger_log
+        diagnostics["world_book_triggers"] = (
+            world_trigger_log
+            if include_debug_content
+            else [{"id": item["id"], "included": item["included"]} for item in world_trigger_log]
+        )
         diagnostics["rag_retrieval"] = [
             {
                 "memory_id": item.record.id,
                 "score": round(item.score, 6),
-                "reason": item.reason,
-                "preview": item.record.content[:240],
+                **({"reason": item.reason} if include_debug_content else {}),
+                **({"preview": item.record.content[:240]} if include_debug_content else {}),
             }
             for item in retrieved
         ]
-        diagnostics["final_prompt"] = messages
+        diagnostics["debug_content_included"] = include_debug_content
+        if include_debug_content:
+            diagnostics["final_prompt"] = messages
         return ContextBundle(
             messages,
             retrieved,
@@ -351,8 +380,16 @@ def _activate_world_entries(
     """按每条词条的扫描范围激活，并处理递归和互斥组。"""
     active: list[StoryWorldBookRecord] = []
     active_ids: set[str] = set()
+    turn = len(recent)
 
     def matches(record: StoryWorldBookRecord, extra: str = "") -> bool:
+        compatibility = json_loads(record.compatibility_data_json) or {}
+        options = compatibility.get("saraswati_fields") or {}
+        active_until, cooldown_until = _WORLD_ENTRY_WINDOWS.get(record.id, (-1, -1))
+        if turn <= active_until:
+            return True
+        if turn <= cooldown_until or turn < max(0, int(options.get("delay", 0))):
+            return False
         history = "\n".join(item.content for item in recent[-record.scan_depth:])
         haystack = f"{history}\n{query}\n{extra}"
         if not record.case_sensitive:
@@ -362,27 +399,49 @@ def _activate_world_entries(
 
         def contains(value: str) -> bool:
             needle = value if record.case_sensitive else value.casefold()
+            if options.get("match_whole_words"):
+                return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack) is not None
             return needle in haystack
 
         primary_ok = record.constant or not primary or any(contains(item) for item in primary)
-        secondary_ok = not secondary or any(contains(item) for item in secondary)
-        return primary_ok and secondary_ok
+        matches_secondary = [contains(item) for item in secondary]
+        logic = options.get("selective_logic", "and_any")
+        secondary_ok = (
+            not secondary
+            or (logic == "and_all" and all(matches_secondary))
+            or (logic == "not_any" and not any(matches_secondary))
+            or (logic == "not_all" and not all(matches_secondary))
+            or (logic == "and_any" and any(matches_secondary))
+        )
+        probability = max(0, min(100, int(options.get("probability", 100))))
+        return primary_ok and secondary_ok and (probability >= 100 or secrets.randbelow(100) < probability)
+
+    def mark_activation(record: StoryWorldBookRecord) -> None:
+        options = (json_loads(record.compatibility_data_json) or {}).get("saraswati_fields") or {}
+        sticky = max(0, int(options.get("sticky", 0)))
+        cooldown = max(0, int(options.get("cooldown", 0)))
+        _WORLD_ENTRY_WINDOWS[record.id] = (turn + sticky, turn + sticky + cooldown)
 
     for record in records:
         if matches(record):
             active.append(record)
             active_ids.add(record.id)
+            mark_activation(record)
 
     changed = True
     while changed:
         changed = False
-        recursive_text = "\n".join(item.content for item in active if item.recursive)
+        recursive_text = "\n".join(
+            item.content for item in active
+            if item.recursive and not (json_loads(item.compatibility_data_json) or {}).get("saraswati_fields", {}).get("prevent_recursion", False)
+        )
         if not recursive_text:
             break
         for record in records:
             if record.id not in active_ids and matches(record, recursive_text):
                 active.append(record)
                 active_ids.add(record.id)
+                mark_activation(record)
                 changed = True
 
     grouped: dict[str, StoryWorldBookRecord] = {}

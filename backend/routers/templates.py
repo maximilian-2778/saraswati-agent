@@ -314,6 +314,7 @@ def duplicate_character_template(
         example_dialogue=source.example_dialogue, tags_json=source.tags_json,
         creator_notes=source.creator_notes, system_prompt=source.system_prompt,
         favorite=False, world_book_ids_json=source.world_book_ids_json,
+        compatibility_data_json=source.compatibility_data_json,
         created_at=now, updated_at=now,
     )
     db.add(record)

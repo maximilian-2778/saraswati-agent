@@ -71,6 +71,7 @@ class TokenBudgetManager:
         input_budget: int,
         section_texts: dict[str, str],
         model_name: str | None = None,
+        include_debug_content: bool = False,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         counter = token_counter_for_model(model_name)
         fitted = [dict(message) for message in messages]
@@ -82,14 +83,15 @@ class TokenBudgetManager:
         while len(fitted) > 2 and self._tokens(fitted, counter) > input_budget:
             removed = fitted.pop(1)
             removed_content = str(removed.get("content", ""))
-            dropped_messages.append(
-                {
-                    "role": str(removed.get("role", "unknown")),
-                    "estimated_tokens": counter.count(removed_content),
-                    "characters": len(removed_content),
-                    "preview": removed_content[:160],
-                }
-            )
+            if include_debug_content:
+                dropped_messages.append(
+                    {
+                        "role": str(removed.get("role", "unknown")),
+                        "estimated_tokens": counter.count(removed_content),
+                        "characters": len(removed_content),
+                        "preview": removed_content[:160],
+                    }
+                )
             dropped += 1
 
         truncated_system = False

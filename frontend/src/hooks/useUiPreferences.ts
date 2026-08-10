@@ -12,7 +12,7 @@ export interface UiPreferences {
 }
 
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
-  theme: "ink",
+  theme: "paper",
   fontScale: 1,
   compactMessages: false,
   reduceMotion: false,

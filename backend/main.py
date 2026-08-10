@@ -5,9 +5,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from backend.api import router
-from backend.config import Settings
+from backend.config import PROJECT_ROOT, Settings
 from backend.database import Database
 from backend.llm import ModelClient, build_model_client
 from backend.migrations import upgrade_database
@@ -37,7 +38,7 @@ def create_app(
 
     app = FastAPI(
         title="Saraswati Agent API",
-        version="1.2.0",
+        version="1.3.0",
         description="带分层记忆、状态账本和一致性审计的角色扮演 Agent 后端。",
         lifespan=lifespan,
     )
@@ -54,6 +55,9 @@ def create_app(
     app.state.model = model
     app.state.runtime = runtime
     app.include_router(router, prefix="/api")
+    frontend_dist = PROJECT_ROOT / "frontend" / "dist"
+    if frontend_dist.is_dir():
+        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
     return app
 
 

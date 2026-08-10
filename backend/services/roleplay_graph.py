@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import re
+import unicodedata
 from typing import Any
 from uuid import uuid4
 
@@ -46,6 +48,7 @@ class RoleplayGraphService:
         source_message_id: str | None = None,
         scene_id: str | None = None,
         record_event: bool = True,
+        aliases: list[str] | None = None,
     ) -> SceneNodeRecord:
         parent = self._scene_parent(db, chat_id, parent_id)
         record = db.get(SceneNodeRecord, scene_id) if scene_id else None
@@ -54,13 +57,7 @@ class RoleplayGraphService:
         if record and record.chat_id != chat_id:
             raise ValueError("场景不属于当前故事")
         if not record:
-            record = db.scalar(
-                select(SceneNodeRecord).where(
-                    SceneNodeRecord.chat_id == chat_id,
-                    SceneNodeRecord.parent_id == parent_id,
-                    SceneNodeRecord.name == name.strip(),
-                )
-            )
+            record = self.resolve_scene(db, chat_id, name, parent_id)
         now = datetime.now(UTC)
         if not record:
             record = SceneNodeRecord(
@@ -69,6 +66,7 @@ class RoleplayGraphService:
                 parent_id=parent.id if parent else None,
                 name=name.strip(),
                 description=description.strip(),
+                aliases_json=json_dumps(self._clean_aliases(aliases or [], name)),
                 is_current=False,
                 source_message_id=source_message_id,
                 created_at=now,
@@ -79,7 +77,17 @@ class RoleplayGraphService:
             if parent and self._would_cycle(db, record.id, parent.id):
                 raise ValueError("场景父级不能指向自身或后代")
             record.parent_id = parent.id if parent else None
-            record.name = name.strip()
+            incoming_name = name.strip()
+            canonical_name = incoming_name if scene_id else record.name
+            rename_aliases = [record.name] if scene_id and incoming_name != record.name else []
+            known_aliases = self._clean_aliases(
+                (json_loads(record.aliases_json) or []) + (aliases or [])
+                + rename_aliases + ([incoming_name] if not scene_id and incoming_name != record.name else []),
+                canonical_name,
+            )
+            record.aliases_json = json_dumps(known_aliases)
+            if scene_id:
+                record.name = incoming_name
             if description.strip():
                 record.description = description.strip()
             record.source_message_id = source_message_id or record.source_message_id
@@ -99,11 +107,45 @@ class RoleplayGraphService:
                 {
                     "path": self.scene_path(record, {item.id: item for item in records}),
                     "description": record.description,
+                    "aliases": json_loads(record.aliases_json) or [],
                     "is_current": record.is_current,
                 },
                 source_message_id,
             )
         return record
+
+    def resolve_scene(
+        self, db: Session, chat_id: str, name: str, parent_id: str | None = None
+    ) -> SceneNodeRecord | None:
+        identity = self._scene_identity(name)
+        candidates = db.scalars(select(SceneNodeRecord).where(
+            SceneNodeRecord.chat_id == chat_id,
+            SceneNodeRecord.parent_id == parent_id,
+        )).all()
+        for item in candidates:
+            names = [item.name, *(json_loads(item.aliases_json) or [])]
+            if any(self._scene_identity(candidate) == identity for candidate in names):
+                return item
+        return None
+
+    @staticmethod
+    def _scene_identity(value: str) -> str:
+        value = unicodedata.normalize("NFKC", value).casefold().strip()
+        value = re.sub(r"[\s·•—_\-，。、“”‘’'\"（）()【】\[\]]+", "", value)
+        return re.sub(r"(?:地点|区域|场景)$", "", value)
+
+    @classmethod
+    def _clean_aliases(cls, aliases: list[str], canonical: str) -> list[str]:
+        canonical_id = cls._scene_identity(canonical)
+        result: list[str] = []
+        seen = {canonical_id}
+        for alias in aliases:
+            cleaned = str(alias).strip()
+            identity = cls._scene_identity(cleaned)
+            if cleaned and identity and identity not in seen:
+                result.append(cleaned)
+                seen.add(identity)
+        return result[:30]
 
     def upsert_scene_path(
         self,
@@ -251,6 +293,10 @@ class RoleplayGraphService:
                     event.source_message_id,
                     record_event=False,
                 )
+                scene = self._find_scene_by_path(db, chat_id, list(payload.get("path") or []))
+                if scene:
+                    scene.aliases_json = json_dumps(self._clean_aliases(list(payload.get("aliases") or []), scene.name))
+                    db.commit()
             elif event.event_type == "npc_upsert":
                 location_id = None
                 location_path = list(payload.get("location_path") or [])
@@ -344,6 +390,10 @@ class RoleplayGraphService:
             target.description = "\n\n".join(
                 item for item in (target.description.strip(), source.description.strip()) if item
             )
+        target.aliases_json = json_dumps(self._clean_aliases(
+            (json_loads(target.aliases_json) or []) + [source.name] + (json_loads(source.aliases_json) or []),
+            target.name,
+        ))
         target.is_current = target.is_current or source.is_current
         target.updated_at = datetime.now(UTC)
         db.delete(source)
@@ -392,12 +442,14 @@ class RoleplayGraphService:
     def _find_scene_by_path(
         self, db: Session, chat_id: str, path: list[str]
     ) -> SceneNodeRecord | None:
-        records = self.list_scenes(db, chat_id)
-        by_id = {item.id: item for item in records}
-        return next(
-            (item for item in records if self.scene_path(item, by_id) == path),
-            None,
-        )
+        parent_id: str | None = None
+        current: SceneNodeRecord | None = None
+        for name in path:
+            current = self.resolve_scene(db, chat_id, name, parent_id)
+            if current is None:
+                return None
+            parent_id = current.id
+        return current
 
     def context_text(self, db: Session, chat_id: str, query: str) -> str:
         scenes = self.list_scenes(db, chat_id)

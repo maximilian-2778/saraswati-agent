@@ -49,7 +49,10 @@ def test_prompt_preset_activation_only_adds_writing_prompts(
     client.app.state.model = test_model
     client.app.state.runtime.model = test_model
 
-    turn = client.post(f"/api/chats/{chat_id}/messages", json={"content": "继续。"}).json()
+    turn = client.post(
+        f"/api/chats/{chat_id}/messages",
+        json={"content": "继续。", "context_debug": True},
+    ).json()
     context = next(item for item in turn["trace"] if item["event_type"] == "context_built")
     prompt = context["payload"]["token_budget"]["final_prompt"]
     assert "长篇角色扮演" in prompt[0]["content"]

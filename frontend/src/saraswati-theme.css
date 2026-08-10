@@ -461,6 +461,11 @@ select {
   padding-right: 3px;
   overflow-x: clip;
   contain: paint;
+  scrollbar-width: none;
+}
+
+.chat-list::-webkit-scrollbar {
+  display: none;
 }
 
 .chat-entry {
@@ -1245,7 +1250,7 @@ select {
   flex: 1 1 auto;
   height: 1px;
   min-width: 24px;
-  background: rgb(91 112 151 / 72%);
+  background: color-mix(in srgb, var(--accent) 72%, transparent);
 }
 
 .composer .composer-rule img {
@@ -1311,6 +1316,13 @@ select {
 .composer:focus-within::after {
   opacity: .9;
   filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--accent) 18%, transparent));
+}
+
+/* The ornament PNGs are authored in the paper theme's indigo. Re-tint only
+   the dark theme so its composer uses the same restrained gold as the rest
+   of the interface. */
+.theme-ink .composer .composer-rule img {
+  filter: grayscale(1) sepia(1) saturate(1.85) hue-rotate(356deg) brightness(1.16) contrast(.92);
 }
 
 .composer textarea {

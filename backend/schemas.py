@@ -68,8 +68,12 @@ class CharacterProfileUpdate(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=50)
     creator_notes: str = Field(default="", max_length=20_000)
     system_prompt: str = Field(default="", max_length=20_000)
+    post_history_instructions: str = Field(default="", max_length=20_000)
+    creator: str = Field(default="", max_length=200)
+    character_version: str = Field(default="", max_length=100)
     favorite: bool = False
     world_book_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    compatibility_data: dict[str, Any] = Field(default_factory=dict)
 
 
 class CharacterTemplateCreate(CharacterProfileUpdate):
@@ -125,7 +129,7 @@ class WorldBookEntryCreate(BaseModel):
     keywords: list[str] = Field(default_factory=list, max_length=30)
     secondary_keywords: list[str] = Field(default_factory=list, max_length=30)
     content: str = Field(min_length=1, max_length=20_000)
-    priority: int = Field(default=50, ge=0, le=100)
+    priority: int = Field(default=50, ge=0, le=10_000)
     enabled: bool = True
     constant: bool = False
     case_sensitive: bool = False
@@ -133,8 +137,17 @@ class WorldBookEntryCreate(BaseModel):
     insertion_position: Literal["before_history", "after_history", "system"] = "before_history"
     group_name: str = Field(default="", max_length=100)
     recursive: bool = False
+    selective_logic: Literal["and_any", "and_all", "not_any", "not_all"] = "and_any"
+    probability: int = Field(default=100, ge=0, le=100)
+    match_whole_words: bool = False
+    prevent_recursion: bool = False
+    depth: int = Field(default=4, ge=0, le=100)
+    sticky: int = Field(default=0, ge=0, le=10_000)
+    cooldown: int = Field(default=0, ge=0, le=10_000)
+    delay: int = Field(default=0, ge=0, le=10_000)
     token_budget: int = Field(default=2048, ge=64, le=20_000)
     scope: Literal["global", "character", "persona", "story"] = "global"
+    compatibility_data: dict[str, Any] = Field(default_factory=dict)
 
 
 class WorldBookEntryUpdate(WorldBookEntryCreate):
@@ -164,6 +177,7 @@ class WorldBookEntryRead(WorldBookEntryCreate):
 
 class MessageSend(BaseModel):
     content: str = Field(min_length=1, max_length=20_000)
+    context_debug: bool = False
 
 
 class MessageUpdate(BaseModel):
@@ -270,6 +284,14 @@ class NarrativeNodeRead(BaseModel):
     created_at: datetime
 
 
+class NarrativeFloorSummaryRequest(BaseModel):
+    detail_mode: Literal["brief", "detailed"] = "brief"
+
+
+class NarrativeNodeUpdate(BaseModel):
+    content: str = Field(min_length=1, max_length=20_000)
+
+
 class NarrativeDeltaRead(BaseModel):
     id: UUID
     chat_id: UUID
@@ -294,6 +316,7 @@ class SceneNodeUpsert(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     parent_id: UUID | None = None
     description: str = Field(default="", max_length=10_000)
+    aliases: list[str] = Field(default_factory=list, max_length=30)
     is_current: bool = False
 
 
@@ -340,6 +363,8 @@ class TimelineAnchorCreate(BaseModel):
 class TimelineAnchorRead(TimelineAnchorCreate):
     id: UUID
     chat_id: UUID
+    is_conflict: bool = False
+    conflict_reason: str = ""
     created_at: datetime
     updated_at: datetime
 

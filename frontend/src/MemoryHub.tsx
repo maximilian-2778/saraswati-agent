@@ -6,6 +6,7 @@ import type {
   AgentTrace,
   AuditIssue,
   Memory,
+  Message,
   MemoryCoverage,
   NarrativeNode,
   NarrativeDelta,
@@ -25,6 +26,7 @@ interface MemoryHubProps {
   activeTab: MemoryHubTab;
   onTab: (tab: MemoryHubTab) => void;
   memories: Memory[];
+  messages: Message[];
   memoryGraph: NarrativeNode[];
   deltas: NarrativeDelta[];
   worldEngine: WorldEngineSnapshot | null;
@@ -88,7 +90,7 @@ function OverviewPanel(props: MemoryHubProps & { chatId: string }) {
   const currentScene = props.scenes.find((item) => item.is_current);
   const presentNpcs = props.npcs.filter((item) => item.presence === "present" || item.presence === "nearby");
   const latestDelta = [...props.deltas].reverse().find((item) => item.valid);
-  const latestTime = props.timeline.at(-1);
+  const latestTime = props.timeline.filter((item) => !item.is_conflict).at(-1);
   const pending = props.proposals.filter((item) => item.status === "pending");
   return <div className="console-overview">
     <section className="console-hero"><small>故事当前状态</small><h2>{currentScene?.name ?? "地点尚未记录"}</h2><p>{currentScene?.description || latestDelta?.payload.summary || "继续对话后，这里会整理当前剧情。"}</p></section>
@@ -111,7 +113,7 @@ function EventsPanel(props: MemoryHubProps & { chatId: string }) {
   const deltaSources = new Set(validDeltas.map((item) => item.assistant_message_id));
   const events = [
     ...validDeltas.map((item) => ({ id: `delta-${item.id}`, date: item.created_at, time: item.payload.time_change || "剧情", title: item.payload.summary || "本轮剧情", detail: item.payload.facts?.join("；") || "", kind: "剧情" })),
-    ...props.timeline.filter((item) => !item.source_message_id || !deltaSources.has(item.source_message_id)).map((item) => ({ id: `time-${item.id}`, date: item.created_at, time: item.story_time, title: item.description, detail: "", kind: "时间" })),
+    ...props.timeline.filter((item) => item.is_conflict || !item.source_message_id || !deltaSources.has(item.source_message_id)).map((item) => ({ id: `time-${item.id}`, date: item.created_at, time: item.story_time, title: item.description, detail: item.conflict_reason, kind: item.is_conflict ? "时间矛盾" : "时间" })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   async function add(event: FormEvent) { event.preventDefault(); try { await api.createTimelineAnchor(props.chatId, { story_time: storyTime, description }); setStoryTime(""); setDescription(""); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
   return <div className="panel-stack event-console">
@@ -157,7 +159,8 @@ function SceneWindow(props: { scene: SceneNode; scenes: SceneNode[]; npcs: Npc[]
   const [description, setDescription] = useState(props.scene.description);
   const [parentId, setParentId] = useState(props.scene.parent_id ?? "");
   const [current, setCurrent] = useState(props.scene.is_current);
-  async function save(event: FormEvent) { event.preventDefault(); try { await api.updateScene(props.chatId, props.scene.id, { name: props.scene.name, description, parent_id: parentId || null, is_current: current }); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
+  const [aliases, setAliases] = useState(props.scene.aliases.join("、"));
+  async function save(event: FormEvent) { event.preventDefault(); try { await api.updateScene(props.chatId, props.scene.id, { name: props.scene.name, description, aliases: aliases.split(/[、,，]/).map((item) => item.trim()).filter(Boolean), parent_id: parentId || null, is_current: current }); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
   return createPortal(
     <div className="rpg-window-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}>
       <section className="rpg-window" role="dialog" aria-modal="true" aria-label={`${props.scene.name}地点档案`}>
@@ -169,7 +172,7 @@ function SceneWindow(props: { scene: SceneNode; scenes: SceneNode[]; npcs: Npc[]
         </nav>
         <div className="rpg-window-page">
           {tab === "intro" ? <form className="rpg-profile-form" onSubmit={save}><section><h3>地点介绍</h3><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={12} placeholder="地点介绍" /><p className="rpg-related">在场人物：{props.npcs.filter((npc) => npc.location_scene_id === props.scene.id).map((npc) => npc.name).join("、") || "暂无"}</p></section><footer><button>保存地点资料</button></footer></form>
-            : tab === "attributes" ? <form className="rpg-profile-form" onSubmit={save}><section><h3>地点属性</h3><label>上级地点<select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">顶层地点</option>{props.scenes.filter((item) => item.id !== props.scene.id).map((item) => <option value={item.id} key={item.id}>{item.path.join(" › ")}</option>)}</select></label><label className="rpg-check"><input type="checkbox" checked={current} onChange={(event) => setCurrent(event.target.checked)} /> 设为当前位置</label></section><footer><button>保存地点属性</button></footer><details className="merge-place"><summary>合并重复地点</summary><select value={props.mergeTarget} onChange={(event) => props.onMergeTarget(event.target.value)}><option value="">选择保留的地点</option>{props.scenes.filter((scene) => scene.id !== props.scene.id).map((scene) => <option value={scene.id} key={scene.id}>{scene.path.join(" › ")}</option>)}</select><button type="button" disabled={!props.mergeTarget} onClick={() => void props.onMerge()}>合并</button></details></form>
+            : tab === "attributes" ? <form className="rpg-profile-form" onSubmit={save}><section><h3>地点属性</h3><label>别名<input value={aliases} onChange={(event) => setAliases(event.target.value)} placeholder="用顿号分隔，如：旧宅、祖屋" /></label><label>上级地点<select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">顶层地点</option>{props.scenes.filter((item) => item.id !== props.scene.id).map((item) => <option value={item.id} key={item.id}>{item.path.join(" › ")}</option>)}</select></label><label className="rpg-check"><input type="checkbox" checked={current} onChange={(event) => setCurrent(event.target.checked)} /> 设为当前位置</label></section><footer><button>保存地点属性</button></footer><details className="merge-place"><summary>合并重复地点</summary><select value={props.mergeTarget} onChange={(event) => props.onMergeTarget(event.target.value)}><option value="">选择保留的地点</option>{props.scenes.filter((scene) => scene.id !== props.scene.id).map((scene) => <option value={scene.id} key={scene.id}>{scene.path.join(" › ")}</option>)}</select><button type="button" disabled={!props.mergeTarget} onClick={() => void props.onMerge()}>合并</button></details></form>
             : <InventoryEditor chatId={props.chatId} holderType="scene" holderName={props.scene.name} items={props.items} onRefresh={props.onRefresh} onError={props.onError} />}
         </div>
       </section>
@@ -217,6 +220,7 @@ function SummaryPanel(props: MemoryHubProps & { chatId: string }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [editing, setEditing] = useState<Memory | null>(null);
   const [busy, setBusy] = useState(false);
+  const [nodeEditing, setNodeEditing] = useState<NarrativeNode | null>(null);
   const summaries = props.memories.filter((item) => item.kind === "summary");
   const levels = useMemo(() => ({
     arc: summaries.filter((item) => item.content.startsWith("[篇章概览")),
@@ -243,10 +247,19 @@ function SummaryPanel(props: MemoryHubProps & { chatId: string }) {
   async function backfill() {
     await run(() => api.backfillMemory(props.chatId));
   }
+  async function saveNode(event: FormEvent) {
+    event.preventDefault();
+    if (!nodeEditing) return;
+    await run(() => api.updateNarrativeNode(props.chatId, nodeEditing.id, nodeEditing.content));
+    setNodeEditing(null);
+  }
+  const missingFloors = props.messages.filter((item) => item.role === "assistant" && props.coverage?.missing_message_ids.includes(item.id));
   const toggle = (id: string) => setSelected((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id]);
   return <div className="panel-stack summary-panel">
-    {props.coverage && <section className={`coverage-card ${props.coverage.coverage_ratio < 1 ? "warning" : "healthy"}`}><header><strong>整理进度</strong><b>{Math.round(props.coverage.coverage_ratio * 100)}%</b></header><div className="coverage-track"><i style={{ width: `${props.coverage.coverage_ratio * 100}%` }} /></div>{props.coverage.missing_message_ids.length > 0 && <button disabled={busy} onClick={() => void backfill()}>整理旧消息</button>}</section>}
-    {graphLevels.map(([level, nodes]) => <section className="summary-section forest-level" key={level}><h3>{level === 0 ? "逐轮摘要" : level === 1 ? "章节回顾" : "长篇回顾"}<small>{nodes.length}</small></h3>{nodes.map((node) => <article className={`summary-card forest-node ${node.active ? "active" : ""} ${node.valid ? "" : "invalid"}`} key={node.id}><header><span>{node.active ? "本轮会参考" : node.valid ? "已保存" : "等待重整"}</span>{node.child_ids.length > 0 && <small>整理自 {node.child_ids.length} 段摘要</small>}</header><p>{node.content}</p>{(node.time_start || node.time_end) && <time>{node.time_start ?? "?"}{node.time_end && node.time_end !== node.time_start ? ` → ${node.time_end}` : ""}</time>}</article>)}</section>)}
+    {props.coverage && <section className={`coverage-card ${props.coverage.coverage_ratio < 1 ? "warning" : "healthy"}`}><header><strong>整理进度</strong><b>{Math.round(props.coverage.coverage_ratio * 100)}%</b></header><div className="coverage-track"><i style={{ width: `${props.coverage.coverage_ratio * 100}%` }} /></div>{props.coverage.missing_message_ids.length > 0 && <button disabled={busy} onClick={() => void backfill()}>整理全部遗漏</button>}</section>}
+    {missingFloors.length > 0 && <section className="summary-section"><h3>待补摘楼层<small>{missingFloors.length}</small></h3>{missingFloors.map((message) => <article className="summary-card" key={message.id}><p>{message.content.slice(0, 180)}{message.content.length > 180 ? "…" : ""}</p><footer><time>{formatDateTime(message.created_at)}</time><button disabled={busy} onClick={() => void run(() => api.summarizeFloor(props.chatId, message.id, detail))}>补摘这一楼</button></footer></article>)}</section>}
+    {graphLevels.map(([level, nodes]) => <section className="summary-section forest-level" key={level}><h3>{level === 0 ? "逐轮摘要" : level === 1 ? "章节回顾" : "长篇回顾"}<small>{nodes.length}</small></h3>{nodes.map((node) => <article className={`summary-card forest-node ${node.active ? "active" : ""} ${node.valid ? "" : "invalid"}`} key={node.id}><header><span>{node.active ? "本轮会参考" : node.valid ? "已保存" : "等待重整"}</span>{node.child_ids.length > 0 && <small>整理自 {node.child_ids.length} 段摘要</small>}</header><p>{node.content}</p>{(node.time_start || node.time_end) && <time>{node.time_start ?? "?"}{node.time_end && node.time_end !== node.time_start ? ` → ${node.time_end}` : ""}</time>}<footer><button disabled={busy} onClick={() => setNodeEditing(node)}>编辑</button><button disabled={busy} onClick={() => void run(() => api.rebuildNarrativeNode(props.chatId, node.id, detail))}>重建</button><button disabled={busy} onClick={() => void run(() => api.deleteNarrativeNode(props.chatId, node.id))}>删除</button></footer></article>)}</section>)}
+    {nodeEditing && <form className="inline-memory-editor" onSubmit={saveNode}><textarea value={nodeEditing.content} onChange={(event) => setNodeEditing({ ...nodeEditing, content: event.target.value })} rows={7} required /><footer><button type="button" onClick={() => setNodeEditing(null)}>取消</button><button disabled={busy}>保存摘要节点</button></footer></form>}
     <div className="summary-toolbar"><select value={detail} onChange={(e) => setDetail(e.target.value as "brief" | "detailed")}><option value="brief">精简摘要</option><option value="detailed">详细摘要</option></select><button disabled={busy} onClick={() => void run(() => api.summarizeWithDetail(props.chatId, detail))}>总结近期</button><button disabled={busy || selected.length < 2} onClick={() => void run(() => api.mergeMemories(props.chatId, selected, detail))}>合并所选 {selected.length || ""}</button></div>
     {editing && <form className="inline-memory-editor" onSubmit={saveEdit}><textarea value={editing.content} onChange={(e) => setEditing({ ...editing, content: e.target.value })} rows={6} /><label>重要度 <input type="number" min={0} max={1} step={0.1} value={editing.importance} onChange={(e) => setEditing({ ...editing, importance: Number(e.target.value) })} /></label><footer><button type="button" onClick={() => setEditing(null)}>取消</button><button>保存</button></footer></form>}
     <SummarySection title="手动总结" items={levels.manual} selected={selected} onToggle={toggle} onEdit={setEditing} onDelete={(id) => void run(() => api.deleteMemory(props.chatId, id))} />

@@ -135,6 +135,7 @@ class CharacterTemplateRecord(Base):
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     world_book_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    compatibility_data_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -159,6 +160,7 @@ class WorldBookTemplateRecord(Base):
     recursive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=2048)
     scope: Mapped[str] = mapped_column(String(30), nullable=False, default="global")
+    compatibility_data_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -192,6 +194,7 @@ class StoryCharacterRecord(Base):
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     world_book_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    compatibility_data_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -224,6 +227,7 @@ class StoryWorldBookRecord(Base):
     recursive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=2048)
     scope: Mapped[str] = mapped_column(String(30), nullable=False, default="story")
+    compatibility_data_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -431,6 +435,7 @@ class SceneNodeRecord(Base):
     )
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    aliases_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     source_message_id: Mapped[str | None] = mapped_column(
         ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
@@ -558,6 +563,8 @@ class TimelineAnchorRecord(Base):
     )
     story_time: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    is_conflict: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    conflict_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
     source_message_id: Mapped[str | None] = mapped_column(
         ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
     )
@@ -602,6 +609,7 @@ class StateChangeRecord(Base):
     old_value_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     new_value_json: Mapped[str] = mapped_column(Text, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    event_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     source_message_id: Mapped[str | None] = mapped_column(
         ForeignKey("messages.id", ondelete="SET NULL"),
         nullable=True,

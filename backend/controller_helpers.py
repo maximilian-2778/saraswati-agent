@@ -200,6 +200,13 @@ def _records_by_ids(
     return records
 
 def _character_values(payload: CharacterProfileUpdate) -> dict[str, Any]:
+    compatibility = dict(payload.compatibility_data)
+    compatibility["saraswati_fields"] = {
+        **dict(compatibility.get("saraswati_fields") or {}),
+        "post_history_instructions": payload.post_history_instructions,
+        "creator": payload.creator,
+        "character_version": payload.character_version,
+    }
     return {
         "name": payload.name.strip(),
         "identity": payload.identity.strip(),
@@ -216,6 +223,7 @@ def _character_values(payload: CharacterProfileUpdate) -> dict[str, Any]:
         "system_prompt": payload.system_prompt.strip(),
         "favorite": payload.favorite,
         "world_book_ids_json": json_dumps([str(item) for item in payload.world_book_ids]),
+        "compatibility_data_json": json_dumps(compatibility),
     }
 
 def _apply_character(record: Any, payload: CharacterProfileUpdate) -> None:
@@ -246,11 +254,24 @@ def _copy_character_to_story(
         system_prompt=template.system_prompt,
         favorite=template.favorite,
         world_book_ids_json=template.world_book_ids_json,
+        compatibility_data_json=template.compatibility_data_json,
         created_at=now,
         updated_at=now,
     )
 
 def _world_values(payload: WorldBookEntryCreate) -> dict[str, Any]:
+    compatibility = dict(payload.compatibility_data)
+    compatibility["saraswati_fields"] = {
+        **dict(compatibility.get("saraswati_fields") or {}),
+        "selective_logic": payload.selective_logic,
+        "probability": payload.probability,
+        "match_whole_words": payload.match_whole_words,
+        "prevent_recursion": payload.prevent_recursion,
+        "depth": payload.depth,
+        "sticky": payload.sticky,
+        "cooldown": payload.cooldown,
+        "delay": payload.delay,
+    }
     return {
         "title": payload.title.strip(),
         "keywords_json": json_dumps(_clean_keywords(payload.keywords)),
@@ -266,6 +287,7 @@ def _world_values(payload: WorldBookEntryCreate) -> dict[str, Any]:
         "recursive": payload.recursive,
         "token_budget": payload.token_budget,
         "scope": payload.scope,
+        "compatibility_data_json": json_dumps(compatibility),
     }
 
 def _apply_world(record: Any, payload: WorldBookEntryCreate) -> None:
@@ -295,6 +317,7 @@ def _copy_world_to_story(
         recursive=template.recursive,
         token_budget=template.token_budget,
         scope="story",
+        compatibility_data_json=template.compatibility_data_json,
         created_at=now,
         updated_at=now,
     )
@@ -649,6 +672,7 @@ def _copy_story_branch(
                 system_prompt=item.system_prompt,
                 favorite=item.favorite,
                 world_book_ids_json=item.world_book_ids_json,
+                compatibility_data_json=item.compatibility_data_json,
                 created_at=now,
                 updated_at=now,
             )
@@ -678,6 +702,7 @@ def _copy_story_branch(
                 recursive=item.recursive,
                 token_budget=item.token_budget,
                 scope=item.scope,
+                compatibility_data_json=item.compatibility_data_json,
                 created_at=now,
                 updated_at=now,
             )

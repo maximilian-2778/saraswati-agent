@@ -83,6 +83,7 @@ class AgentGraphContext:
     world_engine_service: WorldEngineService
     tool_executor: ToolExecutor
     trace: TraceWriter
+    context_debug: bool = False
     on_token: TokenWriter | None = None
     on_progress: ProgressWriter | None = None
 
@@ -134,6 +135,7 @@ async def _build_context(
         dependencies.model,
         dependencies.chat,
         dependencies.user_message.content,
+        include_debug_content=dependencies.context_debug,
     )
     dependencies.trace(
         dependencies.db,

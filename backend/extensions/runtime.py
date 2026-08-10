@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from backend.config import PROJECT_ROOT
+from backend.config import DATA_ROOT
 from backend.extensions.plugins import McpClient, PluginRegistry
 from backend.extensions.skills import SkillRegistry
 
@@ -16,7 +16,7 @@ class ExtensionRuntime:
     """扩展运行时；发现失败时保持主聊天可用。"""
 
     def __init__(self, root: Path | None = None) -> None:
-        self.root = root or PROJECT_ROOT / "data" / "extensions"
+        self.root = root or DATA_ROOT / "extensions"
         state_file = self.root / "state.json"
         self.skills = SkillRegistry(self.root / "skills", state_file)
         self.plugins = PluginRegistry(self.root / "plugins", state_file)

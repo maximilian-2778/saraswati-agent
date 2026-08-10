@@ -148,6 +148,103 @@ class NarrativeMemoryService:
                 count += 1
         return count
 
+    async def summarize_floor(
+        self, db: Session, model: ModelClient, chat_id: str,
+        assistant_message_id: str, detail_mode: str = "brief", replace: bool = False,
+    ) -> NarrativeNodeView:
+        assistant = db.get(MessageRecord, assistant_message_id)
+        if not assistant or assistant.chat_id != chat_id or assistant.role != "assistant":
+            raise ValueError("指定楼层不是当前故事中的 AI 回复。")
+        existing = db.scalar(select(NarrativeLeafRecord).where(
+            NarrativeLeafRecord.chat_id == chat_id,
+            NarrativeLeafRecord.assistant_message_id == assistant_message_id,
+        ))
+        if existing and not replace and self._leaf_valid(existing, self._load(db, chat_id)[2]):
+            return next(item for item in self.inspect_nodes(db, chat_id) if item.id == existing.id)
+        user = db.scalar(select(MessageRecord).where(
+            MessageRecord.chat_id == chat_id,
+            MessageRecord.role == "user",
+            MessageRecord.created_at <= assistant.created_at,
+        ).order_by(MessageRecord.created_at.desc()))
+        if not user:
+            raise ValueError("该楼层之前没有可配对的用户消息。")
+        if existing:
+            self.delete_node(db, chat_id, existing.id)
+        transcript = f"用户：{clean_story_text(user.content)}\n角色：{clean_story_text(assistant.content)}"
+        summary = await self._summarize(model, transcript, "楼层", detail_mode)
+        memory = await self.memory_service.create(
+            db, model, chat_id, MemoryKind.EPISODIC, f"[楼层摘要] {summary}",
+            importance=0.5, source_message_id=assistant.id,
+        )
+        times = _extract_story_times(transcript)
+        now = datetime.now(UTC)
+        leaf = NarrativeLeafRecord(
+            id=str(uuid4()), chat_id=chat_id, user_message_id=user.id,
+            assistant_message_id=assistant.id, memory_id=memory.id,
+            source_hash=_source_hash(user.content, assistant.content), content=summary,
+            detail_mode=detail_mode, time_start=times[0] if times else None,
+            time_end=times[-1] if times else None, created_at=assistant.created_at,
+            updated_at=now,
+        )
+        db.add(leaf)
+        db.commit()
+        self._create_timeline_anchor(db, chat_id, times, summary, assistant.id)
+        await self._compress_available_roots(db, model, chat_id)
+        return next(item for item in self.inspect_nodes(db, chat_id) if item.id == leaf.id)
+
+    async def update_node(
+        self, db: Session, model: ModelClient, chat_id: str, node_id: str, content: str
+    ) -> NarrativeNodeView:
+        record = db.get(NarrativeLeafRecord, node_id) or db.get(NarrativeSummaryNodeRecord, node_id)
+        if not record or record.chat_id != chat_id:
+            raise ValueError("摘要节点不存在。")
+        record.content = content.strip()
+        record.updated_at = datetime.now(UTC)
+        memory = db.get(MemoryRecord, record.memory_id) if record.memory_id else None
+        if memory:
+            memory.content = content.strip()
+            memory.embedding_json = json_dumps(await model.embed(content.strip()))
+        db.commit()
+        return next(item for item in self.inspect_nodes(db, chat_id) if item.id == node_id)
+
+    def delete_node(self, db: Session, chat_id: str, node_id: str) -> None:
+        leaves, nodes, _messages = self._load(db, chat_id)
+        records = {item.id: item for item in [*leaves, *nodes]}
+        if node_id not in records:
+            raise ValueError("摘要节点不存在。")
+        doomed = {node_id}
+        changed = True
+        while changed:
+            changed = False
+            for node in nodes:
+                if node.id not in doomed and any(child in doomed for child in _child_ids(node)):
+                    doomed.add(node.id)
+                    changed = True
+        memory_ids = [records[item].memory_id for item in doomed if records[item].memory_id]
+        db.execute(delete(NarrativeSummaryNodeRecord).where(NarrativeSummaryNodeRecord.id.in_(doomed)))
+        db.execute(delete(NarrativeLeafRecord).where(NarrativeLeafRecord.id.in_(doomed)))
+        if memory_ids:
+            db.execute(delete(MemoryRecord).where(MemoryRecord.id.in_(memory_ids)))
+        db.commit()
+
+    async def rebuild_node(
+        self, db: Session, model: ModelClient, chat_id: str, node_id: str,
+        detail_mode: str = "brief",
+    ) -> NarrativeNodeView | None:
+        leaf = db.get(NarrativeLeafRecord, node_id)
+        if leaf and leaf.chat_id == chat_id:
+            assistant_id = leaf.assistant_message_id
+            return await self.summarize_floor(
+                db, model, chat_id, assistant_id, detail_mode, replace=True
+            )
+        node = db.get(NarrativeSummaryNodeRecord, node_id)
+        if not node or node.chat_id != chat_id:
+            raise ValueError("摘要节点不存在。")
+        self.delete_node(db, chat_id, node_id)
+        await self._compress_available_roots(db, model, chat_id)
+        candidates = [item for item in self.inspect_nodes(db, chat_id) if item.node_type == "summary"]
+        return candidates[-1] if candidates else None
+
     def invalid_memory_ids(self, db: Session, chat_id: str) -> set[str]:
         """返回所有不可信叶子及其祖先摘要所对应的向量索引 ID。"""
         leaves, nodes, messages = self._load(db, chat_id)
@@ -502,20 +599,9 @@ class NarrativeMemoryService:
     ) -> None:
         if not times:
             return
-        now = datetime.now(UTC)
         label = times[0] if len(times) == 1 else f"{times[0]} → {times[-1]}"
-        db.add(
-            TimelineAnchorRecord(
-                id=str(uuid4()),
-                chat_id=chat_id,
-                story_time=label,
-                description=summary[:5_000],
-                source_message_id=source_message_id,
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        db.commit()
+        from backend.services.timeline import timeline_service
+        timeline_service.create(db, chat_id, label, summary[:5_000], source_message_id)
 
     @staticmethod
     def _leaf_valid(

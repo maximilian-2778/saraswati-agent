@@ -81,13 +81,14 @@ type StreamTurnHandlers = {
 async function streamTurn(
   chatId: string,
   content: string,
+  contextDebug: boolean,
   handlers: StreamTurnHandlers,
   signal?: AbortSignal,
 ): Promise<AgentTurn> {
   const response = await fetch(`${API_BASE}/chats/${chatId}/turns/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, context_debug: contextDebug }),
     signal,
   });
   if (!response.ok || !response.body) {
@@ -280,6 +281,10 @@ export const api = {
   memoryGraph: (chatId: string) => request<NarrativeNode[]>(`/chats/${chatId}/memory-graph`),
   memoryCoverage: (chatId: string) => request<MemoryCoverage>(`/chats/${chatId}/memory-coverage`),
   backfillMemory: (chatId: string) => request<MemoryCoverage>(`/chats/${chatId}/memory-coverage/backfill`, { method: "POST" }),
+  summarizeFloor: (chatId: string, messageId: string, detailMode: "brief" | "detailed") => request<NarrativeNode>(`/chats/${chatId}/memory-graph/floors/${messageId}/summarize`, { method: "POST", body: JSON.stringify({ detail_mode: detailMode }) }),
+  updateNarrativeNode: (chatId: string, nodeId: string, content: string) => request<NarrativeNode>(`/chats/${chatId}/memory-graph/${nodeId}`, { method: "PUT", body: JSON.stringify({ content }) }),
+  deleteNarrativeNode: (chatId: string, nodeId: string) => request<void>(`/chats/${chatId}/memory-graph/${nodeId}`, { method: "DELETE" }),
+  rebuildNarrativeNode: (chatId: string, nodeId: string, detailMode: "brief" | "detailed") => request<NarrativeNode | null>(`/chats/${chatId}/memory-graph/${nodeId}/rebuild`, { method: "POST", body: JSON.stringify({ detail_mode: detailMode }) }),
   scenes: (chatId: string) => request<SceneNode[]>(`/chats/${chatId}/scenes`),
   createScene: (chatId: string, payload: object) => request<SceneNode>(`/chats/${chatId}/scenes`, { method: "POST", body: JSON.stringify(payload) }),
   updateScene: (chatId: string, id: string, payload: object) => request<SceneNode>(`/chats/${chatId}/scenes/${id}`, { method: "PUT", body: JSON.stringify(payload) }),

@@ -63,6 +63,8 @@ from backend.schemas import (
     MemoryMergeRequest,
     MemoryUpdate,
     NarrativeNodeRead,
+    NarrativeFloorSummaryRequest,
+    NarrativeNodeUpdate,
     NarrativeDeltaRead,
     NpcRead,
     NpcUpsert,
@@ -233,6 +235,54 @@ def memory_graph(
         for item in nodes
     ]
 
+def _narrative_node_read(item) -> NarrativeNodeRead:
+    return NarrativeNodeRead(
+        id=UUID(item.id), node_type=item.node_type, level=item.level,
+        content=item.content, child_ids=[UUID(child) for child in item.child_ids],
+        source_message_id=UUID(item.source_message_id) if item.source_message_id else None,
+        time_start=item.time_start, time_end=item.time_end, valid=item.valid,
+        active=item.active, created_at=item.created_at,
+    )
+
+@router.post("/chats/{chat_id}/memory-graph/floors/{message_id}/summarize", response_model=NarrativeNodeRead, tags=["memory-hub"])
+async def summarize_narrative_floor(chat_id: UUID, message_id: UUID, payload: NarrativeFloorSummaryRequest, request: Request, db: Session = Depends(get_db)) -> NarrativeNodeRead:
+    _chat_or_404(db, chat_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    try:
+        node = await runtime.narrative_memory_service.summarize_floor(db, runtime.model, str(chat_id), str(message_id), payload.detail_mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _narrative_node_read(node)
+
+@router.put("/chats/{chat_id}/memory-graph/{node_id}", response_model=NarrativeNodeRead, tags=["memory-hub"])
+async def update_narrative_node(chat_id: UUID, node_id: UUID, payload: NarrativeNodeUpdate, request: Request, db: Session = Depends(get_db)) -> NarrativeNodeRead:
+    _chat_or_404(db, chat_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    try:
+        node = await runtime.narrative_memory_service.update_node(db, runtime.model, str(chat_id), str(node_id), payload.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _narrative_node_read(node)
+
+@router.delete("/chats/{chat_id}/memory-graph/{node_id}", status_code=204, tags=["memory-hub"])
+def delete_narrative_node(chat_id: UUID, node_id: UUID, request: Request, db: Session = Depends(get_db)) -> Response:
+    _chat_or_404(db, chat_id)
+    try:
+        request.app.state.runtime.narrative_memory_service.delete_node(db, str(chat_id), str(node_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(status_code=204)
+
+@router.post("/chats/{chat_id}/memory-graph/{node_id}/rebuild", response_model=NarrativeNodeRead | None, tags=["memory-hub"])
+async def rebuild_narrative_node(chat_id: UUID, node_id: UUID, payload: NarrativeFloorSummaryRequest, request: Request, db: Session = Depends(get_db)) -> NarrativeNodeRead | None:
+    _chat_or_404(db, chat_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    try:
+        node = await runtime.narrative_memory_service.rebuild_node(db, runtime.model, str(chat_id), str(node_id), payload.detail_mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _narrative_node_read(node) if node else None
+
 @router.get(
     "/chats/{chat_id}/memory-coverage",
     response_model=MemoryCoverageRead,
@@ -313,6 +363,7 @@ def create_scene(
             db, str(chat_id), payload.name,
             str(payload.parent_id) if payload.parent_id else None,
             payload.description, payload.is_current,
+            aliases=payload.aliases,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -334,6 +385,7 @@ def update_scene(
             db, str(chat_id), payload.name,
             str(payload.parent_id) if payload.parent_id else None,
             payload.description, payload.is_current, scene_id=str(scene_id),
+            aliases=payload.aliases,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -624,19 +676,11 @@ def create_timeline_anchor(
     db: Session = Depends(get_db),
 ) -> TimelineAnchorRead:
     _chat_or_404(db, chat_id)
-    now = datetime.now(UTC)
-    record = TimelineAnchorRecord(
-        id=str(uuid4()),
-        chat_id=str(chat_id),
-        story_time=payload.story_time.strip(),
-        description=payload.description.strip(),
-        source_message_id=(str(payload.source_message_id) if payload.source_message_id else None),
-        created_at=now,
-        updated_at=now,
+    from backend.services.timeline import timeline_service
+    record = timeline_service.create(
+        db, str(chat_id), payload.story_time, payload.description,
+        str(payload.source_message_id) if payload.source_message_id else None,
     )
-    db.add(record)
-    db.commit()
-    db.refresh(record)
     return timeline_anchor_read(record)
 
 @router.put(
@@ -654,6 +698,17 @@ def update_timeline_anchor(
     record = _timeline_or_404(db, chat_id, anchor_id)
     record.story_time = payload.story_time.strip()
     record.description = payload.description.strip()
+    from backend.services.timeline import parse_story_time, timeline_service
+    previous_time = None
+    for item in timeline_service.list(db, str(chat_id)):
+        if item.id == record.id or item.is_conflict:
+            continue
+        previous_time = parse_story_time(item.story_time, previous_time) or previous_time
+        if item.created_at >= record.created_at:
+            break
+    proposed = parse_story_time(record.story_time, previous_time)
+    record.is_conflict = bool(proposed and previous_time and proposed < previous_time)
+    record.conflict_reason = "该时间早于此前的有效时间锚点。" if record.is_conflict else ""
     record.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(record)

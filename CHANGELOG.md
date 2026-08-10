@@ -2,6 +2,30 @@
 
 All notable changes to Saraswati Agent are documented in this file.
 
+## [1.3.0] - 2026-08-10
+
+### Added
+
+- Added direct SillyTavern V2 character card, lorebook, and Chat Completion preset compatibility with preservation of third-party metadata.
+- Added story-time prompt injection, relative progression, contradiction detection, and visible conflict records.
+- Added per-floor summary backfill plus automatic summary-node editing, deletion, and reconstruction.
+- Added scene aliases and canonical merging, stronger item-event idempotency, and narrative integrity migration `0006`.
+- Added a single-process Windows distribution: FastAPI serves the production React build, the launcher selects a free port and opens the browser, and PyInstaller produces a self-contained folder.
+
+### Changed
+
+- Packaged user data, settings, checkpoints, Skills, and Plugins now live under `%LOCALAPPDATA%\Saraswati Agent` so application upgrades do not overwrite them.
+- Full Agent prompts and discarded-message previews are retained only when context debugging is enabled; normal traces keep counts, IDs, and trimming statistics.
+- Expanded character cards, lorebooks, and presets with missing compatibility fields and clearer themed controls.
+- Changed the default theme to the paper theme and aligned dark-theme composer ornaments with the gold palette.
+
+### Fixed
+
+- Restored artwork and quotations for the empty-story view while removing its obstructive instruction copy.
+- Removed the visible scrollbar from the story list while preserving wheel scrolling.
+- Fixed several extension, lorebook, composer, form sizing, typography, and empty-state layout regressions.
+- Added an early Windows build check that reports running packaged clients before PyInstaller attempts to replace locked files.
+
 ## [1.2.0] - 2026-08-10
 
 ### Added

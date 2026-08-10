@@ -107,6 +107,8 @@ def character_read(record: CharacterProfileRecord) -> CharacterProfileRead:
 
 
 def character_template_read(record: CharacterTemplateRecord) -> CharacterTemplateRead:
+    compatibility = json_loads(record.compatibility_data_json) or {}
+    extra = compatibility.get("saraswati_fields") or {}
     return CharacterTemplateRead(
         id=UUID(record.id),
         name=record.name,
@@ -122,14 +124,20 @@ def character_template_read(record: CharacterTemplateRecord) -> CharacterTemplat
         tags=json_loads(record.tags_json) or [],
         creator_notes=record.creator_notes,
         system_prompt=record.system_prompt,
+        post_history_instructions=extra.get("post_history_instructions", ""),
+        creator=extra.get("creator", ""),
+        character_version=extra.get("character_version", ""),
         favorite=record.favorite,
         world_book_ids=json_loads(record.world_book_ids_json) or [],
+        compatibility_data=compatibility,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
 
 
 def story_character_read(record: StoryCharacterRecord) -> StoryCharacterRead:
+    compatibility = json_loads(record.compatibility_data_json) or {}
+    extra = compatibility.get("saraswati_fields") or {}
     return StoryCharacterRead(
         id=UUID(record.id),
         chat_id=UUID(record.chat_id),
@@ -147,8 +155,12 @@ def story_character_read(record: StoryCharacterRecord) -> StoryCharacterRead:
         tags=json_loads(record.tags_json) or [],
         creator_notes=record.creator_notes,
         system_prompt=record.system_prompt,
+        post_history_instructions=extra.get("post_history_instructions", ""),
+        creator=extra.get("creator", ""),
+        character_version=extra.get("character_version", ""),
         favorite=record.favorite,
         world_book_ids=json_loads(record.world_book_ids_json) or [],
+        compatibility_data=compatibility,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -178,6 +190,8 @@ def world_book_read(record: WorldBookEntryRecord) -> WorldBookEntryRead:
 
 
 def world_book_template_read(record: WorldBookTemplateRecord) -> WorldBookTemplateRead:
+    compatibility = json_loads(record.compatibility_data_json) or {}
+    extra = compatibility.get("saraswati_fields") or {}
     return WorldBookTemplateRead(
         id=UUID(record.id),
         title=record.title,
@@ -192,14 +206,25 @@ def world_book_template_read(record: WorldBookTemplateRecord) -> WorldBookTempla
         insertion_position=record.insertion_position,
         group_name=record.group_name,
         recursive=record.recursive,
+        selective_logic=extra.get("selective_logic", "and_any"),
+        probability=extra.get("probability", 100),
+        match_whole_words=extra.get("match_whole_words", False),
+        prevent_recursion=extra.get("prevent_recursion", False),
+        depth=extra.get("depth", 4),
+        sticky=extra.get("sticky", 0),
+        cooldown=extra.get("cooldown", 0),
+        delay=extra.get("delay", 0),
         token_budget=record.token_budget,
         scope=record.scope,
+        compatibility_data=compatibility,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
 
 
 def story_world_book_read(record: StoryWorldBookRecord) -> StoryWorldBookRead:
+    compatibility = json_loads(record.compatibility_data_json) or {}
+    extra = compatibility.get("saraswati_fields") or {}
     return StoryWorldBookRead(
         id=UUID(record.id),
         chat_id=UUID(record.chat_id),
@@ -216,8 +241,17 @@ def story_world_book_read(record: StoryWorldBookRecord) -> StoryWorldBookRead:
         insertion_position=record.insertion_position,
         group_name=record.group_name,
         recursive=record.recursive,
+        selective_logic=extra.get("selective_logic", "and_any"),
+        probability=extra.get("probability", 100),
+        match_whole_words=extra.get("match_whole_words", False),
+        prevent_recursion=extra.get("prevent_recursion", False),
+        depth=extra.get("depth", 4),
+        sticky=extra.get("sticky", 0),
+        cooldown=extra.get("cooldown", 0),
+        delay=extra.get("delay", 0),
         token_budget=record.token_budget,
         scope=record.scope,
+        compatibility_data=compatibility,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -256,6 +290,7 @@ def scene_read(record: SceneNodeRecord, path: list[str]) -> SceneNodeRead:
         parent_id=UUID(record.parent_id) if record.parent_id else None,
         name=record.name,
         description=record.description,
+        aliases=json_loads(record.aliases_json) or [],
         is_current=record.is_current,
         path=path,
         source_message_id=UUID(record.source_message_id) if record.source_message_id else None,
@@ -290,6 +325,8 @@ def timeline_anchor_read(record: TimelineAnchorRecord) -> TimelineAnchorRead:
         chat_id=UUID(record.chat_id),
         story_time=record.story_time,
         description=record.description,
+        is_conflict=record.is_conflict,
+        conflict_reason=record.conflict_reason,
         source_message_id=(UUID(record.source_message_id) if record.source_message_id else None),
         created_at=record.created_at,
         updated_at=record.updated_at,

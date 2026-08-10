@@ -178,7 +178,7 @@ function PersonaLibrary(props: {
   </div>;
 }
 
-const EMPTY_CHARACTER = { name: "", identity: "", personality: "", speaking_style: "", scenario: "", avatar: "", appearance: "", first_message: "", alternate_greetings: [] as string[], example_dialogue: "", tags: [] as string[], creator_notes: "", system_prompt: "", favorite: false, world_book_ids: [] as string[] };
+const EMPTY_CHARACTER = { name: "", identity: "", personality: "", speaking_style: "", scenario: "", avatar: "", appearance: "", first_message: "", alternate_greetings: [] as string[], example_dialogue: "", tags: [] as string[], creator_notes: "", system_prompt: "", post_history_instructions: "", creator: "", character_version: "", favorite: false, world_book_ids: [] as string[], compatibility_data: {} as Record<string, unknown> };
 
 function CharacterLibrary(props: {
   selectedChat: Chat | null;
@@ -208,7 +208,9 @@ function CharacterLibrary(props: {
       appearance: item.appearance, first_message: item.first_message,
       alternate_greetings: item.alternate_greetings, example_dialogue: item.example_dialogue,
       tags: item.tags, creator_notes: item.creator_notes, system_prompt: item.system_prompt,
-      favorite: item.favorite, world_book_ids: item.world_book_ids,
+      post_history_instructions: item.post_history_instructions, creator: item.creator,
+      character_version: item.character_version, favorite: item.favorite,
+      world_book_ids: item.world_book_ids, compatibility_data: item.compatibility_data,
     } : EMPTY_CHARACTER);
   }
 
@@ -256,7 +258,8 @@ function CharacterLibrary(props: {
     try {
       const raw = file.name.toLowerCase().endsWith(".png") ? await readPngCharacterCard(file) : JSON.parse(await file.text());
       const data = raw.data ?? raw;
-      await api.createCharacterTemplate({ ...EMPTY_CHARACTER, name: data.name || "导入角色", avatar: file.name.toLowerCase().endsWith(".png") ? await fileToDataUrl(file) : "", identity: data.description || data.identity || "", personality: data.personality || "", scenario: data.scenario || "", first_message: data.first_mes || data.first_message || "", alternate_greetings: data.alternate_greetings || [], example_dialogue: data.mes_example || data.example_dialogue || "", tags: data.tags || [], creator_notes: data.creator_notes || "", system_prompt: data.system_prompt || "" });
+      const embedded = data.character_book ? await importWorldBookData(data.character_book, `${data.name || "角色"} · 世界书`) : [];
+      await api.createCharacterTemplate({ ...EMPTY_CHARACTER, name: data.name || "导入角色", avatar: file.name.toLowerCase().endsWith(".png") ? await fileToDataUrl(file) : "", identity: data.description || data.identity || "", personality: data.personality || "", scenario: data.scenario || "", first_message: data.first_mes || data.first_message || "", alternate_greetings: data.alternate_greetings || [], example_dialogue: data.mes_example || data.example_dialogue || "", tags: data.tags || [], creator_notes: data.creator_notes || "", system_prompt: data.system_prompt || "", post_history_instructions: data.post_history_instructions || "", creator: data.creator || "", character_version: data.character_version || "", world_book_ids: embedded.map((item) => item.id), compatibility_data: { source_format: raw.spec || "chara_card_v1", original_card: raw } });
       props.onTemplates(await api.characterTemplates());
     } catch (reason) { props.onError(reason); }
   }
@@ -316,7 +319,7 @@ function CharacterEditor(props: {
       <textarea value={props.draft.alternate_greetings.join("\n")} onChange={(e) => set("alternate_greetings", e.target.value.split("\n").filter(Boolean))} placeholder="备选开场白，每行一条" rows={4} />
       <textarea value={props.draft.example_dialogue} onChange={(e) => set("example_dialogue", e.target.value)} placeholder="示例对话" rows={4} />
       <input value={props.draft.tags.join("，")} onChange={(e) => set("tags", e.target.value.split(/[,，]/).map((item) => item.trim()).filter(Boolean))} placeholder="标签，用逗号分隔" />
-      <details className="advanced-settings"><summary>更多设定</summary><textarea value={props.draft.creator_notes} onChange={(e) => set("creator_notes", e.target.value)} placeholder="创作者备注" rows={3} /><textarea value={props.draft.system_prompt} onChange={(e) => set("system_prompt", e.target.value)} placeholder="角色专属系统提示词" rows={4} /><fieldset className="template-checklist"><legend>角色专属世界书</legend>{props.worldBooks.map((item) => <label key={item.id}><input type="checkbox" checked={props.draft.world_book_ids.includes(item.id)} onChange={(event) => set("world_book_ids", event.target.checked ? [...props.draft.world_book_ids, item.id] : props.draft.world_book_ids.filter((id) => id !== item.id))} />{item.title}</label>)}</fieldset></details>
+      <details className="advanced-settings"><summary>更多设定</summary><div className="world-form-row"><label><span>作者 <HelpTip text="角色卡原作者或整理者；导入角色卡时会自动读取。" /></span><input value={props.draft.creator} onChange={(e) => set("creator", e.target.value)} placeholder="作者" /></label><label><span>角色版本 <HelpTip text="用于区分同一角色卡的不同修订版本，不会影响角色扮演内容。" /></span><input value={props.draft.character_version} onChange={(e) => set("character_version", e.target.value)} placeholder="例如 1.0" /></label></div><textarea value={props.draft.creator_notes} onChange={(e) => set("creator_notes", e.target.value)} placeholder="创作者备注" rows={3} /><textarea value={props.draft.system_prompt} onChange={(e) => set("system_prompt", e.target.value)} placeholder="角色专属系统提示词" rows={4} /><label className="field-with-help"><span>历史记录后的补充指令 <HelpTip text="放在对话历史之后的角色专属指令，通常比普通角色描述更接近本轮生成。" /></span><textarea value={props.draft.post_history_instructions} onChange={(e) => set("post_history_instructions", e.target.value)} placeholder="可留空" rows={4} /></label><fieldset className="template-checklist"><legend>角色专属世界书</legend>{props.worldBooks.map((item) => <label key={item.id}><input type="checkbox" checked={props.draft.world_book_ids.includes(item.id)} onChange={(event) => set("world_book_ids", event.target.checked ? [...props.draft.world_book_ids, item.id] : props.draft.world_book_ids.filter((id) => id !== item.id))} />{item.title}</label>)}</fieldset></details>
       <label className="inline-check"><input type="checkbox" checked={props.draft.favorite} onChange={(event) => set("favorite", event.target.checked)} />收藏角色</label>
       <button className="primary-button">保存</button>
     </form>
@@ -346,7 +349,19 @@ function WorldLibrary(props: {
     constant: draft.constant, case_sensitive: draft.caseSensitive, scan_depth: draft.scanDepth,
     insertion_position: draft.insertionPosition, group_name: draft.groupName,
     recursive: draft.recursive, token_budget: draft.tokenBudget, scope: draft.scope,
+    selective_logic: draft.selectiveLogic, probability: draft.probability,
+    match_whole_words: draft.matchWholeWords, prevent_recursion: draft.preventRecursion,
+    depth: draft.depth, sticky: draft.sticky, cooldown: draft.cooldown, delay: draft.delay,
+    compatibility_data: draft.compatibilityData,
   });
+
+  async function importBook(file: File | undefined) {
+    if (!file) return;
+    try {
+      await importWorldBookData(JSON.parse(await file.text()), file.name.replace(/\.json$/i, ""));
+      props.onTemplates(await api.worldBookTemplates());
+    } catch (reason) { props.onError(reason); }
+  }
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!editing || !draft.title.trim() || !draft.content.trim()) return;
@@ -376,6 +391,7 @@ function WorldLibrary(props: {
   return (
     <div className="library-content">
       <LibraryColumn title="世界书库" note="这里保存可以重复使用的世界设定。" action="＋ 新建世界书" onAction={() => edit("template")}>
+        <div className="library-tools"><label className="file-button">导入世界书<input type="file" accept=".json,application/json" onChange={(event) => { void importBook(event.target.files?.[0]); event.target.value = ""; }} /></label></div>
         {props.templates.length === 0 ? <p className="muted">还没有世界书模板。</p> : props.templates.map((item) => (
           <LibraryCard key={item.id} title={item.title} detail={item.content} badge={`模板 · 优先级 ${item.priority}`}>
             <button onClick={() => attach(item.id)} disabled={!props.selectedChat}>添加到故事</button><button onClick={() => edit("template", item)}>编辑</button><button className="delete-button" onClick={() => void remove("template", item.id)}>删除</button>
@@ -402,7 +418,9 @@ function WorldLibrary(props: {
             <label><span>插入位置 <HelpTip text="控制词条相对聊天记录的位置。越靠后，通常对本轮回复的影响越直接。" /></span><select value={draft.insertionPosition} onChange={(e) => setDraft({ ...draft, insertionPosition: e.target.value as WorldEntryDraft["insertionPosition"] })}><option value="before_history">对话记录前</option><option value="after_history">对话记录后</option><option value="system">系统提示词</option></select></label>
             <label><span>互斥组 <HelpTip text="组名相同的词条不会同时启用，只保留优先级最高的一条。留空表示不分组。" /></span><input value={draft.groupName} onChange={(e) => setDraft({ ...draft, groupName: e.target.value })} /></label>
             <label><span>归属 <HelpTip text="标记这条设定通常用于全部故事、特定角色、主控人物或当前故事。" /></span><select value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as WorldEntryDraft["scope"] })}><option value="global">通用</option><option value="character">角色专属</option><option value="persona">主控人物专属</option><option value="story">故事专属</option></select></label>
-            <label className="inline-check"><input type="checkbox" checked={draft.constant} onChange={(e) => setDraft({ ...draft, constant: e.target.checked })} />常驻条目 <HelpTip text="不检查触发词，每轮都加入上下文。" /></label><label className="inline-check"><input type="checkbox" checked={draft.caseSensitive} onChange={(e) => setDraft({ ...draft, caseSensitive: e.target.checked })} />区分大小写 <HelpTip text="开启后，英文触发词必须同时匹配大小写。" /></label><label className="inline-check"><input type="checkbox" checked={draft.recursive} onChange={(e) => setDraft({ ...draft, recursive: e.target.checked })} />递归激活 <HelpTip text="已经启用的世界书内容也可以继续触发其他词条。" /></label>
+            <label><span>次要词逻辑 <HelpTip text="控制次要关键词需要命中任意、全部，或采用排除条件。没有填写次要关键词时不会影响触发。" /></span><select value={draft.selectiveLogic} onChange={(e) => setDraft({ ...draft, selectiveLogic: e.target.value as WorldEntryDraft["selectiveLogic"] })}><option value="and_any">命中任意</option><option value="and_all">命中全部</option><option value="not_any">均不命中</option><option value="not_all">不全部命中</option></select></label>
+            <div className="world-settings-grid"><label><span>触发概率 <HelpTip text="满足关键词条件后实际启用的概率。100 表示每次都启用。" /></span><input type="number" min={0} max={100} value={draft.probability} onChange={(e) => setDraft({ ...draft, probability: Number(e.target.value) })} /></label><label><span>插入深度 <HelpTip text="从对话末尾向前计算的插入位置。数值越小，内容越接近最新消息。" /></span><input type="number" min={0} max={100} value={draft.depth} onChange={(e) => setDraft({ ...draft, depth: Number(e.target.value) })} /></label><label><span>持续轮数 <HelpTip text="触发后继续保持生效的轮数；0 表示只在本轮生效。" /></span><input type="number" min={0} value={draft.sticky} onChange={(e) => setDraft({ ...draft, sticky: Number(e.target.value) })} /></label><label><span>冷却轮数 <HelpTip text="一次触发结束后，需要等待多少轮才允许再次触发。" /></span><input type="number" min={0} value={draft.cooldown} onChange={(e) => setDraft({ ...draft, cooldown: Number(e.target.value) })} /></label><label><span>延迟轮数 <HelpTip text="故事开始后至少经过多少轮，这条内容才允许触发。" /></span><input type="number" min={0} value={draft.delay} onChange={(e) => setDraft({ ...draft, delay: Number(e.target.value) })} /></label></div>
+            <div className="world-check-grid"><label><input type="checkbox" checked={draft.constant} onChange={(e) => setDraft({ ...draft, constant: e.target.checked })} /><span>常驻条目 <HelpTip text="不检查触发词，每轮都加入上下文。" /></span></label><label><input type="checkbox" checked={draft.caseSensitive} onChange={(e) => setDraft({ ...draft, caseSensitive: e.target.checked })} /><span>区分大小写 <HelpTip text="开启后，英文触发词必须同时匹配大小写。" /></span></label><label><input type="checkbox" checked={draft.matchWholeWords} onChange={(e) => setDraft({ ...draft, matchWholeWords: e.target.checked })} /><span>整词匹配 <HelpTip text="只匹配完整单词，避免关键词作为其他单词的一部分时误触发。" /></span></label><label><input type="checkbox" checked={draft.recursive} onChange={(e) => setDraft({ ...draft, recursive: e.target.checked })} /><span>递归激活 <HelpTip text="已经启用的世界书内容也可以继续触发其他词条。" /></span></label><label><input type="checkbox" checked={draft.preventRecursion} onChange={(e) => setDraft({ ...draft, preventRecursion: e.target.checked })} /><span>阻止递归传播 <HelpTip text="这条内容可以正常生效，但不会再用自己的正文触发其他词条。" /></span></label></div>
           </details>
           <button className="primary-button">保存</button>
         </form>
@@ -417,6 +435,35 @@ function LibraryColumn(props: { title: string; note: string; action?: string; on
 
 function LibraryCard(props: { title: string; detail: string; badge: string; avatar?: string; children: ReactNode }) {
   return <article className="library-card"><header>{props.avatar !== undefined && <Avatar value={props.avatar} fallback={props.title.charAt(0)} />}<div><strong>{props.title}</strong><span>{props.badge}</span></div></header><p>{props.detail}</p><footer>{props.children}</footer></article>;
+}
+
+async function importWorldBookData(raw: Record<string, any>, fallbackName: string): Promise<WorldBookTemplate[]> {
+  const sourceEntries = Array.isArray(raw.entries) ? raw.entries : Object.values(raw.entries || {});
+  if (!sourceEntries.length) throw new Error("文件中没有可导入的世界书条目");
+  const created: WorldBookTemplate[] = [];
+  const logic = ["and_any", "not_all", "not_any", "and_all"] as const;
+  for (const [index, entry] of sourceEntries.entries()) {
+    if (!entry || typeof entry !== "object" || !String(entry.content || "").trim()) continue;
+    const rawPosition = entry.extensions?.position ?? entry.position;
+    const position = rawPosition === 1 || rawPosition === "after_char" ? "after_history" : rawPosition === 4 || rawPosition === 6 ? "system" : "before_history";
+    created.push(await api.createWorldBookTemplate({
+      title: String(entry.comment || entry.name || `${fallbackName} ${index + 1}`),
+      keywords: (Array.isArray(entry.key) ? entry.key : entry.keys || []).map(String),
+      secondary_keywords: (Array.isArray(entry.keysecondary) ? entry.keysecondary : entry.secondary_keys || []).map(String),
+      content: String(entry.content), priority: Math.max(0, Math.min(10000, Number(entry.order ?? entry.insertion_order ?? 100))),
+      enabled: entry.enabled !== undefined ? Boolean(entry.enabled) : !entry.disable, constant: Boolean(entry.constant), case_sensitive: Boolean(entry.caseSensitive ?? entry.case_sensitive),
+      scan_depth: Math.max(1, Math.min(100, Number(entry.scanDepth ?? entry.extensions?.scan_depth ?? 4))), insertion_position: position,
+      group_name: String(entry.group || ""), recursive: !entry.excludeRecursion,
+      token_budget: 2048, scope: "global", selective_logic: logic[Number(entry.selectiveLogic ?? entry.extensions?.selectiveLogic)] || "and_any",
+      probability: entry.useProbability === false ? 100 : Math.max(0, Math.min(100, Number(entry.probability ?? 100))),
+      match_whole_words: Boolean(entry.matchWholeWords), prevent_recursion: Boolean(entry.preventRecursion),
+      depth: Math.max(0, Math.min(100, Number(entry.depth ?? 4))), sticky: Math.max(0, Number(entry.sticky ?? 0)),
+      cooldown: Math.max(0, Number(entry.cooldown ?? 0)), delay: Math.max(0, Number(entry.delay ?? 0)),
+      compatibility_data: { source_format: "sillytavern_world_info", original_book: { ...raw, entries: undefined }, original_entry: entry },
+    }));
+  }
+  if (!created.length) throw new Error("世界书中没有包含正文的有效条目");
+  return created;
 }
 
 async function readPngCharacterCard(file: File): Promise<Record<string, any>> {
@@ -451,17 +498,27 @@ function downloadCharacterCard(item: CharacterTemplate) {
 }
 
 function characterCardData(item: CharacterTemplate) {
-  return {
+  const original = item.compatibility_data?.original_card as Record<string, any> | undefined;
+  const card = original ? structuredClone(original) : {
     spec: "chara_card_v2",
     spec_version: "2.0",
-    data: {
+    data: {},
+  };
+  if (card.spec !== "chara_card_v3") {
+    card.spec = "chara_card_v2";
+    card.spec_version = "2.0";
+  }
+  card.data = {
+      ...(card.data || {}),
       name: item.name, description: item.identity, personality: item.personality,
       scenario: item.scenario, first_mes: item.first_message,
       alternate_greetings: item.alternate_greetings, mes_example: item.example_dialogue,
       tags: item.tags, creator_notes: item.creator_notes, system_prompt: item.system_prompt,
-      extensions: { saraswati: { appearance: item.appearance, speaking_style: item.speaking_style } },
-    },
-  };
+      post_history_instructions: item.post_history_instructions, creator: item.creator,
+      character_version: item.character_version,
+      extensions: { ...(card.data?.extensions || {}), saraswati: { appearance: item.appearance, speaking_style: item.speaking_style } },
+    };
+  return card;
 }
 
 function downloadPngCharacterCard(item: CharacterTemplate) {

@@ -352,7 +352,7 @@ export default function App() {
       created_at: new Date().toISOString(),
     }]);
     try {
-      const turn = await api.streamMessage(selectedChatId, content, {
+      const turn = await api.streamMessage(selectedChatId, content, uiPreferences.debugMode, {
         onUser: (message) => {
           setMessages((current) => current.map((item) => item.id === optimisticId ? message : item));
         },
@@ -629,7 +629,7 @@ export default function App() {
           }}
         >
           {!selectedChatId ? (
-            <EmptyState title="还没有故事" detail="从左侧新建一个故事。" />
+            <EmptyState title="" detail="" />
           ) : loading && messages.length === 0 ? (
             <EmptyState title="正在载入…" detail="" />
           ) : messages.length === 0 ? (
@@ -720,6 +720,7 @@ export default function App() {
         activeTab={activeTab}
         onTab={setActiveTab}
         memories={memories}
+        messages={messages}
         memoryGraph={memoryGraph}
         deltas={deltas}
         worldEngine={worldEngine}

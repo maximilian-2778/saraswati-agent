@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -20,6 +21,7 @@ from backend.models import (
 from backend.services.narrative_delta import NarrativeDeltaPayload
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
+from backend.services.timeline import timeline_service
 from backend.utils import json_dumps, json_loads
 
 
@@ -47,22 +49,12 @@ class NarrativeDeltaApplier:
         source_id = record.assistant_message_id
 
         if payload.time_change.strip():
-            duplicate_time = db.scalar(
-                select(TimelineAnchorRecord).where(
-                    TimelineAnchorRecord.chat_id == record.chat_id,
-                    TimelineAnchorRecord.story_time == payload.time_change.strip(),
-                    TimelineAnchorRecord.source_message_id == source_id,
-                )
+            before = len(timeline_service.list(db, record.chat_id))
+            timeline_service.create(
+                db, record.chat_id, payload.time_change,
+                payload.summary or "本轮剧情时间发生变化", source_id,
             )
-            if duplicate_time is None:
-                now = datetime.now(UTC)
-                db.add(TimelineAnchorRecord(
-                    id=str(uuid4()), chat_id=record.chat_id,
-                    story_time=payload.time_change.strip(),
-                    description=payload.summary or "本轮剧情时间发生变化",
-                    source_message_id=source_id, created_at=now, updated_at=now,
-                ))
-                db.commit()
+            if len(timeline_service.list(db, record.chat_id)) > before:
                 result.timeline_count += 1
             else:
                 result.skipped_count += 1
@@ -184,13 +176,25 @@ class NarrativeDeltaApplier:
         result.state_changes.append(self.state_service.apply(
             db, record.chat_id, entity, key, value, reason,
             record.assistant_message_id,
+            event_fingerprint=hashlib.sha256(json_dumps({
+                "source": record.assistant_message_id,
+                "entity": entity.strip().casefold(),
+                "key": key.strip().casefold(),
+                "value": value,
+                "reason": reason.strip().casefold(),
+            }).encode("utf-8")).hexdigest(),
         ))
 
     def _scene_by_path(self, db: Session, chat_id: str, path: list[str]):
-        scenes = self.graph_service.list_scenes(db, chat_id)
-        by_id = {item.id: item for item in scenes}
         cleaned = [item.strip() for item in path if item.strip()]
-        return next((item for item in scenes if self.graph_service.scene_path(item, by_id) == cleaned), None)
+        parent_id = None
+        current = None
+        for name in cleaned:
+            current = self.graph_service.resolve_scene(db, chat_id, name, parent_id)
+            if current is None:
+                return None
+            parent_id = current.id
+        return current
 
     @staticmethod
     def _npc_matches(existing: NpcRecord, change: dict[str, Any], relations: list[dict[str, str]], location_id: str | None) -> bool:

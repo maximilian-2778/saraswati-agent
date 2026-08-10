@@ -39,6 +39,7 @@ class Database:
         self._migrate_avatar_columns()
         self._migrate_roleplay_profile_columns()
         self._migrate_message_variant_columns()
+        self._migrate_narrative_integrity_columns()
         self._migrate_legacy_story_settings()
 
     def _migrate_avatar_columns(self) -> None:
@@ -70,6 +71,24 @@ class Database:
                         )
                     )
 
+    def _migrate_narrative_integrity_columns(self) -> None:
+        """为未纳入 Alembic 的开发数据库补充叙事完整性字段。"""
+        additions = {
+            "scene_nodes": {"aliases_json": "TEXT NOT NULL DEFAULT '[]'"},
+            "timeline_anchors": {
+                "is_conflict": "BOOLEAN NOT NULL DEFAULT 0",
+                "conflict_reason": "TEXT NOT NULL DEFAULT ''",
+            },
+            "state_changes": {"event_fingerprint": "VARCHAR(64)"},
+        }
+        with self.engine.begin() as connection:
+            inspector = inspect(connection)
+            for table, columns in additions.items():
+                existing = {column["name"] for column in inspector.get_columns(table)}
+                for name, definition in columns.items():
+                    if name not in existing:
+                        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {definition}"))
+
     def _migrate_roleplay_profile_columns(self) -> None:
         """为旧数据库补充角色卡和世界书高级字段。"""
         character_columns = {
@@ -82,6 +101,7 @@ class Database:
             "system_prompt": "TEXT NOT NULL DEFAULT ''",
             "favorite": "BOOLEAN NOT NULL DEFAULT 0",
             "world_book_ids_json": "TEXT NOT NULL DEFAULT '[]'",
+            "compatibility_data_json": "TEXT NOT NULL DEFAULT '{}'",
         }
         world_columns = {
             "secondary_keywords_json": "TEXT NOT NULL DEFAULT '[]'",
@@ -93,6 +113,7 @@ class Database:
             "recursive": "BOOLEAN NOT NULL DEFAULT 0",
             "token_budget": "INTEGER NOT NULL DEFAULT 2048",
             "scope": "VARCHAR(30) NOT NULL DEFAULT 'global'",
+            "compatibility_data_json": "TEXT NOT NULL DEFAULT '{}'",
         }
         with self.engine.begin() as connection:
             inspector = inspect(connection)

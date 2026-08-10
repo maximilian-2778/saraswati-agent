@@ -57,8 +57,17 @@ class StateService:
         new_value: Any,
         reason: str,
         source_message_id: str | None = None,
+        event_fingerprint: str | None = None,
     ) -> StateChangeRecord:
         entity, key = self._canonical_identity(entity, key)
+        if event_fingerprint:
+            duplicate_event = db.scalar(select(StateChangeRecord).where(
+                StateChangeRecord.chat_id == chat_id,
+                StateChangeRecord.event_fingerprint == event_fingerprint,
+                StateChangeRecord.status == ProposalStatus.APPROVED.value,
+            ))
+            if duplicate_event is not None:
+                return duplicate_event
         current = db.scalar(
             select(StateEntryRecord).where(
                 StateEntryRecord.chat_id == chat_id,
@@ -74,6 +83,7 @@ class StateService:
             old_value_json=current.value_json if current else None,
             new_value_json=json_dumps(new_value),
             reason=reason,
+            event_fingerprint=event_fingerprint,
             source_message_id=source_message_id,
             status=ProposalStatus.PENDING.value,
             created_at=datetime.now(UTC),
@@ -93,9 +103,18 @@ class StateService:
         new_value: Any,
         reason: str,
         source_message_id: str | None = None,
+        event_fingerprint: str | None = None,
     ) -> StateChangeRecord:
         """自动采用一条变化，同时保留可撤销的事件记录。"""
         entity, key = self._canonical_identity(entity, key)
+        if event_fingerprint:
+            duplicate_event = db.scalar(select(StateChangeRecord).where(
+                StateChangeRecord.chat_id == chat_id,
+                StateChangeRecord.event_fingerprint == event_fingerprint,
+                StateChangeRecord.status == ProposalStatus.APPROVED.value,
+            ))
+            if duplicate_event is not None:
+                return duplicate_event
         current = db.scalar(
             select(StateEntryRecord).where(
                 StateEntryRecord.chat_id == chat_id,
@@ -130,6 +149,7 @@ class StateService:
             old_value_json=current.value_json if current else None,
             new_value_json=serialized,
             reason=reason,
+            event_fingerprint=event_fingerprint,
             source_message_id=source_message_id,
             status=ProposalStatus.APPROVED.value,
             created_at=now,

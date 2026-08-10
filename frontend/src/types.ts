@@ -248,8 +248,12 @@ export interface CharacterTemplate {
   tags: string[];
   creator_notes: string;
   system_prompt: string;
+  post_history_instructions: string;
+  creator: string;
+  character_version: string;
   favorite: boolean;
   world_book_ids: string[];
+  compatibility_data: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -320,8 +324,17 @@ export interface WorldBookEntry {
   insertion_position: "before_history" | "after_history" | "system";
   group_name: string;
   recursive: boolean;
+  selective_logic: "and_any" | "and_all" | "not_any" | "not_all";
+  probability: number;
+  match_whole_words: boolean;
+  prevent_recursion: boolean;
+  depth: number;
+  sticky: number;
+  cooldown: number;
+  delay: number;
   token_budget: number;
   scope: "global" | "character" | "persona" | "story";
+  compatibility_data: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -405,6 +418,7 @@ export interface SceneNode {
   name: string;
   parent_id: string | null;
   description: string;
+  aliases: string[];
   is_current: boolean;
   path: string[];
   source_message_id: string | null;
@@ -497,6 +511,8 @@ export interface TimelineAnchor {
   chat_id: string;
   story_time: string;
   description: string;
+  is_conflict: boolean;
+  conflict_reason: string;
   source_message_id: string | null;
   created_at: string;
   updated_at: string;

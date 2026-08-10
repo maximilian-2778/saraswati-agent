@@ -110,26 +110,53 @@ def import_payload(data: dict[str, Any], requested_name: str | None = None) -> P
         frequency_penalty=float(data.get("frequency_penalty", 0.0)),
         context_window_tokens=int(data.get("openai_max_context", data.get("context_window_tokens", 32768))),
         prompts=ordered,
-        extra_settings={key: value for key, value in data.items() if key not in known},
+        extra_settings={
+            **{key: value for key, value in data.items() if key not in known},
+            "_sillytavern_original": data,
+        },
     )
 
 
 def export_sillytavern(record: PromptPresetRecord) -> dict[str, Any]:
     prompts = [item.model_dump(mode="json") for item in _writing_prompts(json_loads(record.prompts_json) or [])]
-    return {
-        **(json_loads(record.extra_settings_json) or {}),
+    extra = json_loads(record.extra_settings_json) or {}
+    original = extra.pop("_sillytavern_original", None)
+    result = dict(original) if isinstance(original, dict) else {}
+    original_prompts = result.get("prompts") if isinstance(result.get("prompts"), list) else []
+    current_by_id = {item["identifier"]: item for item in prompts}
+    merged_prompts: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in original_prompts:
+        if not isinstance(raw, dict):
+            continue
+        identifier = str(raw.get("identifier") or "")
+        current = current_by_id.get(identifier)
+        if current:
+            raw = {**raw, "name": current["name"], "role": current["role"], "content": current["content"]}
+            seen.add(identifier)
+        merged_prompts.append(raw)
+    merged_prompts.extend(
+        {key: value for key, value in item.items() if key not in {"enabled", "position", "depth"}}
+        for item in prompts if item["identifier"] not in seen
+    )
+    original_orders = result.get("prompt_order") if isinstance(result.get("prompt_order"), list) else []
+    prompt_order = [item for item in original_orders if isinstance(item, dict) and item.get("character_id") != 100001]
+    prompt_order.insert(0, {
+        "character_id": 100001,
+        "order": [{"identifier": item["identifier"], "enabled": item.get("enabled", True)} for item in prompts],
+    })
+    result.update({
+        **extra,
         "temperature": record.temperature,
         "top_p": record.top_p,
         "openai_max_tokens": record.max_output_tokens,
         "presence_penalty": record.presence_penalty,
         "frequency_penalty": record.frequency_penalty,
         "openai_max_context": record.context_window_tokens,
-        "prompts": [{key: value for key, value in item.items() if key not in {"enabled", "position", "depth"}} for item in prompts],
-        "prompt_order": [{
-            "character_id": 100001,
-            "order": [{"identifier": item["identifier"], "enabled": item.get("enabled", True)} for item in prompts],
-        }],
-    }
+        "prompts": merged_prompts,
+        "prompt_order": prompt_order,
+    })
+    return result
 
 
 _DYNAMIC_SLOT_IDS = {

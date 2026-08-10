@@ -68,6 +68,26 @@
 
 API 文档：`http://127.0.0.1:8010/docs`
 
+## Windows 双击版
+
+生产版由 FastAPI 直接提供已经构建好的 React 页面，因此运行时不需要单独启动 Vite。
+
+准备一次打包环境：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+```
+
+生成 Windows 单目录程序：
+
+```powershell
+.\scripts\build_windows.ps1
+```
+
+输出位于 `dist\SaraswatiAgent\`。用户双击其中的 `SaraswatiAgent.exe` 后，程序会自动选择可用端口并打开浏览器；关闭启动窗口或按 `Ctrl+C` 会同时关闭后端。
+
+打包版数据独立保存在 `%LOCALAPPDATA%\Saraswati Agent`，升级或替换程序目录不会覆盖故事、设置及扩展。开发模式仍使用项目内的 `data\`。
+
 也可以直接运行：
 
 ```powershell

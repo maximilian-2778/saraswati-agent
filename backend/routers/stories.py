@@ -1014,7 +1014,7 @@ async def send_message(
     db.commit()
     db.refresh(user_message)
 
-    result = await runtime.run_turn(db, chat, user_message)
+    result = await runtime.run_turn(db, chat, user_message, context_debug=payload.context_debug)
     return _agent_turn_read(runtime, user_message, result)
 
 @router.post(
@@ -1064,6 +1064,7 @@ async def stream_message(
                 user_message,
                 on_token=on_token,
                 on_progress=on_progress,
+                context_debug=payload.context_debug,
             )
             turn = _agent_turn_read(runtime, user_message, result)
             await events.put(

@@ -123,6 +123,7 @@ class AgentRuntime:
         user_message: MessageRecord,
         on_token: Callable[[str], Awaitable[None]] | None = None,
         on_progress: Callable[[str], Awaitable[None]] | None = None,
+        context_debug: bool = False,
     ) -> AgentTurnResult:
         """运行一轮已编译的 LangGraph 工作流，并恢复原有返回结构。"""
         turn_id = str(uuid4())
@@ -154,6 +155,7 @@ class AgentRuntime:
             world_engine_service=self.world_engine_service,
             tool_executor=executor,
             trace=self._trace,
+            context_debug=context_debug,
             on_token=on_token,
             on_progress=on_progress,
         )

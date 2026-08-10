@@ -104,7 +104,11 @@ def test_context_trace_contains_token_budget_diagnostics(
     assert budget["estimated_input_tokens"] <= budget["input_budget"]
     labels = {section["label"] for section in budget["sections"]}
     assert {"最近对话", "用户最新消息"} <= labels
-    assert budget["final_prompt"]
+    assert budget["debug_content_included"] is False
+    assert "final_prompt" not in budget
+    assert budget["dropped_messages"] == []
+    assert all("content" not in section for section in budget["sections"])
+    assert all("preview" not in item for item in budget["rag_retrieval"])
     assert isinstance(budget["world_book_triggers"], list)
     assert isinstance(budget["rag_retrieval"], list)
     model_event = next(
@@ -118,6 +122,20 @@ def test_context_trace_contains_token_budget_diagnostics(
         item for item in turn["trace"] if item["event_type"] == "turn_completed"
     )
     assert completed["payload"]["duration_ms"] >= model_event["payload"]["duration_ms"]
+
+
+def test_context_debug_mode_explicitly_keeps_prompt_details(
+    client: TestClient, chat_id: str
+) -> None:
+    turn = client.post(
+        f"/api/chats/{chat_id}/messages",
+        json={"content": "检查调试上下文。", "context_debug": True},
+    ).json()
+    event = next(item for item in turn["trace"] if item["event_type"] == "context_built")
+    budget = event["payload"]["token_budget"]
+    assert budget["debug_content_included"] is True
+    assert budget["final_prompt"]
+    assert all("content" in section for section in budget["sections"])
 
 
 def test_token_budget_preserves_latest_message_and_stays_within_limit() -> None:
