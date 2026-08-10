@@ -48,62 +48,17 @@
 | 模型接口 | OpenAI-compatible Chat Completions、Embeddings |
 | 测试 | pytest、FastAPI TestClient、TypeScript build、RAG 评测脚本 |
 
-## 本地运行
+## 下载与使用
 
-需要 Python 3.13、Node.js 和项目虚拟环境。
+下载 [**Saraswati Agent v1.3.0 Windows x64**](https://github.com/maximilian-2778/saraswati-agent/releases/download/v1.3.0/Saraswati-Agent-v1.3.0-windows-x64.zip)，解压整个文件夹后双击 `SaraswatiAgent.exe` 即可使用。
 
-启动后端：
-
-```powershell
-.\scripts\start_backend.ps1
-```
-
-启动前端：
-
-```powershell
-.\scripts\start_frontend.ps1
-```
-
-前端地址：`http://127.0.0.1:5180`
-
-API 文档：`http://127.0.0.1:8010/docs`
-
-## Windows 双击版
-
-生产版由 FastAPI 直接提供已经构建好的 React 页面，因此运行时不需要单独启动 Vite。
-
-准备一次打包环境：
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
-```
-
-生成 Windows 单目录程序：
-
-```powershell
-.\scripts\build_windows.ps1
-```
-
-输出位于 `dist\SaraswatiAgent\`。用户双击其中的 `SaraswatiAgent.exe` 后，程序会自动选择可用端口并打开浏览器；关闭启动窗口或按 `Ctrl+C` 会同时关闭后端。
-
-打包版数据独立保存在 `%LOCALAPPDATA%\Saraswati Agent`，升级或替换程序目录不会覆盖故事、设置及扩展。开发模式仍使用项目内的 `data\`。
-
-也可以直接运行：
-
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn backend.main:app --port 8010
-cd frontend
-npm run dev
-```
+程序会自动启动服务并打开浏览器，不需要安装 Python、Node.js，也不需要分别启动前端和后端。故事、设置及扩展保存在 `%LOCALAPPDATA%\Saraswati Agent`，更新程序不会覆盖用户数据。
 
 ## 模型配置
 
 在客户端右上角打开“设置”，填写 API 地址、API Key 和模型名称。
 
-- 模型配置保存在 `data/settings.json`
-- 聊天数据保存在 `data/saraswati_v1.db`
-- Agent 节点检查点保存在 `data/langgraph_checkpoints.db`
-- 以上文件已加入 `.gitignore`
+- 模型配置、聊天数据与 Agent 检查点保存在 `%LOCALAPPDATA%\Saraswati Agent`
 
 API Key 以明文保存在本机配置文件中，请勿上传或分享该文件。
 
