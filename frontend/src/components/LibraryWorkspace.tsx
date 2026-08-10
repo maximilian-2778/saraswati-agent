@@ -5,6 +5,7 @@ import { Avatar, AvatarPicker, fileToDataUrl } from "./Avatar";
 import { HelpTip } from "./HelpTip";
 import { ClassicalIcon } from "./ClassicalIcon";
 import { PresetManager } from "./PresetManager";
+import { ExtensionSettings } from "./ExtensionSettings";
 import { EMPTY_WORLD_ENTRY, worldEntryToDraft } from "../utils/worldBookDraft";
 import type { WorldEntryDraft } from "../utils/worldBookDraft";
 import type {
@@ -12,7 +13,7 @@ import type {
   StoryWorldBook, WorldBookTemplate,
 } from "../types";
 
-export type LibraryKind = "characters" | "personas" | "world" | "presets";
+export type LibraryKind = "characters" | "personas" | "world" | "presets" | "extensions";
 
 export function GlobalNav({ onOpen }: { onOpen: (page: LibraryKind) => void }) {
   return (
@@ -21,6 +22,7 @@ export function GlobalNav({ onOpen }: { onOpen: (page: LibraryKind) => void }) {
       <button onClick={() => onOpen("personas")}><ClassicalIcon name="persona" /><span>主控人物</span></button>
       <button onClick={() => onOpen("world")}><ClassicalIcon name="world" /><span>世界书</span></button>
       <button onClick={() => onOpen("presets")}><ClassicalIcon name="preset" /><span>预设</span></button>
+      <button onClick={() => onOpen("extensions")}><ClassicalIcon name="extension" /><span>扩展</span></button>
     </nav>
   );
 }
@@ -43,12 +45,20 @@ export function LibraryWorkspace(props: {
   error: string | null;
 }) {
   const [presetNotice, setPresetNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
-  const title = props.page === "characters" ? "角色" : props.page === "personas" ? "主控人物" : props.page === "world" ? "世界书" : "写作预设";
+  const title = props.page === "characters" ? "角色" : props.page === "personas" ? "主控人物" : props.page === "world" ? "世界书" : props.page === "presets" ? "写作预设" : "扩展";
+  const specializedPage = props.page === "presets" || props.page === "extensions";
   return (
     <div className="library-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}>
-    <main className={`library-workspace${props.page === "presets" ? " preset-library-workspace" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+    <main className={`library-workspace${specializedPage ? " preset-library-workspace" : ""}${props.page === "extensions" ? " extension-library-workspace" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
       <header className="topbar library-topbar">
-        <div><p className="eyebrow">{props.page === "presets" ? "写作配置" : "故事设定"}</p><h1>{title}</h1></div>
+        <div>
+          <p className="eyebrow">{props.page === "presets" ? "写作配置" : props.page === "extensions" ? "EXTENSION LIBRARY" : "故事设定"}</p>
+          <div className="library-title-row">
+            {props.page === "extensions" && <ClassicalIcon name="extension" />}
+            <h1>{title}</h1>
+            {props.page === "extensions" && <HelpTip text="在这里管理可复用的技能与外部服务。技能保存工作方法和参考资料，服务则负责连接其他程序。" />}
+          </div>
+        </div>
         <button className="icon-button" onClick={props.onClose} aria-label="关闭">×</button>
       </header>
       {props.error && <div className="error-banner">{props.error}</div>}
@@ -79,12 +89,16 @@ export function LibraryWorkspace(props: {
           onTemplates={props.onWorldBooks}
           onError={props.onError}
         />
-      ) : (
+      ) : props.page === "presets" ? (
         <div className="library-content preset-library-content">
           <PresetManager
             onActivated={props.onPresetActivated}
             onNotice={(kind, text) => setPresetNotice({ kind, text })}
           />
+        </div>
+      ) : (
+        <div className="library-content extension-library-content">
+          <ExtensionSettings selectedChatId={props.selectedChat?.id ?? null} />
         </div>
       )}
     </main>

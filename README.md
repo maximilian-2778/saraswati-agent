@@ -34,6 +34,7 @@
 - 可选上下文调试模式：分段 Token、裁剪、世界书触发、RAG 分数和最终 Prompt
 - 模型调用耗时、输入输出 Token 与可配置费用估算
 - LangGraph 状态图编排、条件工具循环和本地节点检查点
+- 可扩展 Agent Runtime：按需加载 `SKILL.md`，并通过 MCP Plugin 动态接入第三方工具
 
 未配置模型时仍可管理故事资料，但发送消息前必须连接兼容的模型 API。
 
@@ -41,7 +42,7 @@
 
 | 模块 | 技术 |
 | --- | --- |
-| 后端 | Python 3.13、FastAPI、Pydantic、SQLAlchemy、Alembic、SQLite、httpx |
+| 后端 | Python 3.13、FastAPI、Pydantic、SQLAlchemy、Alembic、SQLite、httpx、MCP SDK |
 | Agent 编排 | LangGraph StateGraph、条件边、SQLite Checkpointer |
 | 前端 | React、TypeScript、TanStack Query、Vite、CSS |
 | 模型接口 | OpenAI-compatible Chat Completions、Embeddings |
@@ -120,6 +121,7 @@ npm run build
 
 ```text
 backend/
+  extensions/            Skill 发现、安全边界与 MCP Plugin 适配
   api.py                 路由入口
   controller_helpers.py  路由共享的查询与回放函数
   routers/               系统、模板、故事、记忆和状态接口
@@ -128,7 +130,7 @@ backend/
     agent.py              LangGraph Runtime 生命周期与兼容入口
     agent_graph.py        状态、节点、条件边和工作流定义
     narrative_delta_apply.py  生成后变化的去重与应用
-    presets.py            预设默认模块与酒馆 JSON 转换
+    presets.py            预设默认模块与兼容 JSON 转换
 
 alembic/
   env.py                  迁移运行环境
@@ -148,6 +150,7 @@ frontend/src/
 - [`docs/SETTINGS.md`](docs/SETTINGS.md)
 - [`docs/PROJECT_SPEC.md`](docs/PROJECT_SPEC.md)
 - [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md)
 - [`CHANGELOG.md`](CHANGELOG.md)
 
 ## 开发状态

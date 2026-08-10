@@ -10,6 +10,117 @@ export interface RuntimeInfo {
   max_agent_steps: number;
 }
 
+export interface SkillExtension {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  enabled: boolean;
+  plugin_id: string;
+  source: string;
+  read_only: boolean;
+  tags: string[];
+  resources: string[];
+  digest: string;
+  warnings: string[];
+  location: string;
+  license: string;
+  compatibility: string;
+  platforms: string[];
+  required_environment_variables: string[];
+  required_commands: string[];
+  missing_requirements: string[];
+  readiness: "ready" | "missing_requirements" | "incompatible";
+  installed_at: string;
+  source_url: string;
+  view_count: number;
+  use_count: number;
+  last_used_at: string;
+}
+
+export interface PluginExtension {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  url: string;
+  enabled: boolean;
+  transport: "streamable_http" | "sse" | "stdio";
+  capabilities: string[];
+  allowed_tools: string[];
+  status: "idle" | "connected" | "error";
+  error: string | null;
+  tools: string[];
+  command: string;
+  args: string[];
+  environment_variables: string[];
+  trusted: boolean;
+  timeout_seconds: number;
+  auth_configured: boolean;
+  header_names: string[];
+  manifest_format: "saraswati" | "codex" | "legacy";
+  source: string;
+  author: string;
+  license: string;
+  homepage: string;
+  repository: string;
+  keywords: string[];
+  skills: string[];
+  resources: string[];
+  interface: Record<string, unknown>;
+  mcp_servers: McpServerExtension[];
+  plugin_type: "skill" | "tool" | "hybrid" | "resource";
+  missing_requirements: string[];
+  installed_at: string;
+  source_url: string;
+  location: string;
+}
+
+export interface McpServerExtension {
+  id: string;
+  transport: "streamable_http" | "sse" | "stdio";
+  url: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  environment_variables: string[];
+  allowed_tools: string[];
+  excluded_tools: string[];
+  timeout_seconds: number;
+  header_names: string[];
+}
+
+export interface ExtensionCatalog {
+  skills: SkillExtension[];
+  plugins: PluginExtension[];
+  mcp_sdk_available: boolean;
+  root: string;
+}
+
+export interface ChatSkillSelection {
+  chat_id: string;
+  mode: "all" | "selected";
+  skill_ids: string[];
+}
+
+export interface PluginCreate {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  url: string;
+  transport: "streamable_http" | "sse" | "stdio";
+  capabilities: ["tools"];
+  allowed_tools: string[];
+  command: string;
+  args: string[];
+  environment_variables: string[];
+  trusted: boolean;
+  timeout_seconds: number;
+  auth_token: string;
+}
+
 export interface AppSettings {
   provider_mode: string;
   llm_base_url: string | null;
@@ -318,6 +429,67 @@ export interface Npc {
   source_message_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export type WorldFactionStatus = "rising" | "stable" | "strained" | "declining" | "dissolved";
+export type WorldFactionRelation = "allied" | "friendly" | "neutral" | "cold" | "hostile";
+
+export interface WorldFaction {
+  id: string;
+  name: string;
+  description: string;
+  status: WorldFactionStatus;
+  relation: WorldFactionRelation;
+  influence: number;
+  latest_action: string;
+}
+
+export interface WorldEvent {
+  id: string;
+  name: string;
+  type: "conflict" | "progress";
+  stage: "seed" | "developing" | "approaching" | "resolved" | "failed" | "dissipated";
+  level: number;
+  summary: string;
+  participants: string[];
+  location: string;
+  next_pressure: string;
+  active: boolean;
+}
+
+export interface WorldRumor {
+  id: string;
+  topic: string;
+  type: "announcement" | "report" | "rumor" | "sentiment";
+  level: number;
+  content: string;
+  scope: string;
+  source: string;
+  active: boolean;
+}
+
+export interface WorldTrend {
+  id: string;
+  name: string;
+  description: string;
+  direction: "rising" | "stable" | "falling";
+}
+
+export interface WorldEngineState {
+  round: number;
+  digest: string;
+  factions: WorldFaction[];
+  events: WorldEvent[];
+  rumors: WorldRumor[];
+  trends: WorldTrend[];
+}
+
+export interface WorldEngineSnapshot {
+  state: WorldEngineState;
+  auto_evolve: boolean;
+  records_count: number;
+  stale_count: number;
+  updated_at: string | null;
 }
 
 export interface TimelineAnchor {

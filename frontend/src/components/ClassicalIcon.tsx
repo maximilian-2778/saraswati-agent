@@ -3,6 +3,7 @@ export type ClassicalIconName =
   | "persona"
   | "world"
   | "preset"
+  | "extension"
   | "bookmark"
   | "checkpoint"
   | "settings"
@@ -42,6 +43,13 @@ export function ClassicalIcon({ name, className = "" }: { name: ClassicalIconNam
         <path d="M7.05 16.7c-1.02-3.62.02-8.75 10.83-13.28.74 5.85-1.74 10.35-8.32 11.77" />
         <path d="M10.2 12.15c1.72-.28 3.42-.98 5.1-2.08M12.08 8.92c1.26-.17 2.57-.62 3.92-1.35" opacity=".5" />
         <path d="M3.15 21h6.2" />
+      </>}
+      {name === "extension" && <>
+        <path d="M12 3.15 15.15 6.3 12 9.45 8.85 6.3 12 3.15Z" />
+        <path d="m6.25 10.05 3.15 3.15-3.15 3.15L3.1 13.2l3.15-3.15ZM17.75 10.05l3.15 3.15-3.15 3.15-3.15-3.15 3.15-3.15Z" />
+        <path d="M12 15.05 15.15 18.2 12 21.35 8.85 18.2 12 15.05Z" />
+        <path d="m10.05 8.35-2.1 2.1M13.95 8.35l2.1 2.1M9.4 14.7l-1.45 1.45M14.6 14.7l1.45 1.45" opacity=".72" />
+        <circle cx="12" cy="12.25" r="1.65" opacity=".58" />
       </>}
       {name === "bookmark" && <>
         <path d="M7.1 3.25h9.8v17.5L12 17.55 7.1 20.75V3.25Z" />

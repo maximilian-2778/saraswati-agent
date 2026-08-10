@@ -24,6 +24,7 @@ from backend.services.memory import MemoryService, RetrievedMemory
 from backend.services.narrative_memory import NarrativeMemoryService
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
+from backend.services.world_engine import WorldEngineService
 from backend.services.token_budget import TokenBudgetManager
 from backend.utils import clean_story_text, json_loads
 
@@ -48,12 +49,14 @@ class ContextBuilder:
         state_service: StateService,
         narrative_memory_service: NarrativeMemoryService,
         graph_service: RoleplayGraphService,
+        world_engine_service: WorldEngineService,
     ) -> None:
         self.settings = settings
         self.memory_service = memory_service
         self.state_service = state_service
         self.narrative_memory_service = narrative_memory_service
         self.graph_service = graph_service
+        self.world_engine_service = world_engine_service
         self.budget_manager = TokenBudgetManager()
 
     async def build(
@@ -178,6 +181,7 @@ class ContextBuilder:
             for record in active_world_entries[:12]
         ]
         roleplay_graph = self.graph_service.context_text(db, chat.id, query)
+        evolving_world = self.world_engine_service.context_text(db, chat.id)
 
         system_prompt = "你正在进行长篇角色扮演。保持人物语气、剧情连贯和沉浸感。"
         if chat.system_prompt.strip():
@@ -203,6 +207,8 @@ class ContextBuilder:
             + ("\n".join(world_lines) if world_lines else "- 本轮没有触发词条")
             + "\n\n当前场景与人物关系：\n"
             + (roleplay_graph or "- 暂无结构化场景或 NPC 记录")
+            + "\n\n持续演化的世界状态：\n"
+            + (evolving_world or "- 尚未启用世界推演")
         )
         system_prompt += (
             "\n\n你可以调用工具查询记忆和精确状态。"
@@ -256,6 +262,7 @@ class ContextBuilder:
             ("summary", "长期总结", bool(summary_text), "近期窗口之外的最高可信摘要节点", summary_text),
             ("rag", "RAG 召回记忆", bool(memory_lines), "与用户最新消息相关的长期记忆", "\n".join(memory_lines)),
             ("scene", "当前场景和人物", bool(roleplay_graph), "当前地点、在场 NPC 和相关人物关系", roleplay_graph),
+            ("evolving_world", "世界演化状态", bool(evolving_world), "势力、持续事件和正在传播的信息", evolving_world),
             ("state", "数值与物品状态", bool(state_lines), "与本轮话题相关的已批准精确状态", "\n".join(state_lines)),
             ("recent", "最近对话", bool(recent_dialogue), "仍在原文窗口内的最近消息", "\n\n".join(f"{item.role}: {item.content}" for item in recent_dialogue)),
             ("latest_user", "用户最新消息", bool(latest_user), "触发本轮生成的消息", latest_user.content if latest_user else query),

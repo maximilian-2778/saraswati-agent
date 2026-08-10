@@ -2,9 +2,12 @@
 
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.llm import ModelClient
+from backend.extensions import ExtensionRuntime
+from backend.models import ChatSkillBindingRecord, ChatSkillModeRecord
 from backend.models import MemoryRecord, StateChangeRecord
 from backend.schemas import MemoryKind
 from backend.services.memory import MemoryService
@@ -142,6 +145,7 @@ class ToolExecutor:
         memory_service: MemoryService,
         state_service: StateService,
         graph_service: RoleplayGraphService,
+        extensions: ExtensionRuntime,
     ) -> None:
         self.db = db
         self.model = model
@@ -150,6 +154,7 @@ class ToolExecutor:
         self.memory_service = memory_service
         self.state_service = state_service
         self.graph_service = graph_service
+        self.extensions = extensions
         self.created_proposals: list[StateChangeRecord] = []
         self.created_memories: list[MemoryRecord] = []
 
@@ -255,7 +260,26 @@ class ToolExecutor:
             self.created_memories.append(memory)
             return {"memory_id": memory.id, "kind": memory.kind}
 
-        raise ValueError(f"未知工具：{name}")
+        return await self.extensions.execute(name, arguments, self.allowed_skill_ids())
+
+    async def schemas(self) -> list[dict[str, Any]]:
+        """合并内置工具与当前可用的 Skill/MCP 工具。"""
+        return [*TOOL_SCHEMAS, *await self.extensions.tool_schemas(self.allowed_skill_ids())]
+
+    def prompt_messages(self, user_text: str) -> list[dict[str, str]]:
+        return self.extensions.prompt_messages(user_text, self.allowed_skill_ids())
+
+    def allowed_skill_ids(self) -> set[str] | None:
+        mode = self.db.get(ChatSkillModeRecord, self.chat_id)
+        if mode is None or mode.mode == "all":
+            return None
+        return set(
+            self.db.scalars(
+                select(ChatSkillBindingRecord.skill_id).where(
+                    ChatSkillBindingRecord.chat_id == self.chat_id
+                )
+            ).all()
+        )
 
 
 def _clean_optional(value: Any) -> str | None:

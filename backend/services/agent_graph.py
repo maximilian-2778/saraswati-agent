@@ -32,7 +32,8 @@ from backend.services.narrative_delta_apply import NarrativeDeltaApplier
 from backend.services.narrative_memory import NarrativeMemoryService
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
-from backend.services.tools import TOOL_SCHEMAS, ToolExecutor
+from backend.services.world_engine import WorldEngineService
+from backend.services.tools import ToolExecutor
 from backend.services.token_budget import estimate_tokens
 from backend.utils import json_dumps
 
@@ -79,6 +80,7 @@ class AgentGraphContext:
     narrative_memory_service: NarrativeMemoryService
     narrative_delta_service: NarrativeDeltaService
     narrative_delta_applier: NarrativeDeltaApplier
+    world_engine_service: WorldEngineService
     tool_executor: ToolExecutor
     trace: TraceWriter
     on_token: TokenWriter | None = None
@@ -97,6 +99,7 @@ def build_agent_graph(checkpointer: Any) -> Any:
     graph.add_node("update_memory", _update_memory)
     graph.add_node("extract_delta", _extract_delta)
     graph.add_node("apply_narrative_delta", _apply_narrative_delta)
+    graph.add_node("evolve_world", _evolve_world)
     graph.add_node("audit_response", _audit_response)
 
     graph.add_edge(START, "build_context")
@@ -115,7 +118,8 @@ def build_agent_graph(checkpointer: Any) -> Any:
     graph.add_edge("persist_response", "update_memory")
     graph.add_edge("update_memory", "extract_delta")
     graph.add_edge("extract_delta", "apply_narrative_delta")
-    graph.add_edge("apply_narrative_delta", "audit_response")
+    graph.add_edge("apply_narrative_delta", "evolve_world")
+    graph.add_edge("evolve_world", "audit_response")
     graph.add_edge("audit_response", END)
     return graph.compile(checkpointer=checkpointer, name="saraswati_roleplay_agent")
 
@@ -146,8 +150,14 @@ async def _build_context(
             "token_budget": context.diagnostics,
         },
     )
+    messages = list(context.messages)
+    extension_messages = dependencies.tool_executor.prompt_messages(dependencies.user_message.content)
+    if extension_messages and messages:
+        messages = [*messages[:-1], *extension_messages, messages[-1]]
+    elif extension_messages:
+        messages = extension_messages
     return {
-        "working_messages": list(context.messages),
+        "working_messages": messages,
         "retrieved_memories": [
             {
                 "id": item.record.id,
@@ -173,6 +183,7 @@ async def _call_model(
     started_at = perf_counter()
     input_tokens = _message_tokens(messages, dependencies.model.model_name)
     streamed_parts: list[str] = []
+    tool_schemas = await dependencies.tool_executor.schemas()
 
     async def forward_token(token: str) -> None:
         streamed_parts.append(token)
@@ -181,11 +192,11 @@ async def _call_model(
         reply = (
             await dependencies.model.stream_complete(
                 messages,
-                TOOL_SCHEMAS,
+                tool_schemas,
                 forward_token,
             )
             if dependencies.on_token
-            else await dependencies.model.complete(messages, TOOL_SCHEMAS)
+            else await dependencies.model.complete(messages, tool_schemas)
         )
     except ModelProviderError as exc:
         # 请求尾部失败时，已经收到的正文仍然可以作为本轮结果使用。
@@ -559,6 +570,50 @@ async def _apply_narrative_delta(
         },
     )
     return {"state_proposal_ids": proposal_ids}
+
+
+async def _evolve_world(
+    state: AgentGraphState,
+    runtime: Runtime[AgentGraphContext],
+) -> dict[str, Any]:
+    dependencies = runtime.context
+    snapshot = dependencies.world_engine_service.snapshot(dependencies.db, state["chat_id"])
+    if not snapshot.auto_evolve:
+        return {}
+    assistant_message = _message(dependencies.db, state["assistant_message_id"])
+    try:
+        evolved = await dependencies.world_engine_service.evolve(
+            dependencies.db,
+            dependencies.model,
+            state["chat_id"],
+            dependencies.user_message,
+            assistant_message,
+            mode="auto",
+        )
+        dependencies.trace(
+            dependencies.db,
+            state["chat_id"],
+            state["turn_id"],
+            dependencies.settings.max_agent_steps + 1,
+            "world_evolved",
+            {
+                "round": evolved.state.round,
+                "faction_count": len(evolved.state.factions),
+                "event_count": len(evolved.state.events),
+                "rumor_count": len(evolved.state.rumors),
+            },
+        )
+    except Exception as exc:
+        # 世界推演是可选后处理，故障不能吞掉已经生成的正文。
+        dependencies.trace(
+            dependencies.db,
+            state["chat_id"],
+            state["turn_id"],
+            dependencies.settings.max_agent_steps + 1,
+            "world_evolution_error",
+            {"error": str(exc)},
+        )
+    return {}
 
 
 async def _audit_response(

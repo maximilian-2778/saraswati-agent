@@ -2,6 +2,35 @@
 
 All notable changes to Saraswati Agent are documented in this file.
 
+## [1.2.0] - 2026-08-10
+
+### Added
+
+- Added native World Chronicle state with factions, persistent events, rumors, trends, manual/automatic evolution, prompt injection, and message-fingerprint state-chain invalidation.
+
+- Added an Agent Skills-compatible runtime with progressive metadata, instruction, and resource loading.
+- Added installable Plugin packages that can bundle multiple Skills, MCP services, executable service files, and resources.
+- Added a first-class extension workspace in the top navigation for Skill discovery and MCP Plugin registration.
+- Added quarantined Skill ZIP install/export/recoverable archive, full safe YAML metadata, dependency readiness, provenance and usage telemetry.
+- Added per-story Skill allowlists enforced across prompting, tool schemas, and execution.
+- Added MCP Streamable HTTP, SSE, and explicitly trusted stdio transports, separate secret headers, tool allowlists, and recoverable Plugin archive.
+- Added Saraswati manifests, Codex-style `.codex-plugin/plugin.json` compatibility, ZIP install/export, `${PLUGIN_ROOT}` relocation, and opt-in discovery for local plugin folders.
+
+### Security
+
+- Third-party Skills are read-only and their scripts are never executed directly by Saraswati.
+- Third-party Plugins are not imported into the application process and cannot override built-in tools.
+
+### Changed
+
+- Integrated World Chronicle into the story console with factions, ongoing events, rumors, trends, scene and NPC views.
+- Moved superseded console and inspector implementations into a build-excluded legacy UI archive.
+- Refined extension controls, themed selectors, typography, navigation placement, and explanatory copy.
+
+### Fixed
+
+- Fixed empty-state alignment and several world, extension, modal, and composer layout inconsistencies.
+
 ## [1.1.0] - 2026-08-10
 
 ### Added

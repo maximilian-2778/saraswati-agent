@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.config import Settings
+from backend.extensions import ExtensionRuntime
 from backend.llm import ModelClient, ModelProviderError
 from backend.models import (
     AgentTraceRecord,
@@ -40,6 +41,7 @@ from backend.services.narrative_delta_apply import NarrativeDeltaApplier
 from backend.services.narrative_memory import NarrativeMemoryService
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
+from backend.services.world_engine import WorldEngineService
 from backend.services.tools import ToolExecutor
 from backend.utils import json_dumps
 
@@ -73,12 +75,15 @@ class AgentRuntime:
             self.state_service,
             self.graph_service,
         )
+        self.world_engine_service = WorldEngineService()
+        self.extensions = ExtensionRuntime()
         self.context_builder = ContextBuilder(
             settings,
             self.memory_service,
             self.state_service,
             self.narrative_memory_service,
             self.graph_service,
+            self.world_engine_service,
         )
         self._checkpoint_connection: aiosqlite.Connection | None = None
         self._checkpointer: AsyncSqliteSaver | InMemorySaver = InMemorySaver(
@@ -130,6 +135,7 @@ class AgentRuntime:
             self.memory_service,
             self.state_service,
             self.graph_service,
+            self.extensions,
         )
         dependencies = AgentGraphContext(
             db=db,
@@ -145,6 +151,7 @@ class AgentRuntime:
             narrative_memory_service=self.narrative_memory_service,
             narrative_delta_service=self.narrative_delta_service,
             narrative_delta_applier=self.narrative_delta_applier,
+            world_engine_service=self.world_engine_service,
             tool_executor=executor,
             trace=self._trace,
             on_token=on_token,

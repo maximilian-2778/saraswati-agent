@@ -1,3 +1,8 @@
+/*
+ * Archived snapshot before legacy panel extraction.
+ * This file is outside frontend/src and is not part of the production build.
+ */
+
 import { FormEvent, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "./api";
@@ -120,8 +125,27 @@ function EventsPanel(props: MemoryHubProps & { chatId: string }) {
   </div>;
 }
 
+function ItemsPanel(props: MemoryHubProps & { chatId: string }) {
+  const [selected, setSelected] = useState<StateEntry | null>(null);
+  const items = itemEntries(props.stateEntries);
+  return <div className="panel-stack entity-browser">
+    <div className="entity-grid">{items.length ? items.map((entry) => { const value = itemValue(entry.value); return <button className="entity-card" key={entry.id} onClick={() => setSelected(entry)}><span className="entity-glyph">◇</span><strong>{stripLedgerPrefix(entry.entity)}</strong><small>{value.status || entry.key}</small><p>{[value.quantity && `数量 ${value.quantity}`, value.location].filter(Boolean).join(" · ") || "查看详细资料"}</p></button>; }) : <Empty text="还没有物品记录。" />}</div>
+    {selected && <div className="entity-detail"><header><div><small>物品档案</small><h2>{stripLedgerPrefix(selected.entity)}</h2></div><button onClick={() => setSelected(null)}>×</button></header><ItemDetails entry={selected} /><footer><span>第 {selected.version} 版</span><time>{formatDateTime(selected.updated_at)}</time></footer></div>}
+  </div>;
+}
+
+function ItemDetails({ entry }: { entry: StateEntry }) {
+  const value = itemValue(entry.value);
+  return <dl className="entity-facts"><dt>介绍</dt><dd>{value.description || value.status || "暂无介绍"}</dd><dt>状态</dt><dd>{value.status || "未记录"}</dd><dt>数量</dt><dd>{value.quantity || "未记录"}</dd><dt>所有者</dt><dd>{value.owner || "未记录"}</dd><dt>位置</dt><dd>{value.location || "未记录"}</dd></dl>;
+}
+
 function MemoryPanel(props: MemoryHubProps & { chatId: string }) {
   return <div className="memory-console"><SummaryPanel {...props} chatId={props.chatId} /><section className="console-section"><h3>相关记忆</h3><RetrievalPanel {...props} chatId={props.chatId} /></section></div>;
+}
+
+function DeltaPanel({ deltas }: { deltas: NarrativeDelta[] }) {
+  if (!deltas.length) return <Empty text="暂无记录" />;
+  return <div className="panel-stack delta-list">{[...deltas].reverse().map((delta) => <article key={delta.id} className={delta.valid ? "" : "invalid"}><header><strong>{delta.payload.summary || "这一轮发生的事"}</strong><span>{delta.valid ? "当前版本" : "对应内容已改写"}</span></header>{delta.payload.time_change && <p>时间：{delta.payload.time_change}</p>}{Boolean(delta.payload.facts?.length) && <ul>{delta.payload.facts?.map((fact) => <li key={fact}>{fact}</li>)}</ul>}{Boolean(delta.payload.numbers?.length) && <p>数值：{delta.payload.numbers?.map((item) => `${item.name} ${item.value}${item.unit}`).join("；")}</p>}<small>{new Date(delta.created_at).toLocaleString()}</small></article>)}</div>;
 }
 
 function WorldGraphPanel(props: MemoryHubProps & { chatId: string }) {
@@ -130,6 +154,7 @@ function WorldGraphPanel(props: MemoryHubProps & { chatId: string }) {
   const [selectedScene, setSelectedScene] = useState<SceneNode | null>(null);
   const [selectedNpc, setSelectedNpc] = useState<Npc | null>(null);
   const [mergeTarget, setMergeTarget] = useState("");
+  const sceneById = new Map(props.scenes.map((item) => [item.id, item]));
   const npcItems = (npc: Npc) => itemEntries(props.stateEntries).filter((entry) => itemValue(entry.value).owner === npc.name);
   async function merge() { if (!selectedScene || !mergeTarget) return; try { await api.mergeScene(props.chatId, selectedScene.id, mergeTarget); setSelectedScene(null); setMergeTarget(""); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
   async function evolveWorld() { try { setWorldBusy(true); await api.evolveWorld(props.chatId); await props.onRefresh(); } catch (reason) { props.onError(reason); } finally { setWorldBusy(false); } }
@@ -258,6 +283,43 @@ function SummarySection(props: { title: string; items: Memory[]; selected: strin
   return <section className="summary-section"><h3>{props.title}<small>{props.items.length}</small></h3>{props.items.map((item) => <article className="summary-card" key={item.id}><label><input type="checkbox" checked={props.selected.includes(item.id)} onChange={() => props.onToggle(item.id)} /><span>{item.content.replace(/^\[[^\]]+\]\s*/, "")}</span></label><footer><time>{formatDateTime(item.created_at)}</time><div><button onClick={() => props.onEdit(item)}>编辑</button><button onClick={() => props.onDelete(item.id)}>删除</button></div></footer></article>)}</section>;
 }
 
+function TimelinePanel(props: MemoryHubProps & { chatId: string }) {
+  const [storyTime, setStoryTime] = useState("");
+  const [description, setDescription] = useState("");
+  async function add(event: FormEvent) {
+    event.preventDefault();
+    try { await api.createTimelineAnchor(props.chatId, { story_time: storyTime, description }); setStoryTime(""); setDescription(""); await props.onRefresh(); }
+    catch (reason) { props.onError(reason); }
+  }
+  async function remove(id: string) { try { await api.deleteTimelineAnchor(props.chatId, id); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
+  return <div className="panel-stack">{props.timeline.length === 0 ? <Empty text="暂无时间记录" /> : <div className="timeline-list">{props.timeline.map((item) => <article key={item.id}><i /><div><strong>{item.story_time}</strong><p>{item.description}</p><small>{formatDateTime(item.created_at)}</small></div><button onClick={() => void remove(item.id)}>×</button></article>)}</div>}<form className="mini-form" onSubmit={add}><h3>添加时间</h3><input value={storyTime} onChange={(e) => setStoryTime(e.target.value)} placeholder="第三天傍晚" required /><textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="发生了什么" rows={3} required /><button>添加</button></form></div>;
+}
+
+function LedgerPanel(props: MemoryHubProps & { chatId: string }) {
+  const [category, setCategory] = useState<LedgerCategory>("item");
+  const [entity, setEntity] = useState("");
+  const [key, setKey] = useState("状态");
+  const [value, setValue] = useState("");
+  const grouped = useMemo(() => groupLedger(props.stateEntries), [props.stateEntries]);
+  const pending = props.proposals.filter((item) => item.status === "pending");
+  const history = props.proposals.filter((item) => item.status !== "pending").slice(0, 20);
+  const categories: { id: LedgerCategory; label: string }[] = [{ id: "item", label: "物品" }, { id: "npc", label: "人物" }, { id: "scene", label: "场景" }, { id: "thread", label: "悬念" }, { id: "other", label: "其他" }];
+  async function resolve(id: string, action: "approve" | "reject") { try { await api.resolveProposal(props.chatId, id, action); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
+  async function undo(id: string) { try { await api.undoStateChange(props.chatId, id); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
+  async function create(event: FormEvent) {
+    event.preventDefault();
+    let parsed: unknown = value; try { parsed = JSON.parse(value); } catch { /* 普通文字可以直接保存 */ }
+    try { await api.createProposal(props.chatId, { entity: `${ledgerPrefix(category)}${entity}`, key, new_value: parsed, reason: "用户手动修改" }); setEntity(""); setValue(""); await props.onRefresh(); } catch (reason) { props.onError(reason); }
+  }
+  return <div className="panel-stack">
+    <div className="ledger-tabs">{categories.map((item) => <button className={category === item.id ? "active" : ""} onClick={() => setCategory(item.id)} key={item.id}>{item.label}<small>{grouped[item.id].length}</small></button>)}</div>
+    {grouped[category].length === 0 ? <Empty text={`还没有${categories.find((item) => item.id === category)?.label}记录。`} /> : grouped[category].map((entry) => <article className="ledger-card" key={entry.id}><header><strong>{stripLedgerPrefix(entry.entity)}</strong><span>第 {entry.version} 版</span></header><div><small>{entry.key}</small><code>{displayLedgerValue(entry.value)}</code></div></article>)}
+    <section className="pending-ledger"><h3>等待确认 <small>{pending.length}</small></h3>{pending.length === 0 ? <p className="muted">目前没有需要确认的变化。</p> : pending.map((item) => <article className="proposal-card" key={item.id}><header><strong>{stripLedgerPrefix(item.entity)} · {item.key}</strong><span>待确认</span></header><div className="value-change"><code>{displayValue(item.old_value)}</code><b>→</b><code>{displayValue(item.new_value)}</code></div><p>{item.reason}</p><footer><button onClick={() => void resolve(item.id, "reject")}>不采用</button><button className="approve" onClick={() => void resolve(item.id, "approve")}>确认</button></footer></article>)}</section>
+    {history.length > 0 && <details className="ledger-history"><summary>修改记录（{history.length}）</summary>{history.map((item) => <div key={item.id}><span>{item.status === "approved" ? "已自动采用" : item.status === "reverted" ? "已撤销" : "未采用"}</span><strong>{stripLedgerPrefix(item.entity)} · {item.key}</strong><code>{displayValue(item.new_value)}</code>{item.status === "approved" && <button onClick={() => void undo(item.id)}>撤销</button>}</div>)}</details>}
+    <form className="mini-form" onSubmit={create}><h3>手动添加记录</h3><select value={category} onChange={(e) => setCategory(e.target.value as LedgerCategory)}>{categories.filter((item) => item.id !== "other").map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select><div className="two-columns"><input value={entity} onChange={(e) => setEntity(e.target.value)} placeholder="名称" required /><input value={key} onChange={(e) => setKey(e.target.value)} placeholder="项目" required /></div><input value={value} onChange={(e) => setValue(e.target.value)} placeholder="内容" required /><button>等待确认</button></form>
+  </div>;
+}
+
 function RetrievalPanel(props: MemoryHubProps & { chatId: string }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<RetrievedMemory[]>(props.retrieved);
@@ -327,6 +389,8 @@ function ContextDebugPanel({ traces }: { traces: AgentTrace[] }) {
     .filter((trace) => trace.turn_id === contextTrace.turn_id && ["model_response", "forced_model_response", "model_error"].includes(trace.event_type))
     .map((trace) => trace.payload as ModelMetricPayload);
   const duration = modelMetrics.reduce((sum, item) => sum + (item.duration_ms ?? 0), 0);
+  const inputTokens = modelMetrics.reduce((sum, item) => sum + (item.input_tokens ?? 0), 0);
+  const outputTokens = modelMetrics.reduce((sum, item) => sum + (item.output_tokens ?? 0), 0);
   const cost = modelMetrics.reduce((sum, item) => sum + (item.estimated_cost_usd ?? 0), 0);
   const pricingConfigured = modelMetrics.some((item) => item.pricing_configured);
   const completed = traces.find((trace) => trace.turn_id === contextTrace.turn_id && trace.event_type === "turn_completed");
@@ -357,6 +421,7 @@ function ContextDebugPanel({ traces }: { traces: AgentTrace[] }) {
   </div>;
 }
 
+type LedgerCategory = "item" | "npc" | "scene" | "thread" | "other";
 type ItemRecord = { owner: string; quantity: string; status: string; location: string; description: string };
 function itemEntries(entries: StateEntry[]) { return entries.filter((entry) => /^(物品|item)\s*[:：]/i.test(entry.entity)); }
 function itemValue(value: unknown): ItemRecord {
@@ -368,8 +433,25 @@ function itemValue(value: unknown): ItemRecord {
     description: String(record.description ?? record.detail ?? ""),
   };
 }
+function groupLedger(entries: StateEntry[]): Record<LedgerCategory, StateEntry[]> { const result: Record<LedgerCategory, StateEntry[]> = { item: [], npc: [], scene: [], thread: [], other: [] }; entries.forEach((entry) => result[ledgerCategory(entry.entity, entry.key)].push(entry)); return result; }
+function ledgerCategory(entity: string, key: string): LedgerCategory { const text = `${entity} ${key}`.toLowerCase(); if (/^(物品|item):|物品|背包|库存|持有|数量/.test(text)) return "item"; if (/^(npc|人物):|npc|人物|角色|外貌|穿着/.test(text)) return "npc"; if (/^(场景|scene):|场景|地点|位置|区域/.test(text)) return "scene"; if (/^(悬念|thread):|悬念|计划|任务|约定|谜题|伏笔/.test(text)) return "thread"; return "other"; }
+function ledgerPrefix(category: LedgerCategory) { return { item: "物品:", npc: "NPC:", scene: "场景:", thread: "悬念:", other: "" }[category]; }
 function stripLedgerPrefix(value: string) { return value.replace(/^(物品|NPC|场景|悬念):/i, ""); }
 function displayValue(value: unknown) { if (value === null || value === undefined) return "未设置"; return typeof value === "string" ? value : JSON.stringify(value); }
+function displayLedgerValue(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return displayValue(value);
+  const item = value as Record<string, unknown>;
+  const labels: [string, unknown][] = [
+    ["归属", item.owner],
+    ["数量", item.quantity],
+    ["状态", item.status],
+    ["位置", item.location],
+  ];
+  const details = labels
+    .filter(([, field]) => field !== null && field !== undefined && String(field).trim() !== "")
+    .map(([label, field]) => `${label}：${String(field)}`);
+  return details.length ? details.join(" · ") : displayValue(value);
+}
 function memoryKindLabel(kind: Memory["kind"]) { return { episodic: "楼层", semantic: "事实", summary: "总结", implicit: "隐性" }[kind]; }
 function importanceLabel(value: Npc["importance"]) { return { core: "核心", supporting: "配角", minor: "龙套" }[value]; }
 function presenceLabel(value: Npc["presence"]) { return { present: "在场", nearby: "附近", away: "离场", unknown: "未知" }[value]; }

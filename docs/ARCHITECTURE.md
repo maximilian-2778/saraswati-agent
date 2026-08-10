@@ -10,6 +10,9 @@ flowchart LR
     LG --> LLM[OpenAI 兼容模型]
     LG --> CTX[上下文组装器]
     LG --> TOOLS[工具注册表]
+    TOOLS --> EXT[Extension Runtime]
+    EXT --> SKILL[SKILL.md / 按需资源]
+    EXT --> MCP[MCP Plugin Server]
     LG --> CP[(节点检查点)]
     CTX --> FOREST[摘要森林选择器]
     CTX --> MEM[分档 RAG 服务]
@@ -51,6 +54,8 @@ flowchart LR
 - `database`：数据库引擎、单次请求的 Session 生命周期和旧库兼容补齐逻辑。
 - `migrations`：启动时执行 Alembic upgrade，并接管没有 revision 的旧数据库。
 - `config`：带安全默认值的环境配置。
+- `extensions`：Skill 隔离安装、三级按需读取、故事级权限、来源/用量记录，以及 MCP Plugin 三传输协议适配；第三方代码不在主进程内导入。
+- `world_engine`：故事级势力、持续事件、风声与趋势推演；不可变快照通过消息指纹和前态摘要组成可验证状态链。
 
 ## 一轮对话的数据流
 
@@ -91,6 +96,9 @@ sequenceDiagram
 ## 数据权威规则
 
 - LangGraph 检查点只保存消息、记录 ID、执行步数和路由结果；数据库会话、模型客户端、回调和 API Key 不进入图状态。
+- Skill 目录只把名称和描述加入常规上下文，完整 `SKILL.md` 与附属资源在模型调用 `activate_skill` 后才读取；显式 `/skill-id` 会在本轮预载主说明。
+- Plugin 工具统一增加 `<plugin-id>__` 命名空间，不能覆盖内置工具；MCP 连接通过 Streamable HTTP、SSE 或显式信任的 stdio 惰性建立，单个 Plugin 不可用时不会阻止主应用启动。
+- 故事级 Skill 白名单在提示注入、工具 schema 和执行入口重复校验，数据库记录是权威来源。
 - 每轮使用独立 `thread_id`，节点状态写入单独的本地 SQLite 文件；剧情长期记忆仍由业务数据库管理。
 
 - 原始消息允许用户显式改写；摘要叶子的原文指纹用于检测改写，而不是静默同步旧摘要。

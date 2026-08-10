@@ -1,3 +1,8 @@
+/*
+ * Archived snapshot before legacy inspector extraction.
+ * This file is outside frontend/src and is not part of the production build.
+ */
+
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,6 +17,8 @@ import { SettingsModal } from "../components/SettingsModal";
 import { ClassicalIcon } from "../components/ClassicalIcon";
 import { GlobalNav, LibraryWorkspace } from "../components/LibraryWorkspace";
 import type { LibraryKind } from "../components/LibraryWorkspace";
+import { EMPTY_WORLD_ENTRY, worldEntryToDraft } from "../utils/worldBookDraft";
+import type { WorldEntryDraft } from "../utils/worldBookDraft";
 import goyaSleepOfReason from "../assets/empty-states/goya-sleep-of-reason.jpg";
 import durerMelencolia from "../assets/empty-states/durer-melencolia.jpg";
 import durerSaintJerome from "../assets/empty-states/durer-saint-jerome.jpg";
@@ -32,9 +39,11 @@ import type {
   AgentTrace,
   AuditIssue,
   Chat,
+  CharacterProfile,
   CharacterTemplate,
   Memory,
   MemoryCoverage,
+  MemoryKind,
   Message,
   MessageVariant,
   NarrativeNode,
@@ -50,11 +59,13 @@ import type {
   StoryPersona,
   StoryCheckpoint,
   TimelineAnchor,
+  WorldBookEntry,
   WorldBookTemplate,
   WorldEngineSnapshot,
 } from "../types";
 
 type InspectorTab = MemoryHubTab;
+type LegacyInspectorTab = "state" | "memory" | "audit" | "trace";
 type ApiConnectionState = "unconfigured" | "checking" | "connected" | "error";
 
 export default function App() {
@@ -775,6 +786,367 @@ export default function App() {
 }
 
 
+function Inspector(props: {
+  chatId: string | null;
+  activeTab: LegacyInspectorTab;
+  onTab: (tab: LegacyInspectorTab) => void;
+  memories: Memory[];
+  retrieved: RetrievedMemory[];
+  stateEntries: StateEntry[];
+  proposals: StateProposal[];
+  audits: AuditIssue[];
+  traces: AgentTrace[];
+  onRefresh: () => Promise<void> | void;
+  onError: (reason: unknown) => void;
+}) {
+  const tabs: { id: LegacyInspectorTab; label: string; count?: number }[] = [
+    { id: "state", label: "状态", count: props.proposals.filter((item) => item.status === "pending").length },
+    { id: "memory", label: "记忆", count: props.memories.length },
+    { id: "audit", label: "审计", count: props.audits.filter((item) => item.status === "open").length },
+    { id: "trace", label: "轨迹" },
+  ];
+
+  return (
+    <aside className="inspector">
+      <div className="inspector-title"><span>运行记录</span></div>
+      <div className="tabs">
+        {tabs.map((tab) => (
+          <button key={tab.id} className={props.activeTab === tab.id ? "active" : ""} onClick={() => props.onTab(tab.id)}>
+            {tab.label}{Boolean(tab.count) && <em>{tab.count}</em>}
+          </button>
+        ))}
+      </div>
+      <div className="inspector-content">
+        {!props.chatId ? (
+          <EmptyState title="暂无数据" detail="请先选择故事。" />
+        ) : props.activeTab === "state" ? (
+          <StatePanel {...props} chatId={props.chatId} />
+        ) : props.activeTab === "memory" ? (
+          <MemoryPanel {...props} chatId={props.chatId} />
+        ) : props.activeTab === "audit" ? (
+          <AuditPanel {...props} chatId={props.chatId} />
+        ) : (
+          <TracePanel traces={props.traces} />
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function CharacterPanel({ chatId, onError }: { chatId: string; onError: (reason: unknown) => void }) {
+  const [profile, setProfile] = useState<CharacterProfile | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setProfile(null);
+    void api.character(chatId).then(setProfile).catch(onError);
+  }, [chatId]);
+
+  function update(key: keyof CharacterProfile, value: string) {
+    setProfile((current) => current ? { ...current, [key]: value } : current);
+    setSaved(false);
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!profile) return;
+    try {
+      const updated = await api.updateCharacter(chatId, {
+        name: profile.name,
+        identity: profile.identity,
+        personality: profile.personality,
+        speaking_style: profile.speaking_style,
+        scenario: profile.scenario,
+      });
+      setProfile(updated);
+      setSaved(true);
+    } catch (reason) {
+      onError(reason);
+    }
+  }
+
+  if (!profile) return <p className="muted">正在读取角色档案…</p>;
+  return (
+    <form className="panel-stack character-form" onSubmit={submit}>
+      <PanelHeading title="角色档案" note="这里的内容会作为稳定角色约束进入每轮上下文" />
+      <label><span>角色名</span><input value={profile.name} onChange={(e) => update("name", e.target.value)} placeholder="例如：守门人阿斯塔" /></label>
+      <label><span>身份与背景</span><textarea value={profile.identity} onChange={(e) => update("identity", e.target.value)} placeholder="身份、经历、能力与重要关系" rows={4} /></label>
+      <label><span>性格</span><textarea value={profile.personality} onChange={(e) => update("personality", e.target.value)} placeholder="核心性格、价值观、喜恶与行为边界" rows={4} /></label>
+      <label><span>说话风格</span><textarea value={profile.speaking_style} onChange={(e) => update("speaking_style", e.target.value)} placeholder="语气、措辞习惯、称呼方式和禁用表达" rows={3} /></label>
+      <label><span>当前情境</span><textarea value={profile.scenario} onChange={(e) => update("scenario", e.target.value)} placeholder="故事开场地点、角色目标和与玩家的关系" rows={4} /></label>
+      <div className="panel-form-footer"><small>{saved ? "已保存，下一轮对话开始生效" : "修改后请保存"}</small><button className="primary-button">保存角色</button></div>
+    </form>
+  );
+}
+
+function WorldBookPanel({ chatId, onError }: { chatId: string; onError: (reason: unknown) => void }) {
+  const [entries, setEntries] = useState<WorldBookEntry[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [draft, setDraft] = useState<WorldEntryDraft>(EMPTY_WORLD_ENTRY);
+
+  useEffect(() => {
+    setEntries([]);
+    setShowForm(false);
+    setEditingId(null);
+    void api.worldBook(chatId).then(setEntries).catch(onError);
+  }, [chatId]);
+
+  function startCreate() {
+    setEditingId(null);
+    setDraft(EMPTY_WORLD_ENTRY);
+    setShowForm(true);
+  }
+
+  function startEdit(entry: WorldBookEntry) {
+    setEditingId(entry.id);
+    setDraft(worldEntryToDraft(entry));
+    setShowForm(true);
+  }
+
+  function payload(value: WorldEntryDraft) {
+    return {
+      title: value.title.trim(),
+      keywords: value.keywords.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean),
+      content: value.content.trim(),
+      priority: value.priority,
+      enabled: value.enabled,
+      secondary_keywords: value.secondaryKeywords.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean),
+      constant: value.constant, case_sensitive: value.caseSensitive,
+      scan_depth: value.scanDepth, insertion_position: value.insertionPosition,
+      group_name: value.groupName, recursive: value.recursive,
+      token_budget: value.tokenBudget, scope: value.scope,
+    };
+  }
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!draft.title.trim() || !draft.content.trim()) return;
+    try {
+      if (editingId) await api.updateWorldEntry(chatId, editingId, payload(draft));
+      else await api.createWorldEntry(chatId, payload(draft));
+      setEntries(await api.worldBook(chatId));
+      setShowForm(false);
+      setEditingId(null);
+      setDraft(EMPTY_WORLD_ENTRY);
+    } catch (reason) {
+      onError(reason);
+    }
+  }
+
+  async function toggle(entry: WorldBookEntry) {
+    try {
+      await api.updateWorldEntry(chatId, entry.id, { ...entry, enabled: !entry.enabled });
+      setEntries(await api.worldBook(chatId));
+    } catch (reason) {
+      onError(reason);
+    }
+  }
+
+  async function remove(entryId: string) {
+    if (confirmDeleteId !== entryId) {
+      setConfirmDeleteId(entryId);
+      return;
+    }
+    try {
+      await api.deleteWorldEntry(chatId, entryId);
+      setEntries((current) => current.filter((entry) => entry.id !== entryId));
+      setConfirmDeleteId(null);
+    } catch (reason) {
+      onError(reason);
+    }
+  }
+
+  return (
+    <div className="panel-stack">
+      <div className="action-heading"><PanelHeading title="世界书" note="有关键词的设定会在聊到相关内容时使用；未填写关键词的设定会一直生效" /><button onClick={startCreate}>＋ 新建设定</button></div>
+      {showForm && (
+        <form className="world-entry-form" onSubmit={save}>
+          <input value={draft.title} onChange={(e) => setDraft((value) => ({ ...value, title: e.target.value }))} placeholder="词条标题" autoFocus />
+          <input value={draft.keywords} onChange={(e) => setDraft((value) => ({ ...value, keywords: e.target.value }))} placeholder="触发关键词，用逗号分隔；留空表示常驻" />
+          <textarea value={draft.content} onChange={(e) => setDraft((value) => ({ ...value, content: e.target.value }))} placeholder="世界设定" rows={6} />
+          <div className="world-form-row"><label><span>优先级</span><input type="number" min={0} max={100} value={draft.priority} onChange={(e) => setDraft((value) => ({ ...value, priority: Number(e.target.value) }))} /></label><label className="inline-check"><input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft((value) => ({ ...value, enabled: e.target.checked }))} /> 启用</label></div>
+          <footer><button type="button" onClick={() => setShowForm(false)}>取消</button><button className="primary-button">{editingId ? "保存修改" : "创建词条"}</button></footer>
+        </form>
+      )}
+      {entries.length === 0 && !showForm ? <p className="muted">暂无世界书词条。</p> : entries.map((entry) => (
+        <article className={`world-entry-card${entry.enabled ? "" : " disabled"}`} key={entry.id}>
+          <header><div><strong>{entry.title}</strong><small>优先级 {entry.priority}</small></div><button className={entry.enabled ? "enabled" : ""} onClick={() => toggle(entry)}>{entry.enabled ? "已启用" : "已停用"}</button></header>
+          <div className="keyword-list">{entry.keywords.length ? entry.keywords.map((keyword) => <span key={keyword}>{keyword}</span>) : <span>常驻</span>}</div>
+          <p>{entry.content}</p>
+          <footer><button onClick={() => startEdit(entry)}>编辑</button><button className="delete-button" onClick={() => remove(entry.id)}>{confirmDeleteId === entry.id ? "确认删除" : "删除"}</button></footer>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function StatePanel(props: {
+  chatId: string;
+  stateEntries: StateEntry[];
+  proposals: StateProposal[];
+  onRefresh: () => Promise<void> | void;
+  onError: (reason: unknown) => void;
+}) {
+  const [entity, setEntity] = useState("玩家");
+  const [key, setKey] = useState("金币");
+  const [value, setValue] = useState("100");
+
+  async function create(event: FormEvent) {
+    event.preventDefault();
+    try {
+      let parsed: unknown = value;
+      try { parsed = JSON.parse(value); } catch { /* 普通文本直接保存为字符串 */ }
+      await api.createProposal(props.chatId, {
+        entity,
+        key,
+        new_value: parsed,
+        reason: "用户手动设置",
+      });
+      await props.onRefresh();
+    } catch (reason) { props.onError(reason); }
+  }
+
+  async function resolve(id: string, action: "approve" | "reject") {
+    try {
+      await api.resolveProposal(props.chatId, id, action);
+      await props.onRefresh();
+    } catch (reason) { props.onError(reason); }
+  }
+
+  async function undo(id: string) {
+    try {
+      await api.undoStateChange(props.chatId, id);
+      await props.onRefresh();
+    } catch (reason) { props.onError(reason); }
+  }
+
+  const pending = props.proposals.filter((item) => item.status === "pending");
+  return (
+    <div className="panel-stack">
+      <PanelHeading title="当前事实" note="数据库中的唯一精确状态" />
+      {props.stateEntries.length === 0 ? <p className="muted">还没有已批准状态。</p> : props.stateEntries.map((entry) => (
+        <div className="state-row" key={entry.id}>
+          <div><strong>{entry.entity}</strong><span>{entry.key}</span></div>
+          <code>{displayValue(entry.value)}</code><small>v{entry.version}</small>
+        </div>
+      ))}
+      <PanelHeading title="待审核建议" note={`${pending.length} 条等待决定`} />
+      {pending.length === 0 ? <p className="muted">暂无待确认修改。</p> : pending.map((item) => (
+        <article className="proposal-card" key={item.id}>
+          <header><strong>{item.entity}.{item.key}</strong><span>待审核</span></header>
+          <div className="value-change"><code>{displayValue(item.old_value)}</code><b>→</b><code>{displayValue(item.new_value)}</code></div>
+          <p>{item.reason}</p>
+          <footer><button onClick={() => resolve(item.id, "reject")}>拒绝</button><button className="approve" onClick={() => resolve(item.id, "approve")}>批准</button></footer>
+        </article>
+      ))}
+      {props.proposals.filter((item) => item.status === "approved").slice(0, 10).map((item) => (
+        <article className="proposal-card" key={`history-${item.id}`}>
+          <header><strong>{item.entity}.{item.key}</strong><span>已自动采用</span></header>
+          <div className="value-change"><code>{displayValue(item.old_value)}</code><b>→</b><code>{displayValue(item.new_value)}</code></div>
+          <footer><button onClick={() => undo(item.id)}>撤销</button></footer>
+        </article>
+      ))}
+      <PanelHeading title="手动建立状态" note="用于世界初始值和测试" />
+      <form className="mini-form" onSubmit={create}>
+        <div className="two-columns"><input value={entity} onChange={(e) => setEntity(e.target.value)} placeholder="实体" /><input value={key} onChange={(e) => setKey(e.target.value)} placeholder="字段" /></div>
+        <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="值，例如 87 或 剑冢" />
+        <button>创建审核建议</button>
+      </form>
+    </div>
+  );
+}
+
+function MemoryPanel(props: {
+  chatId: string;
+  memories: Memory[];
+  retrieved: RetrievedMemory[];
+  onRefresh: () => Promise<void> | void;
+  onError: (reason: unknown) => void;
+}) {
+  const [kind, setKind] = useState<MemoryKind>("semantic");
+  const [content, setContent] = useState("");
+  const scoreMap = new Map(props.retrieved.map((item) => [item.memory.id, item]));
+
+  async function create(event: FormEvent) {
+    event.preventDefault();
+    if (!content.trim()) return;
+    try {
+      await api.createMemory(props.chatId, { kind, content: content.trim(), importance: 0.7 });
+      setContent("");
+      await props.onRefresh();
+    } catch (reason) { props.onError(reason); }
+  }
+
+  async function summarize() {
+    try { await api.summarize(props.chatId); await props.onRefresh(); }
+    catch (reason) { props.onError(reason); }
+  }
+
+  return (
+    <div className="panel-stack">
+      <div className="panel-heading action-heading"><div><h3>分层记忆</h3><p>最近召回会显示评分依据</p></div><button onClick={summarize}>总结近期</button></div>
+      {props.memories.length === 0 ? <p className="muted">对话后会自动生成情节记忆。</p> : props.memories.map((memory) => {
+        const hit = scoreMap.get(memory.id);
+        return (
+          <article className={`memory-card ${hit ? "retrieved" : ""}`} key={memory.id}>
+            <header><span className={`kind ${memory.kind}`}>{memoryKindLabel(memory.kind)}</span>{hit && <strong>{hit.score.toFixed(3)}</strong>}</header>
+            <p>{memory.content}</p>
+            <footer><span>重要度 {memory.importance.toFixed(1)}</span><span>召回 {memory.access_count} 次</span></footer>
+            {hit && <small>{hit.retrieval_reason}</small>}
+          </article>
+        );
+      })}
+      <PanelHeading title="写入记忆" note="只保存跨多轮仍有价值的信息" />
+      <form className="mini-form" onSubmit={create}>
+        <select value={kind} onChange={(e) => setKind(e.target.value as MemoryKind)}><option value="semantic">事实记忆</option><option value="implicit">隐性记忆</option><option value="summary">剧情摘要</option><option value="episodic">情节记忆</option></select>
+        <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="例如：守门人害怕银色铃铛。" rows={4} />
+        <button>保存记忆</button>
+      </form>
+    </div>
+  );
+}
+
+function AuditPanel(props: { chatId: string; audits: AuditIssue[]; onRefresh: () => Promise<void> | void; onError: (reason: unknown) => void }) {
+  async function resolve(id: string, action: "resolve" | "dismiss") {
+    try { await api.resolveAudit(props.chatId, id, action); await props.onRefresh(); }
+    catch (reason) { props.onError(reason); }
+  }
+  return (
+    <div className="panel-stack">
+      <PanelHeading title="一致性审计" note="根据已批准状态检查模型回复" />
+      {props.audits.length === 0 ? <p className="muted">尚未发现状态冲突。</p> : props.audits.map((issue) => (
+        <article className={`audit-card ${issue.status}`} key={issue.id}>
+          <header><strong>{auditCategoryLabel(issue.category)}</strong><span>{auditStatusLabel(issue.status)}</span></header>
+          <p>{issue.description}</p>
+          <div className="audit-values"><span>期望 <code>{displayValue(issue.expected_value)}</code></span><span>实际 <code>{displayValue(issue.actual_value)}</code></span></div>
+          <blockquote>{issue.evidence}</blockquote>
+          {issue.status === "open" && <footer><button onClick={() => resolve(issue.id, "dismiss")}>忽略</button><button className="approve" onClick={() => resolve(issue.id, "resolve")}>已修复</button></footer>}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function TracePanel({ traces }: { traces: AgentTrace[] }) {
+  return (
+    <div className="panel-stack">
+      <PanelHeading title="运行记录" note="上下文、模型和工具调用" />
+      {traces.length === 0 ? <p className="muted">发送消息后会记录执行轨迹。</p> : traces.map((trace) => (
+        <details className="trace-card" key={trace.id}>
+          <summary><span>步骤 {trace.step}</span><strong>{traceEventLabel(trace.event_type)}</strong><time>{formatTime(trace.created_at)}</time></summary>
+          <pre>{JSON.stringify(trace.payload, null, 2)}</pre>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function PanelHeading({ title, note }: { title: string; note: string }) {
+  return <div className="panel-heading"><h3>{title}</h3><p>{note}</p></div>;
+}
+
 function EmptyState({ title, detail }: { title: string; detail: string }) {
   const [artwork] = useState(() => EMPTY_ARTWORKS[Math.floor(Math.random() * EMPTY_ARTWORKS.length)]);
   const [quote] = useState(() => PHILOSOPHICAL_QUOTES[Math.floor(Math.random() * PHILOSOPHICAL_QUOTES.length)]);
@@ -851,6 +1223,48 @@ const PHILOSOPHICAL_QUOTES = [
   { text: "一切坚固的东西都烟消云散了。", author: "卡尔·马克思、弗里德里希·恩格斯", source: "《共产党宣言》" },
 ] as const;
 
+
+function displayValue(value: unknown) {
+  if (value === null || value === undefined) return "未设置";
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function memoryKindLabel(kind: MemoryKind) {
+  return { episodic: "情节", semantic: "事实", summary: "摘要", implicit: "隐性" }[kind];
+}
+
+function auditCategoryLabel(category: string) {
+  return {
+    numeric_state_conflict: "数值状态冲突",
+  }[category] ?? category;
+}
+
+function auditStatusLabel(status: string) {
+  return {
+    open: "待处理",
+    resolved: "已修复",
+    dismissed: "已忽略",
+  }[status] ?? status;
+}
+
+function traceEventLabel(eventType: string) {
+  return {
+    context_built: "上下文组装完成",
+    model_response: "模型返回结果",
+    tool_call: "调用工具",
+    tool_result: "工具执行结果",
+    model_error: "模型调用失败",
+    turn_completed: "本轮执行完成",
+  }[eventType] ?? eventType;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value));
+}
+
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
 
 function groupVariants(items: MessageVariant[]): Record<string, MessageVariant[]> {
   return items.reduce<Record<string, MessageVariant[]>>((groups, item) => {

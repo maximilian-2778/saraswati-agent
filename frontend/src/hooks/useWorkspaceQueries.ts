@@ -5,6 +5,7 @@ import type {
   Message, MessageBookmark, MessageVariant, NarrativeDelta, NarrativeNode, Npc,
   PersonaTemplate, RuntimeInfo, SceneNode, StateEntry, StateProposal,
   StoryCharacter, StoryCheckpoint, StoryPersona, TimelineAnchor, WorldBookTemplate,
+  WorldEngineSnapshot,
 } from "../types";
 
 export interface WorkspaceBootstrap {
@@ -26,6 +27,7 @@ export interface ChatSnapshot {
   memoryGraph: NarrativeNode[];
   memoryCoverage: MemoryCoverage;
   deltas: NarrativeDelta[];
+  worldEngine: WorldEngineSnapshot;
   scenes: SceneNode[];
   npcs: Npc[];
   timeline: TimelineAnchor[];
@@ -50,17 +52,17 @@ export function chatSnapshotQueryOptions(chatId: string) {
     queryKey: ["workspace", "chat", chatId],
     queryFn: async (): Promise<ChatSnapshot> => {
       const [messages, variants, bookmarks, checkpoints, characters, persona,
-        memories, memoryGraph, memoryCoverage, deltas, scenes, npcs, timeline,
+        memories, memoryGraph, memoryCoverage, deltas, worldEngine, scenes, npcs, timeline,
         state, proposals, audits, traces] = await Promise.all([
         api.messages(chatId), api.messageVariants(chatId), api.bookmarks(chatId),
         api.checkpoints(chatId), api.storyCharacters(chatId), api.storyPersona(chatId),
         api.memories(chatId), api.memoryGraph(chatId), api.memoryCoverage(chatId),
-        api.narrativeDeltas(chatId), api.scenes(chatId), api.npcs(chatId),
+        api.narrativeDeltas(chatId), api.worldEngine(chatId), api.scenes(chatId), api.npcs(chatId),
         api.timeline(chatId), api.state(chatId), api.proposals(chatId),
         api.audits(chatId), api.traces(chatId),
       ]);
       return { messages, variants, bookmarks, checkpoints, characters, persona,
-        memories, memoryGraph, memoryCoverage, deltas, scenes, npcs, timeline,
+        memories, memoryGraph, memoryCoverage, deltas, worldEngine, scenes, npcs, timeline,
         state, proposals, audits, traces };
     },
   });

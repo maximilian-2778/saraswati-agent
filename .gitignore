@@ -8,18 +8,7 @@ data/*.db-*
 data/*.sqlite
 data/*.sqlite-*
 data/settings.json
+data/extensions/
 .idea/
 frontend/node_modules/
 frontend/dist/
-.research/
-Hermes Agent _ Nous Research.html
-Hermes Agent _ Nous Research_files/
-
-# Local third-party reference source
-SillyTavern-release/
-
-# Local study and interview notes (not part of the public repository)
-docs/LEARNING_GUIDE.md
-docs/INTERVIEW_GUIDE.md
-docs/PROGRESS.md
-docs/DEMO_GUIDE.md

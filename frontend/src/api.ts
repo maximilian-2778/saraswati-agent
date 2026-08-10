@@ -4,6 +4,7 @@ import type {
   AppSettings,
   AuditIssue,
   Chat,
+  ChatSkillSelection,
   CharacterTemplate,
   CharacterProfile,
   Memory,
@@ -11,16 +12,20 @@ import type {
   Message,
   MessageBookmark,
   MessageVariant,
+  ExtensionCatalog,
   NarrativeNode,
   NarrativeDelta,
   Npc,
   PersonaTemplate,
   PromptPreset,
+  PluginCreate,
+  PluginExtension,
   RetrievedMemory,
   RuntimeInfo,
   SceneNode,
   SettingsTestResult,
   SettingsUpdate,
+  SkillExtension,
   StateEntry,
   StateProposal,
   TimelineAnchor,
@@ -30,6 +35,7 @@ import type {
   StoryWorldBook,
   WorldBookEntry,
   WorldBookTemplate,
+  WorldEngineSnapshot,
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
@@ -45,6 +51,24 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+async function upload<T>(path: string, body: FormData): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, { method: "POST", body });
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.detail ?? `请求失败：HTTP ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+async function download(path: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE}${path}`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.detail ?? `请求失败：HTTP ${response.status}`);
+  }
+  return response.blob();
 }
 
 type StreamTurnHandlers = {
@@ -106,6 +130,39 @@ export const api = {
     }),
   testSettings: () =>
     request<SettingsTestResult>("/settings/test", { method: "POST" }),
+  extensions: () => request<ExtensionCatalog>("/extensions"),
+  reloadExtensions: () => request<ExtensionCatalog>("/extensions/reload", { method: "POST" }),
+  toggleSkill: (id: string, enabled: boolean) =>
+    request(`/extensions/skills/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+  installSkill: (file: File, sourceUrl = "") => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("source_url", sourceUrl);
+    return upload<SkillExtension>("/extensions/skills/install", body);
+  },
+  archiveSkill: (id: string) =>
+    request<{ skill_id: string; archive_id: string; recoverable: boolean }>(`/extensions/skills/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  exportSkill: (id: string) => download(`/extensions/skills/${encodeURIComponent(id)}/export`),
+  chatSkills: (chatId: string) => request<ChatSkillSelection>(`/extensions/chats/${chatId}/skills`),
+  updateChatSkills: (chatId: string, payload: Pick<ChatSkillSelection, "mode" | "skill_ids">) =>
+    request<ChatSkillSelection>(`/extensions/chats/${chatId}/skills`, { method: "PUT", body: JSON.stringify(payload) }),
+  registerPlugin: (payload: PluginCreate) =>
+    request<PluginExtension>("/extensions/plugins", { method: "POST", body: JSON.stringify(payload) }),
+  installPlugin: (file: File, sourceUrl = "") => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("source_url", sourceUrl);
+    return upload<PluginExtension>("/extensions/plugins/install", body);
+  },
+  togglePlugin: (id: string, enabled: boolean) =>
+    request<PluginExtension>(`/extensions/plugins/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+  trustPlugin: (id: string, trusted: boolean) =>
+    request<PluginExtension>(`/extensions/plugins/${encodeURIComponent(id)}/trust`, { method: "POST", body: JSON.stringify({ trusted }) }),
+  archivePlugin: (id: string) =>
+    request<{ plugin_id: string; archive_id: string; recoverable: boolean }>(`/extensions/plugins/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  testPlugin: (id: string) =>
+    request<{ ok: boolean; plugin: PluginExtension; tool_count: number }>(`/extensions/plugins/${encodeURIComponent(id)}/test`, { method: "POST" }),
+  exportPlugin: (id: string) => download(`/extensions/plugins/${encodeURIComponent(id)}/export`),
   presets: () => request<PromptPreset[]>("/presets"),
   createPreset: (payload: object) => request<PromptPreset>("/presets", { method: "POST", body: JSON.stringify(payload) }),
   updatePreset: (id: string, payload: object) => request<PromptPreset>(`/presets/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
@@ -298,4 +355,7 @@ export const api = {
     }),
   traces: (chatId: string) => request<AgentTrace[]>(`/chats/${chatId}/traces`),
   narrativeDeltas: (chatId: string) => request<NarrativeDelta[]>(`/chats/${chatId}/narrative-deltas`),
+  worldEngine: (chatId: string) => request<WorldEngineSnapshot>(`/chats/${chatId}/world-engine`),
+  evolveWorld: (chatId: string) => request<WorldEngineSnapshot>(`/chats/${chatId}/world-engine/evolve`, { method: "POST" }),
+  configureWorldEngine: (chatId: string, autoEvolve: boolean) => request<WorldEngineSnapshot>(`/chats/${chatId}/world-engine/config`, { method: "PUT", body: JSON.stringify({ auto_evolve: autoEvolve }) }),
 };

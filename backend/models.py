@@ -27,6 +27,32 @@ class ChatRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ChatSkillModeRecord(Base):
+    """故事级 Skill 策略；缺少记录时默认跟随全部全局启用项。"""
+
+    __tablename__ = "chat_skill_modes"
+
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), primary_key=True
+    )
+    mode: Mapped[str] = mapped_column(String(20), nullable=False, default="all")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ChatSkillBindingRecord(Base):
+    """故事在 selected 模式下允许使用的 Skill。"""
+
+    __tablename__ = "chat_skill_bindings"
+    __table_args__ = (UniqueConstraint("chat_id", "skill_id", name="uq_chat_skill_binding"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    skill_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class PromptPresetRecord(Base):
     """可复用的写作提示词；采样字段仅用于酒馆 JSON 兼容。"""
 
@@ -481,6 +507,44 @@ class NarrativeDeltaRecord(Base):
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class WorldEngineConfigRecord(Base):
+    """故事级世界推演开关；默认手动，避免无意增加模型调用。"""
+
+    __tablename__ = "world_engine_configs"
+
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), primary_key=True
+    )
+    auto_evolve: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class WorldEvolutionRecord(Base):
+    """一次世界推进的不可变快照；before_hash 将记录串成可校验状态链。"""
+
+    __tablename__ = "world_evolutions"
+    __table_args__ = (
+        UniqueConstraint("chat_id", "sequence", name="uq_world_evolution_sequence"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
+    user_message_id: Mapped[str | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    assistant_message_id: Mapped[str | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    before_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    after_state_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class TimelineAnchorRecord(Base):
