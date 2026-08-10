@@ -2,6 +2,26 @@
 
 All notable changes to Saraswati Agent are documented in this file.
 
+## [1.1.0] - 2026-08-10
+
+### Added
+
+- Added centered RPG-style scene and character detail dialogs with separate navigation for profiles, attributes, relationships, and inventories.
+- Added reusable engraved ornaments and bookplate details for the story archive and writing composer.
+
+### Changed
+
+- Refined the light and dark themes with consistent literary typography, stronger text contrast, paper depth, and restrained printmaking details.
+- Reworked the console, settings center, and writing preset interfaces so their typography and controls follow the same classical archive system.
+- Improved the empty-story composition, responsive spacing, navigation icons, selected-story treatment, and composer presentation.
+- Removed redundant console decoration and the duplicate sidebar console entry.
+
+### Fixed
+
+- Fixed dark-theme text and illustration contrast regressions.
+- Fixed modal placement, nested panel scrolling, unintended horizontal scrollbars, and several title, badge, and close-button alignment issues.
+- Fixed stretched, blurred, and misaligned composer ornaments by preserving their source proportions and extending only the connecting rules.
+
 ## [1.0.0] - 2026-08-09
 
 Saraswati Agent 的首个正式版本。该版本整合了独立角色扮演客户端、可复用资料库、分层长期记忆、RAG、结构化剧情状态和 LangGraph 生成后整理流程。

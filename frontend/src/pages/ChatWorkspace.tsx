@@ -17,6 +17,12 @@ import type { WorldEntryDraft } from "../utils/worldBookDraft";
 import goyaSleepOfReason from "../assets/empty-states/goya-sleep-of-reason.jpg";
 import durerMelencolia from "../assets/empty-states/durer-melencolia.jpg";
 import durerSaintJerome from "../assets/empty-states/durer-saint-jerome.jpg";
+import composerRuleTopLeft from "../assets/ornaments/composer-rule-top-left.png";
+import composerRuleTopCenter from "../assets/ornaments/composer-rule-top-center.png";
+import composerRuleTopRight from "../assets/ornaments/composer-rule-top-right.png";
+import composerRuleBottomLeft from "../assets/ornaments/composer-rule-bottom-left.png";
+import composerRuleBottomCenter from "../assets/ornaments/composer-rule-bottom-center.png";
+import composerRuleBottomRight from "../assets/ornaments/composer-rule-bottom-right.png";
 import {
   bootstrapQueryOptions,
   chatSnapshotQueryOptions,
@@ -613,6 +619,7 @@ export default function App() {
         {error && <div className={`error-banner ${errorFading ? "is-leaving" : ""}`}><span>{error}</span><button type="button" onClick={() => { setError(null); setErrorFading(false); }} aria-label="关闭提示">×</button></div>}
 
         <section
+          key={selectedChatId ?? "no-story"}
           className="message-list"
           ref={messageListRef}
           onScroll={(event) => {
@@ -627,7 +634,7 @@ export default function App() {
           ) : loading && messages.length === 0 ? (
             <EmptyState title="正在载入…" detail="" />
           ) : messages.length === 0 ? (
-            <EmptyState title="故事尚未开始" detail="" />
+            <EmptyState title="" detail="" />
           ) : (
             messages.map((message) => <MessageBubble
               key={message.id}
@@ -662,6 +669,13 @@ export default function App() {
         }}>回到底部 ↓</button>}
 
         <form className="composer" onSubmit={sendMessage}>
+          <div className="composer-rule composer-rule-top" aria-hidden="true">
+            <img src={composerRuleTopLeft} alt="" />
+            <i />
+            <img className="composer-rule-center" src={composerRuleTopCenter} alt="" />
+            <i />
+            <img src={composerRuleTopRight} alt="" />
+          </div>
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -687,9 +701,16 @@ export default function App() {
               </button>
             ) : (
               <button className="primary-button" disabled={!draft.trim() || !selectedChatId}>
-                <span>发送</span><b>↑</b>
+                <span>发送</span><ClassicalIcon name="nib" />
               </button>
             )}
+          </div>
+          <div className="composer-rule composer-rule-bottom" aria-hidden="true">
+            <img src={composerRuleBottomLeft} alt="" />
+            <i />
+            <img className="composer-rule-bottom-center" src={composerRuleBottomCenter} alt="" />
+            <i />
+            <img src={composerRuleBottomRight} alt="" />
           </div>
         </form>
       </main>
@@ -1130,7 +1151,7 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
       </div>
       <figcaption><span>{artwork.title}</span><small>{artwork.artist}</small></figcaption>
     </figure>
-    <div className="empty-copy"><span>✦</span><h2>{title}</h2>{detail && <p>{detail}</p>}</div>
+    {(title || detail) && <div className="empty-copy">{title && <h2>{title}</h2>}{detail && <p>{detail}</p>}</div>}
     <blockquote className="empty-quote">
       <p>“{quote.text}”</p>
       <cite>— {quote.author}<span> · {quote.source}</span></cite>

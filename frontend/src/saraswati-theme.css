@@ -82,9 +82,8 @@ select {
   --shadow: rgba(53, 43, 27, 0.18);
   --scrim: rgba(37, 34, 27, 0.48);
   background:
-    radial-gradient(circle at 82% 0%, rgba(35, 62, 120, 0.12), transparent 38%),
-    radial-gradient(circle at 10% 105%, rgba(137, 72, 46, 0.09), transparent 36%),
-    linear-gradient(135deg, #d8d0bf, var(--bg) 42%, #f5f0e4);
+    radial-gradient(ellipse at 62% 4%, rgba(255, 252, 242, .38), transparent 52%),
+    linear-gradient(90deg, #ddd4c2 0%, #e5ddcc 48%, #ddd4c2 100%);
 }
 
 /* 柔和的纸张颗粒和固定外框。 */
@@ -94,7 +93,7 @@ select {
   z-index: 1000;
   inset: 0;
   pointer-events: none;
-  opacity: 0.055;
+  opacity: 0.035;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.72'/%3E%3C/svg%3E");
   mix-blend-mode: soft-light;
 }
@@ -106,7 +105,12 @@ select {
   inset: 8px;
   pointer-events: none;
   border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
-  box-shadow: inset 0 0 70px color-mix(in srgb, var(--bg-deep) 28%, transparent);
+  box-shadow: inset 0 0 76px color-mix(in srgb, var(--bg-deep) 21%, transparent);
+}
+
+.app-shell.theme-paper::before {
+  opacity: 0.026;
+  mix-blend-mode: multiply;
 }
 
 ::selection {
@@ -151,7 +155,22 @@ select {
   isolation: isolate;
   overflow: hidden;
   padding: 23px 16px 17px;
-  box-shadow: 16px 0 48px color-mix(in srgb, var(--shadow) 42%, transparent);
+  background:
+    linear-gradient(90deg, transparent 0 91%, color-mix(in srgb, var(--shadow) 7%, transparent) 97%, color-mix(in srgb, var(--text) 5%, transparent)),
+    var(--surface);
+  box-shadow:
+    inset -1px 0 color-mix(in srgb, var(--text) 8%, transparent),
+    2px 0 5px color-mix(in srgb, var(--shadow) 52%, transparent),
+    12px 0 32px color-mix(in srgb, var(--shadow) 38%, transparent);
+}
+
+.app-shell.theme-paper .sidebar {
+  border-right-color: rgba(83, 67, 41, .16);
+  box-shadow:
+    inset -1px 0 rgba(255, 254, 248, .58),
+    2px 0 4px rgba(67, 51, 29, .19),
+    9px 0 22px rgba(67, 51, 29, .13),
+    24px 0 48px rgba(67, 51, 29, .08);
 }
 
 .sidebar::before {
@@ -383,15 +402,19 @@ select {
   position: relative;
   overflow: hidden;
   margin-top: 44px;
-  border: 1px solid var(--line-strong);
+  border: 0;
+  border-top: 3px double color-mix(in srgb, var(--accent) 48%, transparent);
+  border-bottom: 3px double color-mix(in srgb, var(--accent) 48%, transparent);
   border-radius: 2px;
   padding: 12px 14px;
   color: var(--accent-bright);
   background: color-mix(in srgb, var(--accent) 10%, var(--surface-raised));
-  box-shadow: inset 0 1px color-mix(in srgb, var(--text) 8%, transparent);
+  box-shadow:
+    inset 0 8px 16px color-mix(in srgb, var(--shadow) 5%, transparent),
+    0 8px 18px color-mix(in srgb, var(--shadow) 10%, transparent);
   font-family: var(--reading-serif);
   letter-spacing: 0.08em;
-  transition: color 180ms ease, background 180ms ease, transform 180ms ease;
+  transition: color 320ms ease-out, background 320ms ease-out, transform 320ms ease-out, box-shadow 320ms ease-out;
 }
 
 .new-chat-button::after {
@@ -404,9 +427,11 @@ select {
 }
 
 .new-chat-button:hover {
-  border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 16%, var(--surface-raised));
   transform: translateY(-1px);
+  box-shadow:
+    inset 0 8px 16px color-mix(in srgb, var(--shadow) 7%, transparent),
+    0 11px 24px color-mix(in srgb, var(--shadow) 15%, transparent);
 }
 
 .new-chat-button:hover::after {
@@ -434,6 +459,8 @@ select {
 .chat-list {
   gap: 5px;
   padding-right: 3px;
+  overflow-x: clip;
+  contain: paint;
 }
 
 .chat-entry {
@@ -441,23 +468,65 @@ select {
 }
 
 .chat-item {
+  position: relative;
   min-height: 62px;
   border-radius: 2px;
   color: var(--text-soft);
-  transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
+  border-color: transparent;
+  transition: background 320ms ease-out, border-color 320ms ease-out, transform 320ms ease-out, box-shadow 320ms ease-out;
 }
 
 .chat-item:hover {
   background: color-mix(in srgb, var(--accent) 7%, var(--surface-soft));
-  transform: translateX(2px);
+  transform: translate(2px, -1px);
 }
 
 .chat-item.active {
-  border-color: var(--line-strong);
+  isolation: isolate;
+  overflow: visible;
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--text);
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--accent) 17%, var(--surface-raised)), var(--surface-soft));
-  box-shadow: inset 3px 0 var(--accent), 0 9px 26px color-mix(in srgb, var(--shadow) 32%, transparent);
+  box-shadow:
+    inset 3px 0 var(--accent),
+    inset 0 0 18px color-mix(in srgb, var(--accent) 6%, transparent),
+    0 11px 28px color-mix(in srgb, var(--shadow) 28%, transparent);
+  transform: translateY(-1px);
+}
+
+.chat-item.active::after {
+  --bookplate-opacity: .27;
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -2px 0;
+  pointer-events: none;
+  opacity: .2;
+  background: center / 100% 102% no-repeat url("./assets/ornaments/story-bookplate.png");
+  filter: grayscale(1) sepia(.18) saturate(.72) contrast(.92);
+  mix-blend-mode: multiply;
+  clip-path: inset(0 100% 0 0);
+  transform: scaleX(.96);
+  animation: bookplate-grow 920ms cubic-bezier(.16, .72, .2, 1) 70ms forwards;
+}
+
+.chat-item.active > * {
+  position: relative;
+  z-index: 1;
+}
+
+.app-shell:not(.theme-paper) .chat-item.active::after {
+  --bookplate-opacity: .22;
+  opacity: var(--bookplate-opacity);
+  filter: grayscale(1) sepia(.32) brightness(1.32) contrast(.84);
+  mix-blend-mode: screen;
+}
+
+@keyframes bookplate-grow {
+  0% { clip-path: inset(0 100% 0 0); opacity: 0; transform: scaleX(.94); }
+  42% { opacity: .12; }
+  100% { clip-path: inset(0); opacity: var(--bookplate-opacity); transform: scaleX(1); }
 }
 
 .chat-item strong {
@@ -510,8 +579,30 @@ select {
 .conversation-pane {
   position: relative;
   border-color: var(--line);
-  background: color-mix(in srgb, var(--bg) 84%, transparent);
-  box-shadow: 0 0 70px color-mix(in srgb, var(--shadow) 28%, transparent);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--shadow) 8%, transparent), transparent 24px),
+    color-mix(in srgb, var(--bg) 86%, transparent);
+  box-shadow:
+    inset 1px 0 color-mix(in srgb, var(--text) 6%, transparent),
+    -14px 0 30px color-mix(in srgb, var(--shadow) 20%, transparent),
+    14px 0 30px color-mix(in srgb, var(--shadow) 20%, transparent),
+    0 18px 64px color-mix(in srgb, var(--shadow) 24%, transparent);
+}
+
+.app-shell.theme-paper .conversation-pane {
+  border-right-color: color-mix(in srgb, var(--accent) 13%, var(--line));
+  border-left-color: color-mix(in srgb, var(--accent) 13%, var(--line));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, #806f50 7%, transparent), transparent 20px),
+    color-mix(in srgb, var(--surface-raised) 76%, var(--bg));
+  box-shadow:
+    inset 1px 0 rgba(255, 253, 246, .58),
+    inset -1px 0 rgba(89, 72, 43, .08),
+    -7px 0 14px rgba(70, 54, 31, .12),
+    7px 0 14px rgba(70, 54, 31, .12),
+    -24px 0 52px rgba(70, 54, 31, .09),
+    24px 0 52px rgba(70, 54, 31, .09),
+    0 20px 70px rgba(70, 54, 31, .1);
 }
 
 .conversation-pane::before {
@@ -536,6 +627,13 @@ select {
   box-shadow: 0 12px 36px color-mix(in srgb, var(--shadow) 22%, transparent);
 }
 
+.app-shell.theme-paper .topbar {
+  box-shadow:
+    0 1px rgba(255, 255, 255, .56),
+    0 8px 18px rgba(72, 57, 32, .1),
+    0 22px 42px rgba(72, 57, 32, .06);
+}
+
 .eyebrow {
   margin-bottom: 5px;
   color: var(--accent);
@@ -548,6 +646,9 @@ select {
   color: var(--text);
   font: 500 23px/1 var(--reading-serif);
   letter-spacing: 0.025em;
+  text-shadow:
+    0 1px color-mix(in srgb, var(--surface-raised) 72%, transparent),
+    0 -1px color-mix(in srgb, var(--shadow) 18%, transparent);
 }
 
 .global-nav {
@@ -582,7 +683,7 @@ select {
   width: 19px;
   height: 19px;
   color: color-mix(in srgb, var(--accent-bright) 72%, var(--muted));
-  filter: drop-shadow(0 1px 3px color-mix(in srgb, var(--accent) 22%, transparent));
+  filter: drop-shadow(0 1px 1px color-mix(in srgb, var(--accent) 34%, transparent));
   transition: color 180ms ease, transform 180ms ease, filter 180ms ease;
 }
 
@@ -594,7 +695,7 @@ select {
 .global-nav button:hover .classical-icon,
 .global-nav button.active .classical-icon {
   color: var(--accent-bright);
-  filter: drop-shadow(0 2px 5px color-mix(in srgb, var(--accent) 36%, transparent));
+  filter: drop-shadow(0 2px 2px color-mix(in srgb, var(--accent) 42%, transparent));
   transform: translateY(-1px);
 }
 
@@ -712,6 +813,21 @@ select {
 .message-list {
   padding: 34px max(28px, calc((100% - 1080px) / 2)) 24px;
   scroll-behavior: smooth;
+  animation: archive-page-in 360ms cubic-bezier(.2, .72, .2, 1) both;
+}
+
+.message-list:has(> .empty-state) {
+  overflow-y: hidden;
+}
+
+.message-list > .empty-state {
+  min-height: 0;
+  height: 100%;
+}
+
+@keyframes archive-page-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .message-row {
@@ -899,7 +1015,7 @@ select {
   max-width: min(88%, 760px);
   overflow: hidden;
   opacity: .34;
-  mask-image: radial-gradient(ellipse 90% 92% at 50% 48%, black 58%, rgba(0, 0, 0, .82) 76%, transparent 100%);
+  mask-image: none;
 }
 
 .empty-artwork-sheet {
@@ -945,16 +1061,14 @@ select {
   text-shadow: 0 2px 18px var(--bg-deep);
 }
 
-.empty-copy > span {
-  color: var(--accent);
-  font-size: 24px;
-}
-
 .empty-copy h2 {
-  margin: 12px 0 0;
+  margin: 0;
   color: var(--text);
   font: 500 20px var(--reading-serif);
   letter-spacing: .08em;
+  text-shadow:
+    0 1px color-mix(in srgb, var(--surface-raised) 76%, transparent),
+    0 -1px color-mix(in srgb, var(--shadow) 22%, transparent);
 }
 
 .empty-copy p {
@@ -981,6 +1095,9 @@ select {
   margin: 0 0 6px;
   font: 500 clamp(15px, 1.7vw, 20px)/1.65 var(--reading-serif);
   letter-spacing: .06em;
+  text-shadow:
+    0 1px color-mix(in srgb, var(--surface-raised) 68%, transparent),
+    0 -1px color-mix(in srgb, var(--shadow) 18%, transparent);
 }
 
 .empty-quote cite {
@@ -1024,41 +1141,137 @@ select {
 /* Composer */
 .composer {
   position: relative;
+  isolation: isolate;
   width: min(1080px, calc(100% - 44px));
   margin: 0 auto 21px;
   overflow: visible;
-  border: 1px solid var(--line-strong);
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
+  border: 0;
+  border-radius: 2px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-deep) 13%, transparent), transparent 13px),
+    color-mix(in srgb, var(--surface-raised) 95%, transparent);
   box-shadow:
-    0 20px 50px color-mix(in srgb, var(--shadow) 48%, transparent),
-    inset 0 1px color-mix(in srgb, var(--text) 7%, transparent);
+    0 16px 38px color-mix(in srgb, var(--shadow) 35%, transparent),
+    inset 0 3px 10px color-mix(in srgb, var(--shadow) 18%, transparent),
+    inset 0 -1px color-mix(in srgb, var(--text) 8%, transparent);
+  transition: border-color 320ms ease-out, box-shadow 320ms ease-out, background 320ms ease-out;
+}
+
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--accent-bright) 74%, var(--accent));
+  box-shadow:
+    0 18px 42px color-mix(in srgb, var(--shadow) 38%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 23%, transparent),
+    inset 0 3px 11px color-mix(in srgb, var(--shadow) 16%, transparent),
+    inset 0 -1px color-mix(in srgb, var(--accent-bright) 26%, transparent);
 }
 
 .composer::before,
 .composer::after {
-  content: "";
+  content: none;
   position: absolute;
-  width: 11px;
-  height: 11px;
+  z-index: 2;
+  right: 14px;
+  left: 14px;
+  height: 18px;
   pointer-events: none;
+  opacity: .58;
+  background: none;
+  -webkit-mask: center / 100% 100% no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 18' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'%3E%3Cpath d='M0 9h405c24 0 30-5 43-5 12 0 13 6 25 6 10 0 12-7 23-7 3 0 4 3 4 6 0-3 1-6 4-6 11 0 13 7 23 7 12 0 13-6 25-6 13 0 19 5 43 5h405'/%3E%3Cpath d='M443 9c11 0 15 6 25 6 12 0 17-8 24-8M557 9c-11 0-15 6-25 6-12 0-17-8-24-8' opacity='.75'/%3E%3C/g%3E%3Cpath fill='black' d='M500 1c-3 4-9 5-9 9 0 3 4 5 9 7 5-2 9-4 9-7 0-4-6-5-9-9Zm0 4c2 3 4 4 4 6 0 1-2 2-4 3-2-1-4-2-4-3 0-2 2-3 4-6Z'/%3E%3C/svg%3E");
+  mask: center / 100% 100% no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 18' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'%3E%3Cpath d='M0 9h405c24 0 30-5 43-5 12 0 13 6 25 6 10 0 12-7 23-7 3 0 4 3 4 6 0-3 1-6 4-6 11 0 13 7 23 7 12 0 13-6 25-6 13 0 19 5 43 5h405'/%3E%3Cpath d='M443 9c11 0 15 6 25 6 12 0 17-8 24-8M557 9c-11 0-15 6-25 6-12 0-17-8-24-8' opacity='.75'/%3E%3C/g%3E%3Cpath fill='black' d='M500 1c-3 4-9 5-9 9 0 3 4 5 9 7 5-2 9-4 9-7 0-4-6-5-9-9Zm0 4c2 3 4 4 4 6 0 1-2 2-4 3-2-1-4-2-4-3 0-2 2-3 4-6Z'/%3E%3C/svg%3E");
+  -webkit-mask: none;
+  mask: none;
+  transition: opacity 320ms ease-out, filter 320ms ease-out;
+}
+
+.composer .composer-rule {
+  position: absolute;
+  z-index: 2;
+  right: 14px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  width: auto;
+  pointer-events: none;
+  opacity: .68;
+  transition: opacity 320ms ease-out, filter 320ms ease-out;
+}
+
+.composer .composer-rule i {
+  display: block;
+  flex: 1 1 auto;
+  height: 1px;
+  min-width: 24px;
+  background: rgb(91 112 151 / 72%);
+}
+
+.composer .composer-rule img {
+  display: block;
+  flex: 0 0 auto;
+  width: auto;
+  object-fit: contain;
+}
+
+.composer .composer-rule-top {
+  top: -13px;
+}
+
+.composer .composer-rule-top i {
+  transform: translateY(5px);
+}
+
+.composer .composer-rule-top > img:not(.composer-rule-center) {
+  height: 22px;
+}
+
+.composer .composer-rule-top .composer-rule-center {
+  height: 27px;
+  margin: 0 5px;
+}
+
+.composer .composer-rule-bottom {
+  bottom: -8px;
+  opacity: .68;
+}
+
+.composer .composer-rule-bottom > img:not(.composer-rule-bottom-center) {
+  height: 18px;
+}
+
+.composer .composer-rule-bottom .composer-rule-bottom-center {
+  height: 8px;
+  margin: 0 4px;
+}
+
+.composer:focus-within .composer-rule {
+  opacity: .9;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--accent) 18%, transparent));
 }
 
 .composer::before {
-  top: -4px;
-  left: -4px;
-  border-top: 1px solid var(--accent);
-  border-left: 1px solid var(--accent);
+  top: -9px;
 }
 
 .composer::after {
-  right: -4px;
-  bottom: -4px;
-  border-right: 1px solid var(--accent);
-  border-bottom: 1px solid var(--accent);
+  bottom: -8px;
+  height: 16px;
+  opacity: .44;
+  transform: scaleY(-1);
+}
+
+.composer > * {
+  position: relative;
+  z-index: 1;
+}
+
+.composer:focus-within::before,
+.composer:focus-within::after {
+  opacity: .9;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--accent) 18%, transparent));
 }
 
 .composer textarea {
+  min-height: 72px;
   color: var(--text);
   background: transparent;
   font-family: var(--reading-serif);
@@ -1094,11 +1307,21 @@ select {
   min-width: 42px;
   height: 42px;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--surface-raised) 24%, transparent), 0 7px 20px color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow:
+    inset 0 0 0 3px color-mix(in srgb, var(--surface-raised) 24%, transparent),
+    inset 0 -3px 6px color-mix(in srgb, var(--shadow) 18%, transparent),
+    0 7px 20px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .composer .primary-button b {
   transform: translateY(-1px);
+}
+
+.composer .primary-button .classical-icon {
+  width: 21px;
+  height: 21px;
+  color: currentColor;
+  filter: drop-shadow(0 1px color-mix(in srgb, var(--surface-raised) 30%, transparent));
 }
 
 /* Inputs and polished native controls */
