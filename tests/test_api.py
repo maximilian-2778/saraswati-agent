@@ -4,6 +4,51 @@ import json
 
 from fastapi.testclient import TestClient
 
+from backend.llm import ModelReply, local_embedding
+
+
+class CandidateArtifactModel:
+    mode = "test"
+    model_name = "candidate-artifacts"
+
+    async def complete(self, messages: list[dict], tools: list[dict] | None = None) -> ModelReply:
+        system = str(messages[0].get("content", "")) if messages else ""
+        joined = "\n".join(str(item.get("content", "")) for item in messages)
+        if "生成剧情摘要" in system:
+            return ModelReply(content="候选乙摘要" if "候选乙" in joined else "候选甲摘要")
+        if tools:
+            return ModelReply(content="候选甲：角色留在旧港，金币为 1。")
+        return ModelReply(content="候选乙：角色抵达新港，金币为 2。")
+
+    async def complete_structured(
+        self, messages: list[dict], schema_name: str, schema: dict
+    ) -> dict:
+        joined = "\n".join(str(item.get("content", "")) for item in messages)
+        second = "候选乙" in joined
+        return {
+            "summary": "候选乙事件" if second else "候选甲事件",
+            "time_change": "第二日" if second else "第一日",
+            "facts": [], "open_threads": [], "numbers": [],
+            "scene_changes": [{
+                "path": ["新港" if second else "旧港"],
+                "description": "当前港口", "is_current": True,
+            }],
+            "npc_changes": [], "item_changes": [],
+            "state_changes": [{
+                "entity": "玩家", "key": "金币", "new_value": 2 if second else 1,
+                "reason": "候选回复中的明确数值",
+            }],
+        }
+
+    async def stream_complete(self, messages: list[dict], tools: list[dict] | None, on_token: object) -> ModelReply:
+        reply = await self.complete(messages, tools)
+        if reply.content:
+            await on_token(reply.content)  # type: ignore[operator]
+        return reply
+
+    async def embed(self, text: str) -> list[float]:
+        return local_embedding(text)
+
 
 def test_health_and_runtime_use_injected_test_model(client: TestClient) -> None:
     health = client.get("/api/health")
@@ -99,6 +144,45 @@ def test_sillytavern_preset_import_export_keeps_order_and_extra_fields(
     assert exported["top_k"] == 40
     assert exported["openai_max_context"] == 65536
     assert exported["prompt_order"][0]["order"][0]["identifier"] == "main"
+
+
+def test_sillytavern_preset_import_accepts_large_prompt_collections(
+    client: TestClient,
+) -> None:
+    prompts = [
+        {
+            "identifier": f"custom-{index}",
+            "name": f"Prompt {index}",
+            "role": "system",
+            "content": f"Instruction {index}",
+        }
+        for index in range(250)
+    ]
+    order = [
+        {"identifier": item["identifier"], "enabled": index % 2 == 0}
+        for index, item in enumerate(prompts)
+    ]
+
+    imported = client.post(
+        "/api/presets/import",
+        json={
+            "name": "Large SillyTavern preset",
+            "data": {
+                "prompts": prompts,
+                "prompt_order": [{"character_id": 100001, "order": order}],
+            },
+        },
+    )
+
+    assert imported.status_code == 201
+    body = imported.json()
+    assert len(body["prompts"]) == 250
+    assert body["prompts"][0]["identifier"] == "custom-0"
+    assert body["prompts"][1]["enabled"] is False
+
+    exported = client.get(f"/api/presets/{body['id']}/export")
+    assert exported.status_code == 200
+    assert len(exported.json()["prompt_order"][0]["order"]) == 250
 
 
 def test_chat_turn_persists_messages_and_episode_memory(
@@ -555,6 +639,75 @@ def test_templates_are_copied_into_isolated_story_snapshots(
     assert remaining_snapshot["source_template_id"] is None
 
 
+def test_world_books_support_atomic_batch_actions(client: TestClient) -> None:
+    templates = [
+        client.post(
+            "/api/world-book-templates",
+            json={
+                "title": title,
+                "content": content,
+                "enabled": False,
+            },
+        ).json()
+        for title, content in [
+            ("月港规则", "月港入夜后禁止鸣笛。"),
+            ("潮汐规则", "银潮升起时城门关闭。"),
+        ]
+    ]
+    template_ids = [item["id"] for item in templates]
+
+    enabled = client.post(
+        "/api/world-book-templates/batch",
+        json={"ids": [*template_ids, template_ids[0]], "action": "enable"},
+    )
+    assert enabled.status_code == 200
+    assert enabled.json() == {"affected": 2}
+    assert all(item["enabled"] for item in client.get("/api/world-book-templates").json())
+
+    missing_id = "00000000-0000-0000-0000-000000000001"
+    rejected = client.post(
+        "/api/world-book-templates/batch",
+        json={"ids": [template_ids[0], missing_id], "action": "disable"},
+    )
+    assert rejected.status_code == 404
+    unchanged = client.get("/api/world-book-templates").json()
+    assert next(item for item in unchanged if item["id"] == template_ids[0])["enabled"] is True
+
+    story = client.post(
+        "/api/chats",
+        json={"title": "批量世界书测试", "world_book_template_ids": template_ids},
+    ).json()
+    story_books = client.get(f"/api/chats/{story['id']}/world-books").json()
+    story_ids = [item["id"] for item in story_books]
+
+    disabled = client.post(
+        f"/api/chats/{story['id']}/world-books/batch",
+        json={"ids": story_ids, "action": "disable"},
+    )
+    assert disabled.status_code == 200
+    assert disabled.json() == {"affected": 2}
+    assert not any(
+        item["enabled"]
+        for item in client.get(f"/api/chats/{story['id']}/world-books").json()
+    )
+
+    removed_from_story = client.post(
+        f"/api/chats/{story['id']}/world-books/batch",
+        json={"ids": story_ids, "action": "delete"},
+    )
+    assert removed_from_story.status_code == 200
+    assert removed_from_story.json() == {"affected": 2}
+    assert client.get(f"/api/chats/{story['id']}/world-books").json() == []
+
+    removed_templates = client.post(
+        "/api/world-book-templates/batch",
+        json={"ids": template_ids, "action": "delete"},
+    )
+    assert removed_templates.status_code == 200
+    assert removed_templates.json() == {"affected": 2}
+    assert client.get("/api/world-book-templates").json() == []
+
+
 def test_scene_npc_graph_is_available_to_story_runtime(
     client: TestClient,
     chat_id: str,
@@ -758,6 +911,61 @@ def test_chat_candidates_bookmarks_branches_and_checkpoints(
     )
     assert deleted.status_code == 204
     assert client.get(f"/api/chats/{story_id}/messages").json() == []
+
+
+def test_selecting_message_variant_switches_all_derived_story_artifacts(
+    client: TestClient,
+) -> None:
+    runtime = client.app.state.runtime
+    model = CandidateArtifactModel()
+    runtime.model = model
+
+    story = client.post("/api/chats", json={"title": "候选剧情包"}).json()
+    chat_id = story["id"]
+    turn = client.post(
+        f"/api/chats/{chat_id}/messages", json={"content": "选择前进方向。"}
+    )
+    assert turn.status_code == 200
+    assistant_id = turn.json()["assistant_message"]["id"]
+    original = client.get(f"/api/chats/{chat_id}/message-variants").json()[0]
+
+    def snapshot() -> tuple[list[str], list[str], list[str], list[int], list[str]]:
+        summaries = [item["content"] for item in client.get(
+            f"/api/chats/{chat_id}/memory-graph"
+        ).json() if item["node_type"] == "leaf"]
+        deltas = [item["payload"]["summary"] for item in client.get(
+            f"/api/chats/{chat_id}/narrative-deltas"
+        ).json()]
+        times = [item["story_time"] for item in client.get(
+            f"/api/chats/{chat_id}/timeline"
+        ).json()]
+        values = [item["value"] for item in client.get(
+            f"/api/chats/{chat_id}/state"
+        ).json() if item["key"] == "金币"]
+        scenes = [item["name"] for item in client.get(
+            f"/api/chats/{chat_id}/scenes"
+        ).json() if item["is_current"]]
+        return summaries, deltas, times, values, scenes
+
+    assert snapshot() == (
+        ["候选甲摘要"], ["候选甲事件"], ["第一日"], [1], ["旧港"]
+    )
+
+    regenerated = client.post(
+        f"/api/chats/{chat_id}/messages/{assistant_id}/regenerate"
+    )
+    assert regenerated.status_code == 200
+    assert snapshot() == (
+        ["候选乙摘要"], ["候选乙事件"], ["第二日"], [2], ["新港"]
+    )
+
+    selected = client.post(
+        f"/api/chats/{chat_id}/messages/{assistant_id}/variants/{original['id']}/select"
+    )
+    assert selected.status_code == 200
+    assert snapshot() == (
+        ["候选甲摘要"], ["候选甲事件"], ["第一日"], [1], ["旧港"]
+    )
 
 
 def test_persona_character_card_and_advanced_world_book_snapshots(

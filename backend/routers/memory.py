@@ -117,6 +117,11 @@ from backend.serializers import (
 )
 from backend.services.agent import AgentRuntime
 from backend.services.roleplay_graph import RoleplayGraphService
+from backend.services.variants import (
+    active_variant_clause,
+    active_variant_ids,
+    variant_scope_is_active,
+)
 from backend.utils import json_dumps, json_loads
 
 from backend.controller_helpers import (
@@ -189,11 +194,16 @@ def list_narrative_deltas(
 )
 def list_memories(chat_id: UUID, db: Session = Depends(get_db)) -> list[MemoryRead]:
     _chat_or_404(db, chat_id)
-    records = db.scalars(
+    records = list(db.scalars(
         select(MemoryRecord)
-        .where(MemoryRecord.chat_id == str(chat_id))
+        .where(
+            MemoryRecord.chat_id == str(chat_id),
+            active_variant_clause(MemoryRecord.variant_id),
+        )
         .order_by(MemoryRecord.created_at.desc())
-    ).all()
+    ).all())
+    selected = active_variant_ids(db, str(chat_id))
+    records = [item for item in records if variant_scope_is_active(item.variant_ids_json, selected)]
     return [memory_read(record) for record in records]
 
 @router.get(
@@ -659,7 +669,10 @@ def list_timeline(
     _chat_or_404(db, chat_id)
     records = db.scalars(
         select(TimelineAnchorRecord)
-        .where(TimelineAnchorRecord.chat_id == str(chat_id))
+        .where(
+            TimelineAnchorRecord.chat_id == str(chat_id),
+            active_variant_clause(TimelineAnchorRecord.variant_id),
+        )
         .order_by(TimelineAnchorRecord.created_at)
     ).all()
     return [timeline_anchor_read(record) for record in records]

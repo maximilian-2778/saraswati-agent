@@ -557,6 +557,8 @@ export default function App() {
     }
   }
 
+  const latestAssistantId = [...messages].reverse().find((item) => item.role === "assistant")?.id;
+
   return (
     <div
       className={`app-shell theme-${uiPreferences.theme}${uiPreferences.compactMessages ? " compact-messages" : ""}${uiPreferences.reduceMotion ? " reduce-motion" : ""}`}
@@ -643,6 +645,7 @@ export default function App() {
               variants={messageVariants[message.id] ?? []}
               bookmarked={bookmarkedIds.has(message.id)}
               busy={sending}
+              variantEnabled={message.id === latestAssistantId}
               onEdit={editMessage}
               onDelete={removeMessage}
               onBookmark={toggleBookmark}

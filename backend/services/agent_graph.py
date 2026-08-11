@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, TypedDict
+from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
@@ -20,6 +21,7 @@ from backend.models import (
     AuditIssueRecord,
     ChatRecord,
     MessageRecord,
+    MessageVariantRecord,
     NarrativeDeltaRecord,
     NarrativeLeafRecord,
 )
@@ -35,6 +37,7 @@ from backend.services.state import StateService
 from backend.services.world_engine import WorldEngineService
 from backend.services.tools import ToolExecutor
 from backend.services.token_budget import estimate_tokens
+from backend.services.variants import attach_turn_artifacts, selected_variant_id
 from backend.utils import json_dumps
 
 
@@ -467,6 +470,21 @@ async def _persist_response(
         dependencies.chat.updated_at = message.created_at
         dependencies.db.commit()
         dependencies.db.refresh(message)
+    variant = dependencies.db.scalar(select(MessageVariantRecord).where(
+        MessageVariantRecord.message_id == message.id,
+        MessageVariantRecord.selected.is_(True),
+    ))
+    if variant is None:
+        variant = MessageVariantRecord(
+            id=str(uuid4()), chat_id=message.chat_id, message_id=message.id,
+            position=0, content=message.content, state_changes_json="[]",
+            graph_events_json="[]", selected=True, created_at=message.created_at,
+        )
+        dependencies.db.add(variant)
+        dependencies.db.commit()
+    attach_turn_artifacts(
+        dependencies.db, dependencies.user_message.id, message.id, variant.id
+    )
     dependencies.trace(
         dependencies.db,
         state["chat_id"],
@@ -488,7 +506,10 @@ async def _update_memory(
     assistant_message = _message(dependencies.db, state["assistant_message_id"])
     existing_leaf = dependencies.db.scalar(
         select(NarrativeLeafRecord).where(
-            NarrativeLeafRecord.assistant_message_id == assistant_message.id
+            NarrativeLeafRecord.assistant_message_id == assistant_message.id,
+            NarrativeLeafRecord.variant_id == selected_variant_id(
+                dependencies.db, assistant_message.id
+            ),
         )
     )
     if existing_leaf is not None:
@@ -522,7 +543,10 @@ async def _extract_delta(
     assistant_message = _message(dependencies.db, state["assistant_message_id"])
     delta = dependencies.db.scalar(
         select(NarrativeDeltaRecord).where(
-            NarrativeDeltaRecord.assistant_message_id == assistant_message.id
+            NarrativeDeltaRecord.assistant_message_id == assistant_message.id,
+            NarrativeDeltaRecord.variant_id == selected_variant_id(
+                dependencies.db, assistant_message.id
+            ),
         )
     )
     if delta is None:

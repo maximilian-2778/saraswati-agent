@@ -23,6 +23,7 @@ from backend.models import (
     WorldEvolutionRecord,
 )
 from backend.services.narrative_delta import source_hash
+from backend.services.variants import active_variant_clause, selected_variant_for_source
 from backend.utils import json_dumps, json_loads
 
 
@@ -100,7 +101,10 @@ class WorldEngineService:
     def snapshot(self, db: Session, chat_id: str) -> WorldEngineSnapshot:
         records = list(db.scalars(
             select(WorldEvolutionRecord)
-            .where(WorldEvolutionRecord.chat_id == chat_id)
+            .where(
+                WorldEvolutionRecord.chat_id == chat_id,
+                active_variant_clause(WorldEvolutionRecord.variant_id),
+            )
             .order_by(WorldEvolutionRecord.sequence)
         ).all())
         message_ids = {
@@ -165,6 +169,7 @@ class WorldEngineService:
             existing = db.scalar(select(WorldEvolutionRecord.id).where(
                 WorldEvolutionRecord.chat_id == chat_id,
                 WorldEvolutionRecord.assistant_message_id == assistant_message.id,
+                active_variant_clause(WorldEvolutionRecord.variant_id),
             ))
             if existing:
                 return self.snapshot(db, chat_id)
@@ -273,6 +278,7 @@ class WorldEngineService:
             user_message_id=user.id if user else None,
             assistant_message_id=assistant.id if assistant else None,
             source_hash=source_hash(user.content, assistant.content) if user and assistant else None,
+            variant_id=selected_variant_for_source(db, assistant.id if assistant else None),
             before_hash=state_hash(before),
             after_state_json=json_dumps(after.model_dump(mode="json")),
             created_at=datetime.now(UTC),

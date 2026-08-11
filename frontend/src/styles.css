@@ -292,6 +292,15 @@ input:focus, textarea:focus, select:focus { border-color: #8b7447; box-shadow: 0
 .library-editor > .primary-button { justify-self: end; }
 .library-tools { display: flex; gap: 7px; }
 .library-tools input { min-width: 0; flex: 1; }
+.world-batch-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--gold) 24%, #3a352c); border-radius: 8px; background: color-mix(in srgb, var(--gold) 5%, #211f1b); }
+.world-batch-bar label { display: flex; align-items: center; gap: 6px; color: var(--text, #d4cdc1); font-size: 12px; }
+.world-batch-bar label input, .library-card-select input { width: 16px; height: 16px; margin: 0; accent-color: var(--gold); }
+.world-batch-bar span { margin-right: auto; color: var(--muted, #8f877b); font-size: 11px; }
+.world-batch-bar button { border: 1px solid #55472f; border-radius: 6px; padding: 6px 9px; background: #292319; color: var(--gold-bright); font-size: 12px; }
+.world-batch-bar button:disabled { opacity: .42; cursor: not-allowed; }
+.world-batch-bar button.delete-button { border-color: #573a35; background: transparent; color: #ca8379; }
+.library-card.selected { border-color: color-mix(in srgb, var(--gold) 62%, #3a352c); box-shadow: inset 3px 0 color-mix(in srgb, var(--gold) 70%, transparent); }
+.library-card-select { display: inline-flex; flex: 0 0 auto; align-items: center; cursor: pointer; }
 .file-button { display: inline-flex; align-items: center; flex: 0 0 auto; border: 1px solid #55472f; border-radius: 6px; padding: 6px 9px; color: var(--gold-bright); cursor: pointer; font-size: 9px; }
 .file-button input { display: none; }
 .advanced-settings { display: grid; gap: 8px; border: 1px solid #40392f; border-radius: 8px; padding: 9px; }

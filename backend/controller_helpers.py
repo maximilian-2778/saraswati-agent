@@ -114,6 +114,7 @@ from backend.serializers import (
 )
 from backend.services.agent import AgentRuntime
 from backend.services.roleplay_graph import RoleplayGraphService
+from backend.services.variants import active_variant_clause
 from backend.utils import json_dumps, json_loads
 
 __all__ = [
@@ -729,6 +730,7 @@ def _copy_story_branch(
         .order_by(MessageRecord.created_at)
     ).all()
     message_ids: dict[str, str] = {}
+    variant_ids: dict[str, str] = {}
     for index, item in enumerate(messages):
         copied_id = str(uuid4())
         message_ids[item.id] = copied_id
@@ -741,11 +743,26 @@ def _copy_story_branch(
                 created_at=now + timedelta(microseconds=index),
             )
         )
+        if item.role == MessageRole.ASSISTANT.value:
+            source_variant = db.scalar(select(MessageVariantRecord).where(
+                MessageVariantRecord.message_id == item.id,
+                MessageVariantRecord.selected.is_(True),
+            ))
+            copied_variant_id = str(uuid4())
+            if source_variant:
+                variant_ids[source_variant.id] = copied_variant_id
+            db.add(MessageVariantRecord(
+                id=copied_variant_id, chat_id=branch.id, message_id=copied_id,
+                position=0, content=item.content, state_changes_json="[]",
+                graph_events_json="[]", selected=True,
+                created_at=now + timedelta(microseconds=index),
+            ))
     changes = db.scalars(
         select(StateChangeRecord)
         .where(
             StateChangeRecord.chat_id == source.id,
             StateChangeRecord.source_message_id.in_(message_ids),
+            active_variant_clause(StateChangeRecord.variant_id),
         )
         .order_by(StateChangeRecord.created_at)
     ).all()
@@ -759,7 +776,9 @@ def _copy_story_branch(
                 old_value_json=item.old_value_json,
                 new_value_json=item.new_value_json,
                 reason=item.reason,
+                event_fingerprint=item.event_fingerprint,
                 source_message_id=message_ids[item.source_message_id],
+                variant_id=variant_ids.get(item.variant_id or ""),
                 status=item.status,
                 created_at=item.created_at,
                 resolved_at=item.resolved_at,
@@ -770,6 +789,7 @@ def _copy_story_branch(
         .where(
             RoleplayGraphEventRecord.chat_id == source.id,
             RoleplayGraphEventRecord.source_message_id.in_(message_ids),
+            active_variant_clause(RoleplayGraphEventRecord.variant_id),
         )
         .order_by(RoleplayGraphEventRecord.created_at)
     ).all()
@@ -781,6 +801,7 @@ def _copy_story_branch(
                 event_type=item.event_type,
                 payload_json=item.payload_json,
                 source_message_id=message_ids[item.source_message_id],
+                variant_id=variant_ids.get(item.variant_id or ""),
                 source_hash=item.source_hash,
                 created_at=item.created_at,
             )

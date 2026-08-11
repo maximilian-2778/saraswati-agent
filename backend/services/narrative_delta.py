@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.llm import ModelClient, ModelProviderError
 from backend.models import MessageRecord, NarrativeDeltaRecord, RoleplayGraphEventRecord
+from backend.services.variants import active_variant_clause, selected_variant_id
 from backend.utils import json_dumps, json_loads
 
 
@@ -111,6 +112,7 @@ class NarrativeDeltaService:
                 select(RoleplayGraphEventRecord).where(
                     RoleplayGraphEventRecord.chat_id == chat_id,
                     RoleplayGraphEventRecord.source_message_id == user_message.id,
+                    active_variant_clause(RoleplayGraphEventRecord.variant_id),
                 )
             ).all()
         )
@@ -123,6 +125,7 @@ class NarrativeDeltaService:
             chat_id=chat_id,
             user_message_id=user_message.id,
             assistant_message_id=assistant_message.id,
+            variant_id=selected_variant_id(db, assistant_message.id),
             source_hash=source_hash(user_message.content, assistant_message.content),
             payload_json=json_dumps(extracted),
             created_at=now,
@@ -137,7 +140,10 @@ class NarrativeDeltaService:
         records = list(
             db.scalars(
                 select(NarrativeDeltaRecord)
-                .where(NarrativeDeltaRecord.chat_id == chat_id)
+                .where(
+                    NarrativeDeltaRecord.chat_id == chat_id,
+                    active_variant_clause(NarrativeDeltaRecord.variant_id),
+                )
                 .order_by(NarrativeDeltaRecord.created_at)
             ).all()
         )

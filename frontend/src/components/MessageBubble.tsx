@@ -10,6 +10,7 @@ export interface MessageBubbleProps {
   variants: MessageVariant[];
   bookmarked: boolean;
   busy: boolean;
+  variantEnabled: boolean;
   onEdit: (id: string, content: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onBookmark: (id: string) => Promise<void>;
@@ -43,7 +44,7 @@ export function MessageBubble(props: MessageBubbleProps) {
         ? <form className="message-editor" onSubmit={save}><textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} /><footer><button type="button" onClick={() => setEditing(false)}>取消</button><button>保存修改</button></footer></form>
         : <div className="bubble">{message.content}</div>}
       {!editing && !pending && <div className="message-toolbar">
-        {assistant && variants.length > 1 && <span className="variant-switcher">
+        {assistant && props.variantEnabled && variants.length > 1 && <span className="variant-switcher">
           <button disabled={busy || selectedVariant <= 0} onClick={() => void props.onVariant(message.id, -1)}>‹</button>
           {selectedVariant + 1}/{variants.length}
           <button disabled={busy || selectedVariant >= variants.length - 1} onClick={() => void props.onVariant(message.id, 1)}>›</button>
@@ -51,7 +52,7 @@ export function MessageBubble(props: MessageBubbleProps) {
         <button disabled={busy} onClick={() => { setContent(message.content); setEditing(true); }}>编辑</button>
         <button onClick={() => void navigator.clipboard.writeText(message.content)}>复制</button>
         <button className={bookmarked ? "active" : ""} onClick={() => void props.onBookmark(message.id)}>{bookmarked ? "取消收藏" : "收藏"}</button>
-        {assistant && <button disabled={busy} onClick={() => void props.onRegenerate(message.id)}>重生成</button>}
+        {assistant && props.variantEnabled && <button disabled={busy} onClick={() => void props.onRegenerate(message.id)}>重生成</button>}
         <button onClick={() => void props.onCheckpoint(message.id)}>检查点</button>
         <button onClick={() => void props.onBranch(message.id)}>创建分支</button>
         <button className="danger" disabled={busy} onClick={() => void props.onDelete(message.id)}>删除</button>

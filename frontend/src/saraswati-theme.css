@@ -2115,6 +2115,46 @@ select {
   transform: translateY(-1px);
 }
 
+.world-batch-bar {
+  padding: 4px 0 9px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--text-soft);
+  background: transparent;
+}
+
+.world-batch-bar label {
+  color: var(--text-soft);
+}
+
+.world-batch-bar span {
+  color: var(--muted);
+}
+
+.world-batch-bar button {
+  border-color: var(--line);
+  border-radius: 2px;
+  color: var(--text-soft);
+  background: var(--surface-raised);
+}
+
+.world-batch-bar button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--accent-bright);
+}
+
+.world-batch-bar button.delete-button {
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--line));
+  color: var(--danger);
+  background: transparent;
+}
+
+.library-card.selected {
+  border-color: var(--line-strong);
+  box-shadow: inset 3px 0 var(--accent), 0 8px 24px color-mix(in srgb, var(--shadow) 14%, transparent);
+}
+
 .library-editor {
   border: 1px solid var(--line-strong);
   border-radius: 4px;

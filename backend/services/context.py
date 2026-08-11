@@ -34,6 +34,11 @@ from backend.services.state import StateService
 from backend.services.timeline import timeline_service
 from backend.services.world_engine import WorldEngineService
 from backend.services.token_budget import TokenBudgetManager
+from backend.services.variants import (
+    active_variant_clause,
+    active_variant_ids,
+    variant_scope_is_active,
+)
 from backend.utils import clean_story_text, json_loads
 
 
@@ -126,6 +131,7 @@ class ContextBuilder:
                     MemoryRecord.chat_id == chat.id,
                     MemoryRecord.kind.in_([MemoryKind.SEMANTIC.value, MemoryKind.IMPLICIT.value]),
                     MemoryRecord.importance >= 0.9,
+                    active_variant_clause(MemoryRecord.variant_id),
                 )
                 .order_by(MemoryRecord.importance.desc(), MemoryRecord.created_at.desc())
                 .limit(5)
@@ -327,6 +333,11 @@ class ContextBuilder:
             if include_debug_content
             else [{"id": item["id"], "included": item["included"]} for item in world_trigger_log]
         )
+        selected_variants = active_variant_ids(db, chat.id)
+        pinned_memories = [
+            item for item in pinned_memories
+            if variant_scope_is_active(item.variant_ids_json, selected_variants)
+        ]
         diagnostics["rag_retrieval"] = [
             {
                 "memory_id": item.record.id,

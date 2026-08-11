@@ -88,6 +88,8 @@ from backend.schemas import (
     TimelineAnchorCreate,
     TimelineAnchorRead,
     WorldBookTemplateRead,
+    WorldBookBatchRequest,
+    WorldBookBatchResult,
     WorldBookEntryCreate,
     WorldBookEntryRead,
     WorldBookEntryUpdate,
@@ -415,6 +417,42 @@ def list_story_world_books(
         .order_by(StoryWorldBookRecord.priority.desc(), StoryWorldBookRecord.updated_at.desc())
     ).all()
     return [story_world_book_read(record) for record in records]
+
+@router.post(
+    "/chats/{chat_id}/world-books/batch",
+    response_model=WorldBookBatchResult,
+    tags=["story-bindings"],
+)
+def batch_story_world_books(
+    chat_id: UUID,
+    payload: WorldBookBatchRequest,
+    db: Session = Depends(get_db),
+) -> WorldBookBatchResult:
+    chat = _chat_or_404(db, chat_id)
+    ids = list(dict.fromkeys(str(item) for item in payload.ids))
+    records = list(
+        db.scalars(
+            select(StoryWorldBookRecord).where(
+                StoryWorldBookRecord.chat_id == str(chat_id),
+                StoryWorldBookRecord.id.in_(ids),
+            )
+        ).all()
+    )
+    if len(records) != len(ids):
+        raise HTTPException(status_code=404, detail="部分故事世界书不存在，请刷新后重试")
+
+    now = datetime.now(UTC)
+    if payload.action == "delete":
+        for record in records:
+            db.delete(record)
+    else:
+        enabled = payload.action == "enable"
+        for record in records:
+            record.enabled = enabled
+            record.updated_at = now
+    chat.updated_at = now
+    db.commit()
+    return WorldBookBatchResult(affected=len(records))
 
 @router.post(
     "/chats/{chat_id}/world-books/from-template/{template_id}",
@@ -784,6 +822,7 @@ async def regenerate_message(
     message = _message_or_404(db, chat_id, message_id)
     if message.role != MessageRole.ASSISTANT.value:
         raise HTTPException(status_code=409, detail="只能重新生成助手回复")
+    _ensure_variant_target_is_latest(db, chat.id, message)
     user_message = db.scalar(
         select(MessageRecord)
         .where(
@@ -801,6 +840,7 @@ async def regenerate_message(
         content = await runtime.generate_candidate(db, chat, user_message)
     except ModelProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    previous = next((item for item in variants if item.selected), None)
     for item in variants:
         item.selected = False
     variant = MessageVariantRecord(
@@ -817,8 +857,20 @@ async def regenerate_message(
     db.add(variant)
     message.content = content
     chat.updated_at = variant.created_at
-    _apply_variant_effects(db, message, variant)
     db.commit()
+    runtime.state_service.rebuild_entries(db, chat.id)
+    runtime.graph_service.rebuild_projections(db, chat.id)
+    try:
+        await runtime.process_candidate(db, chat, user_message, message)
+    except ModelProviderError as exc:
+        variant.selected = False
+        if previous is not None:
+            previous.selected = True
+            message.content = previous.content
+        db.commit()
+        runtime.state_service.rebuild_entries(db, chat.id)
+        runtime.graph_service.rebuild_projections(db, chat.id)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     runtime.state_service.rebuild_entries(db, chat.id)
     runtime.graph_service.rebuild_projections(db, chat.id)
     db.refresh(variant)
@@ -829,7 +881,7 @@ async def regenerate_message(
     response_model=MessageRead,
     tags=["messages"],
 )
-def select_message_variant(
+async def select_message_variant(
     chat_id: UUID,
     message_id: UUID,
     variant_id: UUID,
@@ -838,7 +890,9 @@ def select_message_variant(
 ) -> MessageRead:
     chat = _chat_or_404(db, chat_id)
     message = _message_or_404(db, chat_id, message_id)
+    _ensure_variant_target_is_latest(db, chat.id, message)
     variants = _ensure_message_variants(db, message)
+    previous = next((item for item in variants if item.selected), None)
     selected = next((item for item in variants if item.id == str(variant_id)), None)
     if not selected:
         raise HTTPException(status_code=404, detail="候选回复不存在")
@@ -846,13 +900,47 @@ def select_message_variant(
         item.selected = item.id == selected.id
     message.content = selected.content
     chat.updated_at = datetime.now(UTC)
-    _apply_variant_effects(db, message, selected)
     db.commit()
     runtime: AgentRuntime = request.app.state.runtime
     runtime.state_service.rebuild_entries(db, chat.id)
     runtime.graph_service.rebuild_projections(db, chat.id)
+    has_leaf = db.scalar(select(NarrativeLeafRecord.id).where(
+        NarrativeLeafRecord.variant_id == selected.id
+    ))
+    has_delta = db.scalar(select(NarrativeDeltaRecord.id).where(
+        NarrativeDeltaRecord.variant_id == selected.id
+    ))
+    user_message = _preceding_user_message(db, message)
+    if user_message and (has_leaf is None or has_delta is None):
+        try:
+            await runtime.process_candidate(db, chat, user_message, message)
+        except ModelProviderError as exc:
+            selected.selected = False
+            if previous is not None:
+                previous.selected = True
+                message.content = previous.content
+            db.commit()
+            runtime.state_service.rebuild_entries(db, chat.id)
+            runtime.graph_service.rebuild_projections(db, chat.id)
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    runtime.state_service.rebuild_entries(db, chat.id)
+    runtime.graph_service.rebuild_projections(db, chat.id)
     db.refresh(message)
     return message_read(message)
+
+
+def _ensure_variant_target_is_latest(
+    db: Session, chat_id: str, message: MessageRecord
+) -> None:
+    later = db.scalar(select(MessageRecord.id).where(
+        MessageRecord.chat_id == chat_id,
+        MessageRecord.created_at > message.created_at,
+    ).limit(1))
+    if later is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="已有后续剧情时不能切换较早回复；请从该楼层创建故事分支。",
+        )
 
 @router.get(
     "/chats/{chat_id}/bookmarks",

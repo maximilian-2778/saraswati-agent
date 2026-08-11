@@ -2,6 +2,24 @@
 
 All notable changes to Saraswati Agent are documented in this file.
 
+## [1.3.1] - 2026-08-11
+
+### Added
+
+- Added candidate-specific summaries, narrative events, timeline anchors, state changes, and scene/NPC projections so switching regenerated replies also switches their derived story records.
+- Added multi-select, select-all, batch enable/disable, and transactional batch deletion for reusable and story-bound world books.
+
+### Changed
+
+- Regeneration and candidate switching are limited to the latest assistant reply once later story messages exist, preventing earlier branches from silently rewriting current story state.
+- Expanded SillyTavern preset imports to accept large prompt collections while retaining their original order and extra settings.
+
+### Fixed
+
+- Fixed HTTP 500 errors when importing large SillyTavern writing presets.
+- Fixed regenerated reply selection leaving summaries, events, time, state, and scene projections on a different candidate.
+- Fixed the world-book batch toolbar conflicting with the paper theme and appearing in empty lists.
+
 ## [1.3.0] - 2026-08-10
 
 ### Added

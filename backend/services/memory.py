@@ -15,6 +15,11 @@ from backend.llm import ModelClient
 from backend.models import MemoryRecord
 from backend.reranker import RerankerClient
 from backend.schemas import MemoryKind
+from backend.services.variants import (
+    active_variant_clause,
+    active_variant_ids,
+    selected_variant_for_source,
+)
 from backend.utils import json_dumps, json_loads
 
 
@@ -52,8 +57,13 @@ class MemoryService:
         content: str,
         importance: float = 0.5,
         source_message_id: str | None = None,
+        variant_ids: set[str] | None = None,
     ) -> MemoryRecord:
         embedding = await model.embed(content)
+        inferred_variant = selected_variant_for_source(db, source_message_id)
+        scope = set(variant_ids or ())
+        if inferred_variant:
+            scope.add(inferred_variant)
         record = MemoryRecord(
             id=str(uuid4()),
             chat_id=chat_id,
@@ -62,6 +72,8 @@ class MemoryService:
             importance=max(0.0, min(1.0, importance)),
             embedding_json=json_dumps(embedding),
             source_message_id=source_message_id,
+            variant_id=inferred_variant,
+            variant_ids_json=json_dumps(sorted(scope)),
             access_count=0,
             last_accessed_at=None,
             created_at=datetime.now(UTC),
@@ -82,10 +94,14 @@ class MemoryService:
         exclude_memory_ids: set[str] | None = None,
     ) -> list[RetrievedMemory]:
         records = db.scalars(
-            select(MemoryRecord).where(MemoryRecord.chat_id == chat_id)
+            select(MemoryRecord).where(
+                MemoryRecord.chat_id == chat_id,
+                active_variant_clause(MemoryRecord.variant_id),
+            )
         ).all()
         if not records:
             return []
+        selected_variants = active_variant_ids(db, chat_id)
 
         queries = _expand_queries(query)
         query_vectors = await asyncio.gather(*(model.embed(item) for item in queries))
@@ -96,6 +112,8 @@ class MemoryService:
         excluded_sources = exclude_source_message_ids or set()
         excluded_memories = exclude_memory_ids or set()
         for record in records:
+            if not set(json_loads(record.variant_ids_json) or []).issubset(selected_variants):
+                continue
             # 最近窗口已经会携带消息原文，不再召回同一楼层的派生记忆。
             # 这样可以避免模型同时看到“原文 + 楼层摘要”而重复强调同一事件。
             if record.source_message_id in excluded_sources or record.id in excluded_memories:

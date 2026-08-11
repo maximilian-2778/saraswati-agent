@@ -88,6 +88,8 @@ from backend.schemas import (
     TimelineAnchorCreate,
     TimelineAnchorRead,
     WorldBookTemplateRead,
+    WorldBookBatchRequest,
+    WorldBookBatchResult,
     WorldBookEntryCreate,
     WorldBookEntryRead,
     WorldBookEntryUpdate,
@@ -254,6 +256,36 @@ def create_world_book_template(
     db.commit()
     db.refresh(record)
     return world_book_template_read(record)
+
+@router.post(
+    "/world-book-templates/batch",
+    response_model=WorldBookBatchResult,
+    tags=["libraries"],
+)
+def batch_world_book_templates(
+    payload: WorldBookBatchRequest,
+    db: Session = Depends(get_db),
+) -> WorldBookBatchResult:
+    ids = list(dict.fromkeys(str(item) for item in payload.ids))
+    records = list(
+        db.scalars(
+            select(WorldBookTemplateRecord).where(WorldBookTemplateRecord.id.in_(ids))
+        ).all()
+    )
+    if len(records) != len(ids):
+        raise HTTPException(status_code=404, detail="部分世界书模板不存在，请刷新后重试")
+
+    if payload.action == "delete":
+        for record in records:
+            db.delete(record)
+    else:
+        now = datetime.now(UTC)
+        enabled = payload.action == "enable"
+        for record in records:
+            record.enabled = enabled
+            record.updated_at = now
+    db.commit()
+    return WorldBookBatchResult(affected=len(records))
 
 @router.put(
     "/world-book-templates/{template_id}",

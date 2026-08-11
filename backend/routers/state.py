@@ -114,6 +114,7 @@ from backend.serializers import (
 )
 from backend.services.agent import AgentRuntime
 from backend.services.roleplay_graph import RoleplayGraphService
+from backend.services.variants import active_variant_clause
 from backend.utils import json_dumps, json_loads
 
 from backend.controller_helpers import (
@@ -205,7 +206,8 @@ def list_state_proposals(
 ) -> list[StateChangeRead]:
     _chat_or_404(db, chat_id)
     statement = select(StateChangeRecord).where(
-        StateChangeRecord.chat_id == str(chat_id)
+        StateChangeRecord.chat_id == str(chat_id),
+        active_variant_clause(StateChangeRecord.variant_id),
     )
     if proposal_status:
         statement = statement.where(StateChangeRecord.status == proposal_status.value)

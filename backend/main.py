@@ -38,7 +38,7 @@ def create_app(
 
     app = FastAPI(
         title="Saraswati Agent API",
-        version="1.3.0",
+        version="1.3.1",
         description="带分层记忆、状态账本和一致性审计的角色扮演 Agent 后端。",
         lifespan=lifespan,
     )

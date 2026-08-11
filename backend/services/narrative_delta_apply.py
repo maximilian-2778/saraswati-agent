@@ -22,6 +22,7 @@ from backend.services.narrative_delta import NarrativeDeltaPayload
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
 from backend.services.timeline import timeline_service
+from backend.services.variants import active_variant_clause
 from backend.utils import json_dumps, json_loads
 
 
@@ -150,6 +151,7 @@ class NarrativeDeltaApplier:
                     record.user_message_id,
                     record.assistant_message_id,
                 ]),
+                active_variant_clause(RoleplayGraphEventRecord.variant_id),
             ).order_by(RoleplayGraphEventRecord.created_at)
         ).all())
         stored["graph_event_ids"] = [item.id for item in graph_events]

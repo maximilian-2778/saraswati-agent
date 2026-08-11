@@ -154,6 +154,15 @@ class WorldBookEntryUpdate(WorldBookEntryCreate):
     pass
 
 
+class WorldBookBatchRequest(BaseModel):
+    ids: list[UUID] = Field(min_length=1, max_length=1_000)
+    action: Literal["enable", "disable", "delete"]
+
+
+class WorldBookBatchResult(BaseModel):
+    affected: int
+
+
 class WorldBookTemplateRead(WorldBookEntryCreate):
     id: UUID
     created_at: datetime
@@ -472,7 +481,9 @@ class PromptPresetCreate(BaseModel):
     presence_penalty: float = Field(default=0.0, ge=-2.0, le=2.0)
     frequency_penalty: float = Field(default=0.0, ge=-2.0, le=2.0)
     context_window_tokens: int = Field(default=32768, ge=4096, le=2_000_000)
-    prompts: list[PresetPrompt] = Field(default_factory=list, max_length=100)
+    # Large SillyTavern presets commonly split instructions into hundreds of
+    # prompt blocks. Keep a defensive bound without rejecting valid imports.
+    prompts: list[PresetPrompt] = Field(default_factory=list, max_length=1_000)
     extra_settings: dict[str, Any] = Field(default_factory=dict)
 
 

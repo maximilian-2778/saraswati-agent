@@ -333,10 +333,24 @@ function WorldLibrary(props: {
   onError: (reason: unknown) => void;
 }) {
   const [storyItems, setStoryItems] = useState<StoryWorldBook[]>([]);
+  const [selectedTemplates, setSelectedTemplates] = useState<string[]>([]);
+  const [selectedStoryItems, setSelectedStoryItems] = useState<string[]>([]);
+  const [batchBusy, setBatchBusy] = useState(false);
   const [editing, setEditing] = useState<{ scope: "template" | "story"; id: string | null } | null>(null);
   const [draft, setDraft] = useState<WorldEntryDraft>(EMPTY_WORLD_ENTRY);
   async function refreshStory() { setStoryItems(props.selectedChat ? await api.storyWorldBooks(props.selectedChat.id) : []); }
-  useEffect(() => { void refreshStory().catch(props.onError); }, [props.selectedChat?.id]);
+  useEffect(() => {
+    setSelectedStoryItems([]);
+    void refreshStory().catch(props.onError);
+  }, [props.selectedChat?.id]);
+  useEffect(() => {
+    const available = new Set(props.templates.map((item) => item.id));
+    setSelectedTemplates((before) => before.filter((id) => available.has(id)));
+  }, [props.templates]);
+  useEffect(() => {
+    const available = new Set(storyItems.map((item) => item.id));
+    setSelectedStoryItems((before) => before.filter((id) => available.has(id)));
+  }, [storyItems]);
 
   function edit(scope: "template" | "story", item?: WorldBookTemplate | StoryWorldBook) {
     setEditing({ scope, id: item?.id ?? null });
@@ -388,19 +402,63 @@ function WorldLibrary(props: {
       else if (props.selectedChat) { await api.deleteStoryWorldBook(props.selectedChat.id, id); await refreshStory(); }
     } catch (reason) { props.onError(reason); }
   }
+  function toggleSelected(scope: "template" | "story", id: string, checked: boolean) {
+    const update = scope === "template" ? setSelectedTemplates : setSelectedStoryItems;
+    update((before) => checked ? [...new Set([...before, id])] : before.filter((item) => item !== id));
+  }
+  function toggleAll(scope: "template" | "story", checked: boolean) {
+    if (scope === "template") setSelectedTemplates(checked ? props.templates.map((item) => item.id) : []);
+    else setSelectedStoryItems(checked ? storyItems.map((item) => item.id) : []);
+  }
+  async function batchEnable(scope: "template" | "story", enabled: boolean) {
+    const ids = scope === "template" ? selectedTemplates : selectedStoryItems;
+    if (!ids.length || (scope === "story" && !props.selectedChat)) return;
+    try {
+      setBatchBusy(true);
+      if (scope === "template") {
+        await api.batchWorldBookTemplates(ids, enabled ? "enable" : "disable");
+        props.onTemplates(await api.worldBookTemplates());
+      } else if (props.selectedChat) {
+        await api.batchStoryWorldBooks(props.selectedChat.id, ids, enabled ? "enable" : "disable");
+        await refreshStory();
+      }
+    } catch (reason) { props.onError(reason); }
+    finally { setBatchBusy(false); }
+  }
+  async function batchRemove(scope: "template" | "story") {
+    const ids = scope === "template" ? selectedTemplates : selectedStoryItems;
+    if (!ids.length || (scope === "story" && !props.selectedChat)) return;
+    const label = scope === "template" ? "世界书库中的条目" : "当前故事中的世界书";
+    if (!window.confirm(`确定删除选中的 ${ids.length} 个${label}吗？此操作无法撤销。`)) return;
+    try {
+      setBatchBusy(true);
+      if (scope === "template") {
+        await api.batchWorldBookTemplates(ids, "delete");
+        setSelectedTemplates([]);
+        props.onTemplates(await api.worldBookTemplates());
+      } else if (props.selectedChat) {
+        await api.batchStoryWorldBooks(props.selectedChat.id, ids, "delete");
+        setSelectedStoryItems([]);
+        await refreshStory();
+      }
+    } catch (reason) { props.onError(reason); }
+    finally { setBatchBusy(false); }
+  }
   return (
     <div className="library-content">
       <LibraryColumn title="世界书库" note="这里保存可以重复使用的世界设定。" action="＋ 新建世界书" onAction={() => edit("template")}>
         <div className="library-tools"><label className="file-button">导入世界书<input type="file" accept=".json,application/json" onChange={(event) => { void importBook(event.target.files?.[0]); event.target.value = ""; }} /></label></div>
+        {props.templates.length > 0 && <WorldBookBatchBar count={selectedTemplates.length} total={props.templates.length} busy={batchBusy} onAll={(checked) => toggleAll("template", checked)} onEnable={(enabled) => void batchEnable("template", enabled)} onDelete={() => void batchRemove("template")} />}
         {props.templates.length === 0 ? <p className="muted">还没有世界书模板。</p> : props.templates.map((item) => (
-          <LibraryCard key={item.id} title={item.title} detail={item.content} badge={`模板 · 优先级 ${item.priority}`}>
+          <LibraryCard key={item.id} title={item.title} detail={item.content} badge={`${item.enabled ? "已启用" : "已停用"} · 模板 · 优先级 ${item.priority}`} selected={selectedTemplates.includes(item.id)} onSelected={(checked) => toggleSelected("template", item.id, checked)}>
             <button onClick={() => attach(item.id)} disabled={!props.selectedChat}>添加到故事</button><button onClick={() => edit("template", item)}>编辑</button><button className="delete-button" onClick={() => void remove("template", item.id)}>删除</button>
           </LibraryCard>
         ))}
       </LibraryColumn>
       <LibraryColumn title={`当前故事使用的世界书${props.selectedChat ? ` · ${props.selectedChat.title}` : ""}`} note="这里的修改只影响当前故事。">
+        {props.selectedChat && storyItems.length > 0 && <WorldBookBatchBar count={selectedStoryItems.length} total={storyItems.length} busy={batchBusy} onAll={(checked) => toggleAll("story", checked)} onEnable={(enabled) => void batchEnable("story", enabled)} onDelete={() => void batchRemove("story")} />}
         {!props.selectedChat ? <p className="muted">请先从左侧选择一个故事。</p> : storyItems.length === 0 ? <p className="muted">这个故事尚未绑定世界书。</p> : storyItems.map((item) => (
-          <LibraryCard key={item.id} title={item.title} detail={item.content} badge={item.source_template_id ? "当前故事" : "已有设定"}>
+          <LibraryCard key={item.id} title={item.title} detail={item.content} badge={`${item.enabled ? "已启用" : "已停用"} · ${item.source_template_id ? "当前故事" : "已有设定"}`} selected={selectedStoryItems.includes(item.id)} onSelected={(checked) => toggleSelected("story", item.id, checked)}>
             <button onClick={() => edit("story", item)}>编辑</button><button className="delete-button" onClick={() => void remove("story", item.id)}>移除</button>
           </LibraryCard>
         ))}
@@ -433,8 +491,26 @@ function LibraryColumn(props: { title: string; note: string; action?: string; on
   return <section className="library-column"><div className="library-column-heading"><div><h2>{props.title}</h2><p>{props.note}</p></div>{props.action && <button onClick={props.onAction}>{props.action}</button>}</div><div className="library-card-list">{props.children}</div></section>;
 }
 
-function LibraryCard(props: { title: string; detail: string; badge: string; avatar?: string; children: ReactNode }) {
-  return <article className="library-card"><header>{props.avatar !== undefined && <Avatar value={props.avatar} fallback={props.title.charAt(0)} />}<div><strong>{props.title}</strong><span>{props.badge}</span></div></header><p>{props.detail}</p><footer>{props.children}</footer></article>;
+function WorldBookBatchBar(props: {
+  count: number;
+  total: number;
+  busy: boolean;
+  onAll: (checked: boolean) => void;
+  onEnable: (enabled: boolean) => void;
+  onDelete: () => void;
+}) {
+  const allSelected = props.total > 0 && props.count === props.total;
+  return <div className="world-batch-bar">
+    <label><input type="checkbox" checked={allSelected} disabled={!props.total || props.busy} onChange={(event) => props.onAll(event.target.checked)} />全选</label>
+    <span>已选 {props.count} 项</span>
+    <button disabled={!props.count || props.busy} onClick={() => props.onEnable(true)}>批量启用</button>
+    <button disabled={!props.count || props.busy} onClick={() => props.onEnable(false)}>批量停用</button>
+    <button className="delete-button" disabled={!props.count || props.busy} onClick={props.onDelete}>批量删除</button>
+  </div>;
+}
+
+function LibraryCard(props: { title: string; detail: string; badge: string; avatar?: string; selected?: boolean; onSelected?: (checked: boolean) => void; children: ReactNode }) {
+  return <article className={`library-card${props.selected ? " selected" : ""}`}><header>{props.onSelected && <label className="library-card-select" aria-label={`选择 ${props.title}`}><input type="checkbox" checked={Boolean(props.selected)} onChange={(event) => props.onSelected?.(event.target.checked)} /></label>}{props.avatar !== undefined && <Avatar value={props.avatar} fallback={props.title.charAt(0)} />}<div><strong>{props.title}</strong><span>{props.badge}</span></div></header><p>{props.detail}</p><footer>{props.children}</footer></article>;
 }
 
 async function importWorldBookData(raw: Record<string, any>, fallbackName: string): Promise<WorldBookTemplate[]> {

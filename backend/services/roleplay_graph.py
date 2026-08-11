@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.models import MessageRecord, NpcRecord, RoleplayGraphEventRecord, SceneNodeRecord
 from backend.services.narrative_delta import message_hash
+from backend.services.variants import active_variant_clause, selected_variant_for_source
 from backend.utils import json_dumps, json_loads
 
 
@@ -263,7 +264,10 @@ class RoleplayGraphService:
         events = list(
             db.scalars(
                 select(RoleplayGraphEventRecord)
-                .where(RoleplayGraphEventRecord.chat_id == chat_id)
+                .where(
+                    RoleplayGraphEventRecord.chat_id == chat_id,
+                    active_variant_clause(RoleplayGraphEventRecord.variant_id),
+                )
                 .order_by(RoleplayGraphEventRecord.created_at, RoleplayGraphEventRecord.id)
             ).all()
         )
@@ -433,6 +437,7 @@ class RoleplayGraphService:
                 event_type=event_type,
                 payload_json=json_dumps(payload),
                 source_message_id=source_message_id,
+                variant_id=selected_variant_for_source(db, source_message_id),
                 source_hash=message_hash(source.content) if source else None,
                 created_at=datetime.now(UTC),
             )

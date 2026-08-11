@@ -26,6 +26,8 @@ from backend.models import (
     ChatRecord,
     MemoryRecord,
     MessageRecord,
+    NarrativeDeltaRecord,
+    NarrativeLeafRecord,
     StateChangeRecord,
 )
 from backend.services.agent_graph import (
@@ -43,6 +45,7 @@ from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
 from backend.services.world_engine import WorldEngineService
 from backend.services.tools import ToolExecutor
+from backend.services.variants import selected_variant_id
 from backend.utils import json_dumps
 
 
@@ -238,6 +241,35 @@ class AgentRuntime:
         except ModelProviderError as exc:
             raise ModelProviderError(f"候选回复生成失败：{exc}") from exc
         return reply.content or "模型没有返回可显示的内容。"
+
+    async def process_candidate(
+        self,
+        db: Session,
+        chat: ChatRecord,
+        user_message: MessageRecord,
+        assistant_message: MessageRecord,
+    ) -> None:
+        """Build the selected candidate's complete derived story artifact set."""
+        variant_id = selected_variant_id(db, assistant_message.id)
+        leaf = db.scalar(select(NarrativeLeafRecord.id).where(
+            NarrativeLeafRecord.variant_id == variant_id
+        ))
+        if leaf is None:
+            await self.narrative_memory_service.process_turn(
+                db, self.model, chat.id, user_message, assistant_message
+            )
+        delta = db.scalar(select(NarrativeDeltaRecord).where(
+            NarrativeDeltaRecord.variant_id == variant_id
+        ))
+        if delta is None:
+            delta = await self.narrative_delta_service.process_turn(
+                db, self.model, chat.id, user_message, assistant_message
+            )
+            self.narrative_delta_applier.apply(db, delta)
+        if self.world_engine_service.snapshot(db, chat.id).auto_evolve:
+            await self.world_engine_service.evolve(
+                db, self.model, chat.id, user_message, assistant_message, mode="auto"
+            )
 
     @staticmethod
     def _trace(

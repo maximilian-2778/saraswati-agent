@@ -215,6 +215,11 @@ export const api = {
     request<WorldBookTemplate>(`/world-book-templates/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteWorldBookTemplate: (id: string) =>
     request<void>(`/world-book-templates/${id}`, { method: "DELETE" }),
+  batchWorldBookTemplates: (ids: string[], action: "enable" | "disable" | "delete") =>
+    request<{ affected: number }>("/world-book-templates/batch", {
+      method: "POST",
+      body: JSON.stringify({ ids, action }),
+    }),
   storyCharacters: (chatId: string) => request<StoryCharacter[]>(`/chats/${chatId}/characters`),
   attachCharacter: (chatId: string, templateId: string) =>
     request<StoryCharacter>(`/chats/${chatId}/characters/from-template/${templateId}`, { method: "POST" }),
@@ -229,6 +234,11 @@ export const api = {
     request<StoryWorldBook>(`/chats/${chatId}/world-books/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteStoryWorldBook: (chatId: string, id: string) =>
     request<void>(`/chats/${chatId}/world-books/${id}`, { method: "DELETE" }),
+  batchStoryWorldBooks: (chatId: string, ids: string[], action: "enable" | "disable" | "delete") =>
+    request<{ affected: number }>(`/chats/${chatId}/world-books/batch`, {
+      method: "POST",
+      body: JSON.stringify({ ids, action }),
+    }),
   character: (chatId: string) =>
     request<CharacterProfile>(`/chats/${chatId}/character`),
   updateCharacter: (chatId: string, payload: object) =>

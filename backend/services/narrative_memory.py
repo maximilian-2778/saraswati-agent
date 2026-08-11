@@ -22,6 +22,11 @@ from backend.models import (
 )
 from backend.schemas import MemoryKind
 from backend.services.memory import MemoryService
+from backend.services.variants import (
+    active_variant_clause,
+    active_variant_ids,
+    selected_variant_id,
+)
 from backend.utils import clean_story_text, json_dumps, json_loads
 
 
@@ -96,6 +101,7 @@ class NarrativeMemoryService:
             chat_id=chat_id,
             user_message_id=user_message.id,
             assistant_message_id=assistant_message.id,
+            variant_id=selected_variant_id(db, assistant_message.id),
             memory_id=memory.id,
             source_hash=_source_hash(user_message.content, assistant_message.content),
             content=summary,
@@ -129,7 +135,8 @@ class NarrativeMemoryService:
         existing = set(
             db.scalars(
                 select(NarrativeLeafRecord.assistant_message_id).where(
-                    NarrativeLeafRecord.chat_id == chat_id
+                    NarrativeLeafRecord.chat_id == chat_id,
+                    active_variant_clause(NarrativeLeafRecord.variant_id),
                 )
             ).all()
         )
@@ -158,6 +165,7 @@ class NarrativeMemoryService:
         existing = db.scalar(select(NarrativeLeafRecord).where(
             NarrativeLeafRecord.chat_id == chat_id,
             NarrativeLeafRecord.assistant_message_id == assistant_message_id,
+            active_variant_clause(NarrativeLeafRecord.variant_id),
         ))
         if existing and not replace and self._leaf_valid(existing, self._load(db, chat_id)[2]):
             return next(item for item in self.inspect_nodes(db, chat_id) if item.id == existing.id)
@@ -180,7 +188,8 @@ class NarrativeMemoryService:
         now = datetime.now(UTC)
         leaf = NarrativeLeafRecord(
             id=str(uuid4()), chat_id=chat_id, user_message_id=user.id,
-            assistant_message_id=assistant.id, memory_id=memory.id,
+            assistant_message_id=assistant.id,
+            variant_id=selected_variant_id(db, assistant.id), memory_id=memory.id,
             source_hash=_source_hash(user.content, assistant.content), content=summary,
             detail_mode=detail_mode, time_start=times[0] if times else None,
             time_end=times[-1] if times else None, created_at=assistant.created_at,
@@ -502,7 +511,10 @@ class NarrativeMemoryService:
             leaves = list(
                 db.scalars(
                     select(NarrativeLeafRecord)
-                    .where(NarrativeLeafRecord.chat_id == chat_id)
+                    .where(
+                        NarrativeLeafRecord.chat_id == chat_id,
+                        active_variant_clause(NarrativeLeafRecord.variant_id),
+                    )
                     .order_by(NarrativeLeafRecord.created_at)
                 ).all()
             )
@@ -513,6 +525,11 @@ class NarrativeMemoryService:
                     .order_by(NarrativeSummaryNodeRecord.created_at)
                 ).all()
             )
+            selected_variants = active_variant_ids(db, chat_id)
+            nodes = [
+                node for node in nodes
+                if set(json_loads(node.variant_ids_json) or []).issubset(selected_variants)
+            ]
             referenced = {child for node in nodes for child in _child_ids(node)}
             candidates: list[NarrativeLeafRecord | NarrativeSummaryNodeRecord]
             if source_level == 0:
@@ -539,6 +556,7 @@ class NarrativeMemoryService:
             )
             prefix = "章节总结" if source_level == 0 else f"篇章概览 L{source_level + 1}"
             source_message_id = self._last_source_message_id(group, leaves, nodes)
+            variant_ids = self._variant_ids(group, leaves, nodes)
             memory = await self.memory_service.create(
                 db,
                 model,
@@ -547,6 +565,7 @@ class NarrativeMemoryService:
                 f"[{prefix}] {content}",
                 importance=min(0.84 + source_level * 0.05, 0.98),
                 source_message_id=source_message_id,
+                variant_ids=variant_ids,
             )
             now = datetime.now(UTC)
             db.add(
@@ -556,6 +575,7 @@ class NarrativeMemoryService:
                     level=source_level + 1,
                     content=content,
                     child_refs_json=json_dumps([item.id for item in group]),
+                    variant_ids_json=json_dumps(sorted(variant_ids)),
                     memory_id=memory.id,
                     time_start=next((item.time_start for item in group if item.time_start), None),
                     time_end=next((item.time_end for item in reversed(group) if item.time_end), None),
@@ -626,7 +646,10 @@ class NarrativeMemoryService:
         leaves = list(
             db.scalars(
                 select(NarrativeLeafRecord)
-                .where(NarrativeLeafRecord.chat_id == chat_id)
+                .where(
+                    NarrativeLeafRecord.chat_id == chat_id,
+                    active_variant_clause(NarrativeLeafRecord.variant_id),
+                )
                 .order_by(NarrativeLeafRecord.created_at)
             ).all()
         )
@@ -637,6 +660,11 @@ class NarrativeMemoryService:
                 .order_by(NarrativeSummaryNodeRecord.created_at)
             ).all()
         )
+        selected_variants = active_variant_ids(db, chat_id)
+        nodes = [
+            node for node in nodes
+            if set(json_loads(node.variant_ids_json) or []).issubset(selected_variants)
+        ]
         messages = {
             item.id: item
             for item in db.scalars(
@@ -644,6 +672,33 @@ class NarrativeMemoryService:
             ).all()
         }
         return leaves, nodes, messages
+
+    @staticmethod
+    def _variant_ids(
+        group: list[NarrativeLeafRecord | NarrativeSummaryNodeRecord],
+        leaves: list[NarrativeLeafRecord],
+        nodes: list[NarrativeSummaryNodeRecord],
+    ) -> set[str]:
+        leaf_map = {item.id: item for item in leaves}
+        node_map = {item.id: item for item in nodes}
+        result: set[str] = set()
+
+        def collect(item: NarrativeLeafRecord | NarrativeSummaryNodeRecord) -> None:
+            if isinstance(item, NarrativeLeafRecord):
+                result.add(item.variant_id)
+                return
+            stored = set(json_loads(item.variant_ids_json) or [])
+            if stored:
+                result.update(stored)
+                return
+            for child_id in _child_ids(item):
+                child = leaf_map.get(child_id) or node_map.get(child_id)
+                if child:
+                    collect(child)
+
+        for item in group:
+            collect(item)
+        return result
 
     @staticmethod
     def _node_intact(

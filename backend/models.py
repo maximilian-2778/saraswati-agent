@@ -362,6 +362,10 @@ class MemoryRecord(Base):
         ForeignKey("messages.id", ondelete="SET NULL"),
         nullable=True,
     )
+    variant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("message_variants.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    variant_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     access_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_accessed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -375,7 +379,7 @@ class NarrativeLeafRecord(Base):
 
     __tablename__ = "narrative_leaves"
     __table_args__ = (
-        UniqueConstraint("assistant_message_id", name="uq_narrative_leaf_message"),
+        UniqueConstraint("assistant_message_id", "variant_id", name="uq_narrative_leaf_variant"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -387,6 +391,9 @@ class NarrativeLeafRecord(Base):
     )
     assistant_message_id: Mapped[str] = mapped_column(
         ForeignKey("messages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    variant_id: Mapped[str] = mapped_column(
+        ForeignKey("message_variants.id", ondelete="CASCADE"), index=True, nullable=False
     )
     memory_id: Mapped[str | None] = mapped_column(
         ForeignKey("memories.id", ondelete="SET NULL"), nullable=True
@@ -412,6 +419,7 @@ class NarrativeSummaryNodeRecord(Base):
     level: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     child_refs_json: Mapped[str] = mapped_column(Text, nullable=False)
+    variant_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     memory_id: Mapped[str | None] = mapped_column(
         ForeignKey("memories.id", ondelete="SET NULL"), nullable=True
     )
@@ -486,6 +494,9 @@ class RoleplayGraphEventRecord(Base):
     source_message_id: Mapped[str | None] = mapped_column(
         ForeignKey("messages.id", ondelete="SET NULL"), index=True, nullable=True
     )
+    variant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("message_variants.id", ondelete="CASCADE"), index=True, nullable=True
+    )
     source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -495,7 +506,7 @@ class NarrativeDeltaRecord(Base):
 
     __tablename__ = "narrative_deltas"
     __table_args__ = (
-        UniqueConstraint("assistant_message_id", name="uq_delta_assistant_message"),
+        UniqueConstraint("assistant_message_id", "variant_id", name="uq_delta_variant"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -507,6 +518,9 @@ class NarrativeDeltaRecord(Base):
     )
     assistant_message_id: Mapped[str] = mapped_column(
         ForeignKey("messages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    variant_id: Mapped[str] = mapped_column(
+        ForeignKey("message_variants.id", ondelete="CASCADE"), index=True, nullable=False
     )
     source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
@@ -546,6 +560,9 @@ class WorldEvolutionRecord(Base):
     assistant_message_id: Mapped[str | None] = mapped_column(
         ForeignKey("messages.id", ondelete="SET NULL"), index=True, nullable=True
     )
+    variant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("message_variants.id", ondelete="CASCADE"), index=True, nullable=True
+    )
     source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     before_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     after_state_json: Mapped[str] = mapped_column(Text, nullable=False)
@@ -567,6 +584,9 @@ class TimelineAnchorRecord(Base):
     conflict_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
     source_message_id: Mapped[str | None] = mapped_column(
         ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
+    )
+    variant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("message_variants.id", ondelete="CASCADE"), index=True, nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -613,6 +633,9 @@ class StateChangeRecord(Base):
     source_message_id: Mapped[str | None] = mapped_column(
         ForeignKey("messages.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    variant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("message_variants.id", ondelete="CASCADE"), index=True, nullable=True
     )
     status: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

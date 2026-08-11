@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from backend.models import StateChangeRecord, StateEntryRecord
 from backend.schemas import ProposalStatus
 from backend.utils import json_dumps, json_loads
+from backend.services.variants import active_variant_clause, selected_variant_for_source
 
 
 class StateService:
@@ -65,6 +66,7 @@ class StateService:
                 StateChangeRecord.chat_id == chat_id,
                 StateChangeRecord.event_fingerprint == event_fingerprint,
                 StateChangeRecord.status == ProposalStatus.APPROVED.value,
+                active_variant_clause(StateChangeRecord.variant_id),
             ))
             if duplicate_event is not None:
                 return duplicate_event
@@ -85,6 +87,7 @@ class StateService:
             reason=reason,
             event_fingerprint=event_fingerprint,
             source_message_id=source_message_id,
+            variant_id=selected_variant_for_source(db, source_message_id),
             status=ProposalStatus.PENDING.value,
             created_at=datetime.now(UTC),
             resolved_at=None,
@@ -112,6 +115,7 @@ class StateService:
                 StateChangeRecord.chat_id == chat_id,
                 StateChangeRecord.event_fingerprint == event_fingerprint,
                 StateChangeRecord.status == ProposalStatus.APPROVED.value,
+                active_variant_clause(StateChangeRecord.variant_id),
             ))
             if duplicate_event is not None:
                 return duplicate_event
@@ -135,6 +139,7 @@ class StateService:
                 StateChangeRecord.new_value_json == serialized,
                 StateChangeRecord.source_message_id == source_message_id,
                 StateChangeRecord.status == ProposalStatus.APPROVED.value,
+                active_variant_clause(StateChangeRecord.variant_id),
             )
         )
         if duplicate is not None:
@@ -151,6 +156,7 @@ class StateService:
             reason=reason,
             event_fingerprint=event_fingerprint,
             source_message_id=source_message_id,
+            variant_id=selected_variant_for_source(db, source_message_id),
             status=ProposalStatus.APPROVED.value,
             created_at=now,
             resolved_at=now,
@@ -202,6 +208,7 @@ class StateService:
             select(StateChangeRecord).where(
                 StateChangeRecord.chat_id == chat_id,
                 StateChangeRecord.status == ProposalStatus.APPROVED.value,
+                active_variant_clause(StateChangeRecord.variant_id),
             )
         ).all()
         for change in changes:
@@ -218,6 +225,7 @@ class StateService:
                 .where(
                     StateChangeRecord.chat_id == chat_id,
                     StateChangeRecord.status == ProposalStatus.APPROVED.value,
+                    active_variant_clause(StateChangeRecord.variant_id),
                 )
                 .order_by(StateChangeRecord.resolved_at, StateChangeRecord.created_at)
             ).all()

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.models import TimelineAnchorRecord
+from backend.services.variants import active_variant_clause, selected_variant_for_source
 
 
 _ABSOLUTE_PATTERNS = (
@@ -52,7 +53,8 @@ def parse_story_time(value: str, base: datetime | None = None) -> datetime | Non
 class TimelineService:
     def list(self, db: Session, chat_id: str) -> list[TimelineAnchorRecord]:
         return list(db.scalars(select(TimelineAnchorRecord).where(
-            TimelineAnchorRecord.chat_id == chat_id
+            TimelineAnchorRecord.chat_id == chat_id,
+            active_variant_clause(TimelineAnchorRecord.variant_id),
         ).order_by(TimelineAnchorRecord.created_at, TimelineAnchorRecord.id)).all())
 
     def current(self, db: Session, chat_id: str) -> tuple[TimelineAnchorRecord | None, datetime | None]:
@@ -73,6 +75,7 @@ class TimelineService:
             TimelineAnchorRecord.chat_id == chat_id,
             TimelineAnchorRecord.story_time == story_time.strip(),
             TimelineAnchorRecord.source_message_id == source_message_id,
+            active_variant_clause(TimelineAnchorRecord.variant_id),
         ))
         if duplicate:
             return duplicate
@@ -89,6 +92,7 @@ class TimelineService:
         record = TimelineAnchorRecord(
             id=str(uuid4()), chat_id=chat_id, story_time=story_time.strip(),
             description=description.strip(), source_message_id=source_message_id,
+            variant_id=selected_variant_for_source(db, source_message_id),
             is_conflict=is_conflict, conflict_reason=reason, created_at=now, updated_at=now,
         )
         db.add(record)
