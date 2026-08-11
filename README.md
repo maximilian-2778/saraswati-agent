@@ -267,29 +267,9 @@ Delta 提取器只能引用当前故事中的目标 ID 和允许字段。`critic
 
 Skill 采用按需读取；Plugin 工具使用命名空间；MCP 通过 Streamable HTTP、SSE 或显式信任的 stdio 接入；前端插件运行于 sandbox iframe。当前仍缺少插件签名、MCP OAuth 和 stdio 常驻进程监督。
 
-## 9. 验证结果
 
-当前仓库的固定回归结果：
 
-- `pytest`：71 passed，15 warnings。
-- `scripts/run_rag_eval.py`：5 个固定样例，Recall@1=1.0，MRR=1.0。
-- `scripts/run_long_context_eval.py`：300 轮合成输入，原始估算 103,224 tokens，最终估算 12,000 tokens，最新请求保留。
-- `npm run build`：TypeScript 检查通过，Vite 转换 94 个模块。
-
-这些结果用于回归验证。长上下文脚本当前报告 `system_prompt_truncated=true`，只验证预算上限和最新请求保留。RAG 样例规模有限，脚本使用合成输入和 heuristic tokenizer，不能推导线上质量、吞吐或延迟。
-
-运行测试：
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe scripts\run_rag_eval.py
-.\.venv\Scripts\python.exe scripts\run_long_context_eval.py
-
-Set-Location frontend
-npm run build
-```
-
-## 10. 数据库迁移和 Windows 打包
+## 9. 数据库迁移和 Windows 打包
 
 后端启动时会自动将业务数据库升级到最新 Alembic revision。手动检查：
 
@@ -311,19 +291,9 @@ npm run build
 .\scripts\build_windows.ps1
 ```
 
-## 11. 项目范围
+测试和安全渗透测试。
 
-当前版本面向本地单用户工作流，暂不包含：
-
-- 用户账号、远程鉴权、云同步和多租户。
-- 分布式任务队列、容器编排和高并发部署。
-- 通用向量数据库、模型训练和移动端。
-- 自动更新、正式安装器、代码签名以及 macOS/Linux 发布包。
-- 完整 SillyTavern 运行时兼容。
-
-已知工程限制：SQLite 写并发有限；RAG 使用 JSON 向量和 Python 全表评分；API Key 仍保存在本机明文文件；当前缺少浏览器 E2E、真实模型供应商矩阵、负载测试和安全渗透测试。
-
-## 12. 项目结构
+## 10. 项目结构
 
 ```text
 backend/
@@ -357,7 +327,7 @@ tests/                    后端和 Agent 回归测试
 scripts/                  启动、评估和 Windows 构建脚本
 ```
 
-## 13. 文档
+## 11. 文档
 
 - [总体架构](docs/ARCHITECTURE.md)
 - [设置中心](docs/SETTINGS.md)
