@@ -297,6 +297,32 @@
     q.empty = function() { return this.each(function() { this.replaceChildren(); }); };
     q.focus = function() { this.nodes[0]?.focus(); return this; };
     q.remove = function() { return this.each(function() { this.remove(); }); };
+    q.load = function(url, data, complete) {
+      const targetUrl = String(url ?? '').trim();
+      const callback = typeof data === 'function' ? data : typeof complete === 'function' ? complete : null;
+      if (!targetUrl) return this;
+      if (!/^https:\/\//i.test(targetUrl)) {
+        if (callback) callback.call(null, null, 'error', null);
+        return this;
+      }
+      return this.each(function() {
+        const host = this;
+        const frame = document.createElement('iframe');
+        frame.src = `/api/extensions/plugins/tavern-card-frontend/external?url=${encodeURIComponent(targetUrl)}`;
+        frame.title = '外部前端内容';
+        frame.loading = 'eager';
+        frame.referrerPolicy = 'no-referrer';
+        frame.style.display = 'block';
+        frame.style.width = '100%';
+        frame.style.minHeight = '620px';
+        frame.style.height = 'min(82vh, 900px)';
+        frame.style.border = '0';
+        frame.style.background = 'transparent';
+        frame.addEventListener('load', () => { if (callback) callback.call(frame, null, 'success', frame); });
+        frame.addEventListener('error', () => { if (callback) callback.call(frame, null, 'error', frame); });
+        host.replaceChildren(frame);
+      });
+    };
     q.append = function(value) { const items = value instanceof MiniQuery ? value.nodes : (typeof value === 'string' ? MiniQuery(value).nodes : [value]); return this.each(function() { for (const item of items) if (item) this.append(item); }); };
     q.before = function(value) { return this.each(function() { if (typeof value === 'string') this.insertAdjacentHTML('beforebegin', value); else if (value) this.before(value); }); };
     q.scrollTop = function(value) { if (value === undefined) return this.nodes[0]?.scrollTop ?? 0; return this.each(function() { this.scrollTop = value; }); };

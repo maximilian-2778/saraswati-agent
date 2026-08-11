@@ -731,6 +731,35 @@ select {
   color: var(--muted);
 }
 
+.story-generation-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  margin-top: 4px;
+  color: var(--accent);
+  font: 600 10px/1 var(--reading-serif);
+  font-style: normal;
+  letter-spacing: .08em;
+}
+
+.story-generation-status i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 16%, transparent);
+  animation: story-generation-pulse 1.35s ease-in-out infinite;
+}
+
+.chat-item.active .story-generation-status {
+  color: var(--accent-bright);
+}
+
+@keyframes story-generation-pulse {
+  50% { opacity: .42; transform: scale(.72); }
+}
+
 .story-avatar {
   display: grid;
   grid-template-rows: auto auto;

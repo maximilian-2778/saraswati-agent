@@ -59,6 +59,7 @@ import type {
 
 type InspectorTab = MemoryHubTab;
 type ApiConnectionState = "unconfigured" | "checking" | "connected" | "error";
+type SendPhase = "idle" | "generating" | "postprocessing";
 
 export default function App() {
   const queryClient = useQueryClient();
@@ -98,7 +99,8 @@ export default function App() {
   const [messagePlugins, setMessagePlugins] = useState<PluginExtension[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [sendPhase, setSendPhase] = useState<"idle" | "generating" | "postprocessing">("idle");
+  const [sendPhase, setSendPhase] = useState<SendPhase>("idle");
+  const [generatingChatId, setGeneratingChatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorFading, setErrorFading] = useState(false);
@@ -110,16 +112,43 @@ export default function App() {
   const streamTimerRef = useRef<number | null>(null);
   const streamResolveRef = useRef<(() => void) | null>(null);
   const streamingRef = useRef<{ id: string; content: string } | null>(null);
+  const generationChatIdRef = useRef<string | null>(null);
+  const selectedChatIdRef = useRef<string | null>(null);
   const connectionHintTimerRef = useRef<number | null>(null);
   const connectionHintFadeTimerRef = useRef<number | null>(null);
   const autoScrollRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const chatQuery = useChatSnapshot(selectedChatId);
 
+  selectedChatIdRef.current = selectedChatId;
+
   const selectedChat = useMemo(
     () => chats.find((chat) => chat.id === selectedChatId) ?? null,
     [chats, selectedChatId],
   );
+
+  function beginGeneration(chatId: string) {
+    generationChatIdRef.current = chatId;
+    setGeneratingChatId(chatId);
+    setSending(true);
+    setSendPhase("generating");
+  }
+
+  function setGenerationPhase(chatId: string, phase: SendPhase) {
+    if (generationChatIdRef.current === chatId) setSendPhase(phase);
+  }
+
+  function finishGeneration(chatId: string) {
+    if (generationChatIdRef.current !== chatId) return;
+    generationChatIdRef.current = null;
+    setGeneratingChatId(null);
+    setSending(false);
+    setSendPhase("idle");
+  }
+
+  function isViewingChat(chatId: string) {
+    return selectedChatIdRef.current === chatId;
+  }
 
   useEffect(() => {
     if (!bootstrapQuery.data) return;
@@ -185,8 +214,8 @@ export default function App() {
   }, [selectedChatId]);
 
   useEffect(() => {
-    if (chatQuery.data) applyChatSnapshot(chatQuery.data);
-  }, [chatQuery.data]);
+    if (chatQuery.data && selectedChatId) applyChatSnapshot(selectedChatId, chatQuery.data);
+  }, [chatQuery.data, selectedChatId]);
 
   useEffect(() => {
     const reason = bootstrapQuery.error ?? chatQuery.error;
@@ -232,7 +261,7 @@ export default function App() {
         ...chatSnapshotQueryOptions(chatId),
         staleTime: 0,
       });
-      applyChatSnapshot(snapshot);
+      applyChatSnapshot(chatId, snapshot);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -240,7 +269,8 @@ export default function App() {
     }
   }
 
-  function applyChatSnapshot(snapshot: ChatSnapshot) {
+  function applyChatSnapshot(chatId: string, snapshot: ChatSnapshot) {
+    if (selectedChatIdRef.current !== chatId) return;
     setMessages(snapshot.messages);
     setMessageVariants(groupVariants(snapshot.variants));
     setBookmarkedIds(new Set(snapshot.bookmarks.filter((item) => item.bookmarked).map((item) => item.message_id)));
@@ -281,6 +311,7 @@ export default function App() {
       api.audits(chatId),
       api.traces(chatId),
     ]);
+    if (selectedChatIdRef.current !== chatId) return;
     setMemories(memoryList);
     setMemoryGraph(graph);
     setMemoryCoverage(coverage);
@@ -339,6 +370,7 @@ export default function App() {
 
   async function submitMessage(content: string) {
     if (!selectedChatId || !content || sending) return;
+    const chatId = selectedChatId;
     if (apiConnection !== "connected") {
       const message = apiConnection === "unconfigured"
         ? "尚未连接模型 API，请先在设置中完成配置。"
@@ -364,31 +396,31 @@ export default function App() {
     const optimisticId = `pending-${Date.now()}`;
     const streamingId = `stream-${Date.now()}`;
     let streamedContent = "";
-    setSending(true);
-    setSendPhase("generating");
+    beginGeneration(chatId);
     setDraft("");
     setError(null);
     setMessages((current) => [...current, {
       id: optimisticId,
-      chat_id: selectedChatId,
+      chat_id: chatId,
       role: "user",
       content,
       created_at: new Date().toISOString(),
     }]);
     try {
-      const turn = await api.streamMessage(selectedChatId, content, uiPreferences.debugMode, {
+      const turn = await api.streamMessage(chatId, content, uiPreferences.debugMode, {
         onUser: (message) => {
-          setMessages((current) => current.map((item) => item.id === optimisticId ? message : item));
+          if (isViewingChat(chatId)) setMessages((current) => current.map((item) => item.id === optimisticId ? message : item));
         },
         onChunk: (chunk) => {
           streamedContent += chunk;
           streamingRef.current = { id: streamingId, content: streamedContent };
+          if (!isViewingChat(chatId)) return;
           setMessages((current) => {
             const exists = current.some((item) => item.id === streamingId);
             if (exists) return current.map((item) => item.id === streamingId ? { ...item, content: streamedContent } : item);
             return [...current, {
               id: streamingId,
-              chat_id: selectedChatId,
+              chat_id: chatId,
               role: "assistant",
               content: streamedContent,
               created_at: new Date().toISOString(),
@@ -399,14 +431,15 @@ export default function App() {
           if (phase === "generation_reset") {
             streamedContent = "";
             streamingRef.current = null;
-            setMessages((current) => current.filter((item) => item.id !== streamingId));
-            setSendPhase("generating");
+            if (isViewingChat(chatId)) setMessages((current) => current.filter((item) => item.id !== streamingId));
+            setGenerationPhase(chatId, "generating");
             return;
           }
-          setSendPhase("postprocessing");
+          setGenerationPhase(chatId, "postprocessing");
         },
         onDone: (turn) => {
           streamingRef.current = null;
+          if (!isViewingChat(chatId)) return;
           setMessages((current) => {
             const withoutTemporary = current.filter((item) => item.id !== optimisticId && item.id !== streamingId && item.id !== turn.user_message.id);
             return [...withoutTemporary, turn.user_message, turn.assistant_message];
@@ -414,27 +447,30 @@ export default function App() {
         },
       }, controller.signal);
       abortControllerRef.current = null;
-      setRetrieved(turn.retrieved_memories);
-      if (turn.state_proposals.length) setActiveTab("diagnostics");
-      if (turn.audit_issues.length) setActiveTab("diagnostics");
-      await refreshInspector(selectedChatId);
+      if (isViewingChat(chatId)) {
+        setRetrieved(turn.retrieved_memories);
+        if (turn.state_proposals.length || turn.audit_issues.length) setActiveTab("diagnostics");
+      }
+      queryClient.invalidateQueries({ queryKey: chatSnapshotQueryOptions(chatId).queryKey });
+      await refreshInspector(chatId);
     } catch (reason) {
       if (!isAbortError(reason)) {
-        setDraft(content);
-        setMessages((current) => current.filter((item) => item.id !== optimisticId));
-        setError(errorMessage(reason));
+        if (isViewingChat(chatId)) {
+          setDraft(content);
+          setMessages((current) => current.filter((item) => item.id !== optimisticId));
+          setError(errorMessage(reason));
+        }
       } else {
         streamingRef.current = null;
-        await loadChat(selectedChatId);
+        await loadChat(chatId);
       }
     } finally {
       abortControllerRef.current = null;
-      setSending(false);
-      setSendPhase("idle");
+      finishGeneration(chatId);
     }
   }
 
-  function animateMessage(messageId: string, fullContent: string): Promise<void> {
+  function animateMessage(chatId: string, messageId: string, fullContent: string): Promise<void> {
     if (streamTimerRef.current !== null) window.clearInterval(streamTimerRef.current);
     streamResolveRef.current?.();
     const chunkSize = Math.max(1, Math.ceil(fullContent.length / 100));
@@ -446,7 +482,7 @@ export default function App() {
         offset = Math.min(fullContent.length, offset + chunkSize);
         const visible = fullContent.slice(0, offset);
         streamingRef.current = { id: messageId, content: visible };
-        setMessages((current) => current.map((item) => item.id === messageId ? { ...item, content: visible } : item));
+        if (isViewingChat(chatId)) setMessages((current) => current.map((item) => item.id === messageId ? { ...item, content: visible } : item));
         if (offset >= fullContent.length) {
           if (streamTimerRef.current !== null) window.clearInterval(streamTimerRef.current);
           streamTimerRef.current = null;
@@ -459,6 +495,7 @@ export default function App() {
   }
 
   async function stopGeneration() {
+    const chatId = generationChatIdRef.current;
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     if (streamTimerRef.current !== null) {
@@ -468,40 +505,41 @@ export default function App() {
       streamResolveRef.current = null;
       const partial = streamingRef.current;
       streamingRef.current = null;
-      if (selectedChatId && partial?.content.trim()) {
+      if (chatId && partial?.content.trim()) {
         try {
-          await api.updateMessage(selectedChatId, partial.id, partial.content);
-          await refreshInspector(selectedChatId);
+          await api.updateMessage(chatId, partial.id, partial.content);
+          await refreshInspector(chatId);
         } catch (reason) {
           setError(errorMessage(reason));
         }
       }
     }
-    setSending(false);
-    setSendPhase("idle");
+    if (chatId) finishGeneration(chatId);
   }
 
   async function regenerateMessage(messageId: string) {
     if (!selectedChatId || sending) return;
+    const chatId = selectedChatId;
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    setSending(true);
-    setSendPhase("generating");
+    beginGeneration(chatId);
     setError(null);
     try {
-      const variant = await api.regenerateMessage(selectedChatId, messageId, controller.signal);
+      const variant = await api.regenerateMessage(chatId, messageId, controller.signal);
       abortControllerRef.current = null;
-      setMessages((current) => current.map((item) => item.id === messageId ? { ...item, content: "" } : item));
-      setMessageVariants(groupVariants(await api.messageVariants(selectedChatId)));
-      await animateMessage(messageId, variant.content);
-      await refreshInspector(selectedChatId);
+      if (isViewingChat(chatId)) setMessages((current) => current.map((item) => item.id === messageId ? { ...item, content: "" } : item));
+      const variants = groupVariants(await api.messageVariants(chatId));
+      if (isViewingChat(chatId)) setMessageVariants(variants);
+      await animateMessage(chatId, messageId, variant.content);
+      queryClient.invalidateQueries({ queryKey: chatSnapshotQueryOptions(chatId).queryKey });
+      await refreshInspector(chatId);
     } catch (reason) {
-      if (!isAbortError(reason)) setError(errorMessage(reason));
-      else await loadChat(selectedChatId);
+      if (!isAbortError(reason)) {
+        if (isViewingChat(chatId)) setError(errorMessage(reason));
+      } else await loadChat(chatId);
     } finally {
       abortControllerRef.current = null;
-      setSending(false);
-      setSendPhase("idle");
+      finishGeneration(chatId);
     }
   }
 
@@ -592,6 +630,7 @@ export default function App() {
       <StorySidebar
         chats={chats}
         selectedChatId={selectedChatId}
+        generatingChatId={generatingChatId}
         characterTemplates={characterTemplates}
         worldBookTemplates={worldBookTemplates}
         personaTemplates={personaTemplates}
@@ -689,7 +728,7 @@ export default function App() {
               onPluginRefresh={async () => { if (selectedChatId) await loadChat(selectedChatId); }}
             />)
           )}
-          {sending && sendPhase === "generating" && !messages.some((item) => item.id.startsWith("stream-")) && (
+          {sending && generatingChatId === selectedChatId && sendPhase === "generating" && !messages.some((item) => item.id.startsWith("stream-")) && (
             <div className="message-row assistant">
               <Avatar value={storyCharacters[0]?.avatar ?? ""} fallback={(storyCharacters[0]?.name ?? "S").charAt(0)} />
               <div className="bubble thinking"><i /><i /><i /></div>
@@ -726,8 +765,12 @@ export default function App() {
             rows={1}
           />
           <div className="composer-footer">
-            <span>{sendPhase === "postprocessing" ? "正在整理本轮记忆…" : "Enter 发送 · Shift + Enter 换行"}</span>
-            {sending && sendPhase === "postprocessing" ? (
+            <span>{sending && generatingChatId !== selectedChatId ? "其他故事正在生成，本故事暂不可继续" : sendPhase === "postprocessing" ? "正在整理本轮记忆…" : "Enter 发送 · Shift + Enter 换行"}</span>
+            {sending && generatingChatId !== selectedChatId ? (
+              <button type="button" className="primary-button processing-button" disabled title="当前全局生成任务归属其他故事">
+                <span>生成中</span><b>…</b>
+              </button>
+            ) : sending && sendPhase === "postprocessing" ? (
               <button type="button" className="primary-button processing-button" disabled title="正在整理本轮记忆">
                 <span>整理中</span><b>…</b>
               </button>

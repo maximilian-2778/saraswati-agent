@@ -7,6 +7,7 @@ import { ArchiveDiagram } from "./ArchiveDiagram";
 export function StorySidebar(props: {
   chats: Chat[];
   selectedChatId: string | null;
+  generatingChatId: string | null;
   characterTemplates: CharacterTemplate[];
   worldBookTemplates: WorldBookTemplate[];
   personaTemplates: PersonaTemplate[];
@@ -44,7 +45,7 @@ export function StorySidebar(props: {
       <button className="primary-button">创建</button>
     </form>}
     <p className="section-label">故事</p>
-    <nav className="chat-list">{props.chats.map((chat, index) => <div className="chat-entry" key={chat.id}><button className={chat.id === props.selectedChatId ? "chat-item active" : "chat-item"} onClick={() => { props.onSelect(chat.id); setConfirmDeleteId(null); }}><span className="story-avatar" aria-hidden="true"><small>卷</small><b>{String(index + 1).padStart(2, "0")}</b></span><span><strong>{chat.title}</strong><small>{formatDate(chat.updated_at)}</small></span></button><button className={`story-delete${confirmDeleteId === chat.id ? " confirming" : ""}`} aria-label={`删除故事 ${chat.title}`} title={confirmDeleteId === chat.id ? "再次点击确认删除" : "删除故事"} onClick={() => { if (confirmDeleteId === chat.id) { void props.onDelete(chat.id); setConfirmDeleteId(null); } else setConfirmDeleteId(chat.id); }}>{confirmDeleteId === chat.id ? "确认" : "×"}</button></div>)}</nav>
+    <nav className="chat-list">{props.chats.map((chat, index) => <div className="chat-entry" key={chat.id}><button className={chat.id === props.selectedChatId ? "chat-item active" : "chat-item"} onClick={() => { props.onSelect(chat.id); setConfirmDeleteId(null); }}><span className="story-avatar" aria-hidden="true"><small>卷</small><b>{String(index + 1).padStart(2, "0")}</b></span><span><strong>{chat.title}</strong><small>{formatDate(chat.updated_at)}</small>{chat.id === props.generatingChatId && <em className="story-generation-status"><i aria-hidden="true" />生成中</em>}</span></button><button className={`story-delete${confirmDeleteId === chat.id ? " confirming" : ""}`} aria-label={`删除故事 ${chat.title}`} title={confirmDeleteId === chat.id ? "再次点击确认删除" : "删除故事"} onClick={() => { if (confirmDeleteId === chat.id) { void props.onDelete(chat.id); setConfirmDeleteId(null); } else setConfirmDeleteId(chat.id); }}>{confirmDeleteId === chat.id ? "确认" : "×"}</button></div>)}</nav>
   </aside>;
 }
 

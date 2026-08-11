@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import mimetypes
+import html as html_module
+import ipaddress
+from urllib.parse import urlparse, urljoin
 from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
+import httpx
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -247,17 +251,67 @@ def plugin_frontend_asset(plugin_id: str, asset_path: str, request: Request) -> 
     media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     headers = {
         "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff",
         "Access-Control-Allow-Origin": "*",
         "Cross-Origin-Resource-Policy": "cross-origin",
-        "Content-Security-Policy": (
-            "default-src 'none'; script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
-            "font-src 'self'; media-src 'self' blob:; connect-src 'none'; "
-            "frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
-        ),
     }
     return Response(content=path.read_bytes(), media_type=media_type, headers=headers)
+
+
+@router.get("/plugins/{plugin_id}/external")
+async def plugin_external_frontend(plugin_id: str, url: str) -> Response:
+    """Load an HTTPS card frontend through the compatibility wrapper.
+
+    Tavern cards commonly use jQuery's ``load`` to pull a complete external page.
+    The wrapper injects the local compatibility dependency before returning the
+    page, while keeping ordinary plugins on the no-network policy.
+    """
+    if plugin_id != "tavern-card-frontend":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="外部前端代理仅供酒馆角色卡兼容器使用")
+    parsed = _public_https_url(url)
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=False,
+            timeout=httpx.Timeout(15.0),
+            headers={"User-Agent": "Saraswati-Agent-Tavern-Frontend/1.0"},
+        ) as client:
+            response = None
+            for _ in range(4):
+                response = await client.get(parsed)
+                if response.status_code not in {301, 302, 303, 307, 308}:
+                    break
+                location = response.headers.get("location")
+                if not location:
+                    break
+                parsed = _public_https_url(urljoin(parsed, location))
+            if response is None:
+                raise ValueError("外部页面没有返回响应")
+            response.raise_for_status()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"外部角色卡前端加载失败：{exc}") from exc
+    # Some Tavern cards bundle a complete game UI and exceed the size of a
+    # small document. Keep a finite cap while allowing normal bundled pages.
+    if len(response.content) > 16 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="外部角色卡前端超过 16 MiB 限制")
+    content_type = response.headers.get("content-type", "")
+    if "html" not in content_type.lower() and not response.text.lstrip().lower().startswith(("<!doctype html", "<html")):
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="外部地址没有返回 HTML 页面")
+    base_url = urljoin(str(response.url), ".")
+    base_tag = f'<base href="{html_module.escape(base_url, quote=True)}">'
+    jquery_tag = '<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>'
+    page = response.text
+    head_start = page.lower().find("<head")
+    head_end = page.find(">", head_start) if head_start >= 0 else -1
+    if head_end >= 0:
+        page = page[: head_end + 1] + base_tag + jquery_tag + page[head_end + 1 :]
+    else:
+        page = f"<!doctype html><html><head>{base_tag}{jquery_tag}</head><body>{page}</body></html>"
+    return Response(
+        content=page.encode("utf-8"),
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.post("/plugins/{plugin_id}/trust")
@@ -273,6 +327,22 @@ def trust_plugin(plugin_id: str, payload: PluginTrust, request: Request) -> dict
 
 def _runtime(request: Request) -> ExtensionRuntime:
     return request.app.state.runtime.extensions
+
+
+def _public_https_url(value: str) -> str:
+    parsed = urlparse(str(value).strip())
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    if parsed.scheme.lower() != "https" or not hostname or parsed.username or parsed.password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="外部角色卡前端只允许公开 HTTPS 地址")
+    if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".local"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不允许访问本机地址")
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        address = None
+    if address is not None and (address.is_private or address.is_loopback or address.is_link_local or address.is_reserved):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不允许访问内网地址")
+    return parsed.geturl()
 
 
 def _chat_or_404(db: Session, chat_id: str) -> ChatRecord:

@@ -213,7 +213,10 @@ def _install_bundled_plugins(extension_root: Path) -> None:
         if not destination.exists():
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(source, destination)
-        elif _bundled_plugin_version(source) != _bundled_plugin_version(destination):
+        elif (
+            _bundled_plugin_version(source) != _bundled_plugin_version(destination)
+            or not _bundled_plugin_matches(source, destination)
+        ):
             shutil.copytree(source, destination, dirs_exist_ok=True)
         elif source.name in installed:
             continue
@@ -230,3 +233,17 @@ def _bundled_plugin_version(root: Path) -> str:
         return str(json.loads(manifest.read_text(encoding="utf-8")).get("version") or "")
     except (OSError, json.JSONDecodeError, TypeError):
         return ""
+
+
+def _bundled_plugin_matches(source: Path, destination: Path) -> bool:
+    """Compare managed bundle files so code updates are not hidden by a stale version."""
+    try:
+        for source_file in source.rglob("*"):
+            if not source_file.is_file():
+                continue
+            destination_file = destination / source_file.relative_to(source)
+            if not destination_file.is_file() or source_file.read_bytes() != destination_file.read_bytes():
+                return False
+        return True
+    except OSError:
+        return False

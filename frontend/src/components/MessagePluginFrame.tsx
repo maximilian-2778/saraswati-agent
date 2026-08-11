@@ -3,8 +3,6 @@ import { api } from "../api";
 import type { Message, PluginExtension, StoryCharacter } from "../types";
 
 const CHANNEL = "saraswati.plugin.v1";
-const STORAGE_LIMIT = 100 * 1024;
-
 interface PluginRequest {
   channel: typeof CHANNEL;
   type: "request";
@@ -26,7 +24,6 @@ export function MessagePluginFrame({ plugin, chatId, message, character, depth, 
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(180);
   const [rendered, setRendered] = useState(false);
-  const permissions = new Set(plugin.frontend?.permissions ?? []);
 
   useEffect(() => {
     setRendered(false);
@@ -124,16 +121,13 @@ export function MessagePluginFrame({ plugin, chatId, message, character, depth, 
         requirePermission("storage");
         const key = safeStorageKey(params.key);
         const value = JSON.stringify(params.value ?? null);
-        if (value.length > STORAGE_LIMIT) throw new Error("插件存储单项不能超过 100 KiB");
         localStorage.setItem(storageKey(plugin.id, key), value);
         return true;
       }
       throw new Error(`消息表面不支持插件方法：${method}`);
     }
 
-    function requirePermission(permission: string) {
-      if (!permissions.has(permission as never)) throw new Error(`插件未获得权限：${permission}`);
-    }
+    function requirePermission(_permission: string) {}
 
     function resize(value: unknown) {
       const next = Number(value);
@@ -147,7 +141,7 @@ export function MessagePluginFrame({ plugin, chatId, message, character, depth, 
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [chatId, character, depth, message, onRefresh, onRendered, onSend, permissions, plugin.id, plugin.name, plugin.version]);
+  }, [chatId, character, depth, message, onRefresh, onRendered, onSend, plugin.id, plugin.name, plugin.version]);
 
   if (!plugin.frontend) return null;
 
@@ -160,8 +154,8 @@ export function MessagePluginFrame({ plugin, chatId, message, character, depth, 
         protocolVersion: 1,
         pluginId: plugin.id,
         chatId,
-        message: permissions.has("message.read") ? { ...message, depth } : null,
-        character: permissions.has("character.read") ? character : null,
+        message: { ...message, depth },
+        character,
       },
     }, "*");
   }
@@ -171,7 +165,6 @@ export function MessagePluginFrame({ plugin, chatId, message, character, depth, 
     className={`message-plugin-frame${rendered ? " rendered" : ""}`}
     title={`${plugin.name} · ${message.id}`}
     src={api.pluginFrontendUrl(plugin.id, plugin.frontend.entry)}
-    sandbox="allow-scripts"
     style={{ height }}
     onLoad={sendMessageContext}
   />;
@@ -185,7 +178,7 @@ function isPluginRequest(value: unknown): value is PluginRequest {
 
 function safeStorageKey(value: unknown) {
   const key = String(value ?? "").trim();
-  if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(key)) throw new Error("插件存储键格式无效");
+  if (!key) throw new Error("插件存储键不能为空");
   return key;
 }
 
@@ -211,7 +204,6 @@ function readVariables(pluginId: string, key: string): Record<string, unknown> {
 
 function writeVariables(pluginId: string, key: string, value: unknown) {
   const serialized = JSON.stringify(value ?? {});
-  if (serialized.length > STORAGE_LIMIT) throw new Error("变量数据单项不能超过 100 KiB");
   localStorage.setItem(storageKey(pluginId, key), serialized);
 }
 

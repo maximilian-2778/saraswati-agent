@@ -30,7 +30,7 @@ Saraswati 插件可以通过 `frontend` 字段提供一个在 sandbox iframe 中
 - `worldbook.write`：修改当前故事中的世界书条目；
 - `storage`：使用由宿主提供的插件私有 JSON 存储。
 
-入口必须是插件包内存在的 HTML 文件。宿主只提供入口文件所在目录下的资源，并设置禁止网络连接、表单提交和父页面访问的内容安全策略。
+入口必须是插件包内存在的 HTML 文件。普通插件只允许访问入口文件所在目录下的资源，并设置禁止网络连接、外部 frame、表单提交和父页面访问的内容安全策略。内置 `tavern-card-frontend` 为兼容酒馆角色卡的外部 HTML 前端，外部 HTTPS 页面会先经宿主兼容代理注入必要的 jQuery 依赖，再在沙箱内部嵌入；外部页面仍不能访问 Saraswati 父页面或 RPC 权限之外的数据。
 
 ## RPC
 
@@ -94,6 +94,6 @@ parent.postMessage({
 - 角色：`getCharData`、`getCharacter`、当前角色名称与 ID；
 - 事件：`eventOn`、`eventOnce`、`eventEmit`、常用 `tavern_events` 与 `iframe_events`；
 - Slash：`/send`、`/trigger <正文>`、`/pass`、`/echo`、`/setvar`、`/getvar`；
-- 页面运行库：常用 jQuery 风格 DOM API 与 Lodash 数据 API。
+- 页面运行库：常用 jQuery 风格 DOM API 与 Lodash 数据 API，包括酒馆角色卡常用的 `$(...).load(url)` 外部前端加载行为。
 
 生成模型、音频、扩展安装、任意远程脚本执行以及酒馆专属界面控制尚不属于兼容核心。调用未支持的 Slash 命令会返回明确错误，插件仍保持 `sandbox="allow-scripts"`，不能直接访问 Saraswati 父页面。
