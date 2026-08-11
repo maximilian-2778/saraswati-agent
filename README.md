@@ -21,9 +21,7 @@ Saraswati Agent 是一个本地长篇角色扮演 Agent。它用 LangGraph 编�
 - 混合 RAG 综合 Embedding、关键词、重要度和时间因素，召回结果带有来源和分数，并按相关性和重要度分层注入。
 - 消息原文发生变化时，旧摘要和相关派生记录失效。
 
-<p align="center">
-  <img src="pic/story-console-memory.png" alt="记忆管理" width="70%">
-</p>
+
 
 ### 自带工具台，增添场景与人物
 
@@ -31,15 +29,7 @@ Saraswati Agent 是一个本地长篇角色扮演 Agent。它用 LangGraph 编�
 - 支持手动和自动整理摘要，可选精简摘要或详细摘要。
 - 支持手动或自动进行世界推演，推进当前对话场景之外的势力、事件和传闻。
 
-<table>
-  <tr>
 
-  <td><img src="pic/story-console-overview.png" alt="故事控制台总览" width="90%"></td>
-  </tr>
-  <tr>
-    <td colspan="2"><img src="pic/story-console-world.png" alt="世界状态" width="50%"></td>
-  </tr>
-</table>
 
 ### 随着故事演变改变角色卡与世界书
 
@@ -47,9 +37,6 @@ Saraswati Agent 是一个本地长篇角色扮演 Agent。它用 LangGraph 编�
 - 剧情中的重大设定变化只作用于当前故事副本，不修改原始模板。
 - 可以自动采用确凿无疑的变化；其他变化会进入审批流程。
 
-<p align="center">
-  <img src="pic/conversation-state.png" alt="对话与剧情状态" width="90%">
-</p>
 
 
 ### 可视化 Token 消耗与可回放的事件历史
