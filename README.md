@@ -12,6 +12,7 @@ Saraswati Agent 是一个本地长篇角色扮演 Agent。它用 LangGraph 编�
   <p align="center">
     <img src="pic/story-workspace.png" alt="主工作区" width="100%">
     </p>
+    
 ## 1. 项目重点
 
 ### 长篇剧情记忆，减少重要剧情遗忘和时间线跳跃
