@@ -8,7 +8,10 @@
 Saraswati Agent 是一个本地长篇角色扮演 Agent。它用 LangGraph 编排模型、工具、分层记忆、剧情状态和生成后审计，重点处理长篇故事中的记忆、状态和设定演化。
 
 项目面向 Windows 单机使用，支持 OpenAI-compatible 模型接口。聊天、设定、记忆和 Agent 检查点保存在本地，模型服务由用户自行选择。
-
+## 主界面展示
+  <p align="center">
+    <img src="pic/story-workspace.png" alt="主工作区" width="100%">
+    </p>
 ## 1. 项目重点
 
 ### 长篇剧情记忆，减少重要剧情遗忘和时间线跳跃
@@ -29,8 +32,8 @@ Saraswati Agent 是一个本地长篇角色扮演 Agent。它用 LangGraph 编�
 
 <table>
   <tr>
-    <td><img src="pic/story-workspace.png" alt="主工作区" width="100%"></td>
-    <td><img src="pic/story-console-overview.png" alt="故事控制台总览" width="100%"></td>
+
+  <td><img src="pic/story-console-overview.png" alt="故事控制台总览" width="90%"></td>
   </tr>
   <tr>
     <td colspan="2"><img src="pic/story-console-world.png" alt="世界状态" width="50%"></td>
