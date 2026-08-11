@@ -33,7 +33,7 @@ from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
 from backend.services.timeline import timeline_service
 from backend.services.world_engine import WorldEngineService
-from backend.services.token_budget import TokenBudgetManager
+from backend.services.token_budget import TokenBudgetManager, token_counter_for_model
 from backend.services.variants import (
     active_variant_clause,
     active_variant_ids,
@@ -192,7 +192,7 @@ class ContextBuilder:
         )
         world_lines = [
             f"- [{record.title}｜{record.insertion_position}｜优先级 {record.priority}] "
-            f"{record.content[: record.token_budget * 4]}"
+            f"{record.content}"
             for record in active_world_entries[:12]
         ]
         roleplay_graph = self.graph_service.context_text(db, chat.id, query)
@@ -202,6 +202,7 @@ class ContextBuilder:
         system_prompt = "你正在进行长篇角色扮演。保持人物语气、剧情连贯和沉浸感。"
         if chat.system_prompt.strip():
             system_prompt += f"\n\n旧版补充设定：\n{chat.system_prompt.strip()}"
+        persona_context_text = ""
         if persona:
             persona_parts = [
                 f"身份：{persona.identity}" if persona.identity else "",
@@ -209,10 +210,11 @@ class ContextBuilder:
                 f"外貌：{persona.appearance}" if persona.appearance else "",
                 f"说话方式：{persona.speaking_style}" if persona.speaking_style else "",
             ]
-            system_prompt += "\n\n玩家身份：\n- " + persona.name
             details = "；".join(item for item in persona_parts if item)
+            persona_context_text = "- " + persona.name
             if details:
-                system_prompt += f"｜{details}"
+                persona_context_text += f"｜{details}"
+            system_prompt += "\n\n玩家身份：\n" + persona_context_text
         character_prompts = [item.system_prompt.strip() for item in characters if item.system_prompt.strip()]
         if character_prompts:
             system_prompt += "\n\n角色专属指令：\n" + "\n".join(character_prompts)
@@ -266,17 +268,7 @@ class ContextBuilder:
             for record in recent
             if record.role in {"user", "assistant", "system"}
         )
-        persona_text = ""
-        if persona:
-            persona_text = "\n".join(
-                item for item in [
-                    f"名称：{persona.name}",
-                    f"身份：{persona.identity}" if persona.identity else "",
-                    f"性格：{persona.personality}" if persona.personality else "",
-                    f"外貌：{persona.appearance}" if persona.appearance else "",
-                    f"说话方式：{persona.speaking_style}" if persona.speaking_style else "",
-                ] if item
-            )
+        persona_text = persona_context_text
         latest_user = recent[-1] if recent and recent[-1].role == "user" else None
         recent_dialogue = recent[:-1] if latest_user else recent
         summary_text = "\n\n".join(_format_history_node(item) for item in history_nodes)
@@ -312,6 +304,13 @@ class ContextBuilder:
             model_name=model.model_name,
             include_debug_content=include_debug_content,
         )
+        fitted_section_tokens = _final_section_tokens(
+            messages,
+            section_definitions,
+            recent_dialogue,
+            latest_user,
+            model.model_name,
+        )
         for key, label, enabled, reason, content in section_definitions:
             section_diagnostics = diagnostics["sections"].get(label, {})
             section_diagnostics.update(
@@ -320,6 +319,7 @@ class ContextBuilder:
                     "label": label,
                     "enabled": enabled,
                     "reason": reason if enabled else "本轮没有可加入的内容",
+                    "estimated_tokens": fitted_section_tokens.get(label, 0),
                 }
             )
             if include_debug_content:
@@ -381,6 +381,67 @@ def _select_state_entries(
         return points, entry.updated_at
 
     return sorted(entries, key=score, reverse=True)[:limit]
+
+
+def _final_section_tokens(
+    fitted_messages: list[dict[str, Any]],
+    sections: list[tuple[str, str, bool, str, str]],
+    recent_dialogue: list[MessageRecord],
+    latest_user: MessageRecord | None,
+    model_name: str | None,
+) -> dict[str, int]:
+    """Count only section content that remains identifiable in the final fitted prompt."""
+    counter = token_counter_for_model(model_name)
+    result = {label: 0 for _, label, _, _, _ in sections}
+    label_by_key = {key: label for key, label, _, _, _ in sections}
+    system_text = str(fitted_messages[0].get("content", "")) if fitted_messages else ""
+    occupied_system_ranges: list[tuple[int, int]] = []
+    embedded_keys = {"persona", "characters", "world_book", "summary", "rag", "scene", "timeline", "evolving_world", "state"}
+    for key, label, enabled, _, content in sections:
+        if not enabled or key not in embedded_keys or not content:
+            continue
+        start = system_text.find(content)
+        if start < 0:
+            continue
+        end = start + len(content)
+        if any(start < used_end and end > used_start for used_start, used_end in occupied_system_ranges):
+            continue
+        occupied_system_ranges.append((start, end))
+        result[label] = counter.count(content)
+
+    used_messages: set[int] = set()
+    for key, label, enabled, _, content in sections:
+        if not enabled or not key.startswith("preset:") or not content:
+            continue
+        for index, message in enumerate(fitted_messages[1:], start=1):
+            if index not in used_messages and str(message.get("content", "")) == content:
+                result[label] = counter.count(content)
+                used_messages.add(index)
+                break
+
+    recent_label = label_by_key.get("recent")
+    if recent_label:
+        for record in recent_dialogue:
+            for index, message in enumerate(fitted_messages[1:], start=1):
+                if index in used_messages:
+                    continue
+                if message.get("role") == record.role and str(message.get("content", "")) == record.content:
+                    result[recent_label] += counter.count(record.content)
+                    used_messages.add(index)
+                    break
+    latest_label = label_by_key.get("latest_user")
+    if latest_label and latest_user is not None:
+        for index, message in enumerate(fitted_messages[1:], start=1):
+            if index not in used_messages and message.get("role") == latest_user.role and str(message.get("content", "")) == latest_user.content:
+                result[latest_label] = counter.count(latest_user.content)
+                used_messages.add(index)
+                break
+
+    final_total = sum(counter.count(str(message.get("content", ""))) for message in fitted_messages)
+    system_label = label_by_key.get("system")
+    if system_label:
+        result[system_label] = max(0, final_total - sum(result.values()))
+    return result
 
 
 def _activate_world_entries(

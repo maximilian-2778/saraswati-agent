@@ -22,11 +22,20 @@ class ToolCall:
 
 
 @dataclass(slots=True)
+class ModelUsage:
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    cached_tokens: int = 0
+
+
+@dataclass(slots=True)
 class ModelReply:
     """不同模型服务统一使用的内部回复格式。"""
 
     content: str | None
     tool_calls: list[ToolCall] = field(default_factory=list)
+    usage: ModelUsage | None = None
 
 
 class ModelProviderError(RuntimeError):

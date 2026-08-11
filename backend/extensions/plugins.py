@@ -28,6 +28,17 @@ PLUGIN_MANIFESTS = (
 MAX_PLUGIN_ARCHIVE_BYTES = 32 * 1024 * 1024
 MAX_PLUGIN_EXPANDED_BYTES = 64 * 1024 * 1024
 MAX_PLUGIN_FILES = 512
+FRONTEND_PERMISSIONS = {
+    "context.read",
+    "chat.read",
+    "chat.write",
+    "message.read",
+    "character.read",
+    "worldbook.read",
+    "worldbook.write",
+    "storage",
+}
+FRONTEND_SURFACES = {"panel", "message"}
 
 
 @dataclass(slots=True)
@@ -75,6 +86,7 @@ class PluginRecord:
     skills: list[str] = field(default_factory=list)
     resources: list[str] = field(default_factory=list)
     interface: dict[str, Any] = field(default_factory=dict)
+    frontend: dict[str, Any] | None = None
     mcp_servers: list[McpServerRecord] = field(default_factory=list)
     capabilities: list[str] = field(default_factory=list)
     allowed_tools: list[str] = field(default_factory=list)
@@ -179,6 +191,25 @@ class PluginRegistry:
             raise ValueError(f"插件不存在：{plugin_id}")
         return record
 
+    def frontend_asset(self, plugin_id: str, relative_path: str) -> Path:
+        """Resolve an enabled UI plugin asset without exposing the rest of its package."""
+        record = self.require(plugin_id)
+        if not record.enabled:
+            raise ValueError("插件尚未启用")
+        if not record.frontend:
+            raise ValueError("插件没有前端界面")
+        root = Path(record.path).resolve()
+        entry = _safe_component(root, str(record.frontend["entry"]))
+        frontend_root = entry.parent.resolve()
+        target = _safe_component(root, relative_path)
+        try:
+            target.resolve().relative_to(frontend_root)
+        except ValueError as exc:
+            raise ValueError("只能访问插件前端目录中的资源") from exc
+        if not target.is_file() or target.is_symlink():
+            raise ValueError("插件前端资源不存在")
+        return target
+
     def register(self, raw: dict[str, Any]) -> PluginRecord:
         """把表单中的单一 MCP 连接写成标准本地插件包。"""
         plugin_id = str(raw.get("id") or "").strip().lower()
@@ -215,8 +246,11 @@ class PluginRegistry:
         record = self.require(plugin_id)
         if enabled and record.missing_requirements:
             raise ValueError(f"插件尚未就绪：{', '.join(record.missing_requirements)}")
-        if enabled and any(item.transport == "stdio" for item in record.mcp_servers) and not record.trusted:
-            raise ValueError("该插件会启动本机程序，启用前需要明确信任")
+        needs_trust = any(item.transport == "stdio" for item in record.mcp_servers) or bool(
+            record.frontend and record.frontend.get("permissions")
+        )
+        if enabled and needs_trust and not record.trusted:
+            raise ValueError("该插件会访问本机能力或故事数据，启用前需要明确授权")
         state = _read_json(self.state_file)
         enabled_ids = set(state.get("enabled_plugins", []))
         if enabled:
@@ -437,6 +471,7 @@ def _read_plugin_package(
     description = str(interface.get("shortDescription") or raw.get("description") or "")
     provenance = _read_json(root / ".saraswati-provenance.json")
     servers = _read_mcp_servers(root, raw, plugin_id, secret_headers)
+    frontend = _read_frontend(root, raw.get("frontend"), display_name)
     skills_root = _resolve_component_path(root, raw.get("skills"), "skills")
     skills = []
     if skills_root and skills_root.is_dir():
@@ -456,6 +491,8 @@ def _read_plugin_package(
         capabilities.append("skills")
     if servers:
         capabilities.append("tools")
+    if frontend:
+        capabilities.append("frontend")
     manifest_format = "codex" if ".codex-plugin" in manifest_path.parts else "saraswati" if ".saraswati-plugin" in manifest_path.parts else "legacy"
     return PluginRecord(
         id=plugin_id,
@@ -475,6 +512,7 @@ def _read_plugin_package(
         skills=skills,
         resources=resources,
         interface=dict(interface),
+        frontend=frontend,
         mcp_servers=servers,
         capabilities=capabilities,
         allowed_tools=primary.allowed_tools,
@@ -490,6 +528,46 @@ def _read_plugin_package(
         auth_configured=any(bool(item.headers) for item in servers),
         header_names=sorted({name for item in servers for name in item.headers}),
     )
+
+
+def _read_frontend(root: Path, value: Any, display_name: str) -> dict[str, Any] | None:
+    if value in (None, False):
+        return None
+    config = {"entry": value} if isinstance(value, str) else dict(value) if isinstance(value, dict) else None
+    if config is None:
+        raise ValueError("frontend 必须是入口路径或配置对象")
+    entry_value = str(config.get("entry") or "").strip()
+    if not entry_value:
+        raise ValueError("前端插件必须声明 frontend.entry")
+    entry = _safe_component(root, entry_value)
+    if entry.suffix.lower() not in {".html", ".htm"} or not entry.is_file() or entry.is_symlink():
+        raise ValueError("frontend.entry 必须指向插件内存在的 HTML 文件")
+    permissions = sorted(set(_string_list(config.get("permissions"))))
+    unknown = [item for item in permissions if item not in FRONTEND_PERMISSIONS]
+    if unknown:
+        raise ValueError(f"不支持的前端插件权限：{unknown[0]}")
+    surfaces = sorted(set(_string_list(config.get("surfaces")) or ["panel"]))
+    unknown_surfaces = [item for item in surfaces if item not in FRONTEND_SURFACES]
+    if unknown_surfaces:
+        raise ValueError(f"不支持的前端插件表面：{unknown_surfaces[0]}")
+    message_patterns = _string_list(config.get("message_patterns"))[:32]
+    if any(len(item) > 256 for item in message_patterns):
+        raise ValueError("前端插件消息匹配文本不能超过 256 个字符")
+    character_extensions = [
+        item for item in _string_list(config.get("character_extensions"))[:32]
+        if re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", item)
+    ]
+    if "message" in surfaces and not message_patterns and not character_extensions:
+        raise ValueError("消息表面插件必须声明 message_patterns 或 character_extensions")
+    return {
+        "entry": entry.relative_to(root.resolve()).as_posix(),
+        "title": str(config.get("title") or display_name)[:96],
+        "permissions": permissions,
+        "surfaces": surfaces,
+        "message_patterns": message_patterns,
+        "character_extensions": character_extensions,
+        "height": max(320, min(int(config.get("height") or 620), 900)),
+    }
 
 
 def _read_mcp_servers(root: Path, raw: dict[str, Any], plugin_id: str, secret_headers: dict[str, str]) -> list[McpServerRecord]:
@@ -649,12 +727,15 @@ def _secret_headers(raw: dict[str, Any]) -> dict[str, str]:
 
 
 def _plugin_type(record: PluginRecord) -> str:
-    if record.skills and record.mcp_servers:
+    kinds = sum((bool(record.skills), bool(record.mcp_servers), bool(record.frontend)))
+    if kinds > 1:
         return "hybrid"
     if record.skills:
         return "skill"
     if record.mcp_servers:
         return "tool"
+    if record.frontend:
+        return "app"
     return "resource"
 
 

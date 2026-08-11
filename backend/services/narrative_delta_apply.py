@@ -15,12 +15,14 @@ from backend.models import (
     NarrativeDeltaRecord,
     NpcRecord,
     RoleplayGraphEventRecord,
+    SettingChangeRecord,
     StateChangeRecord,
     TimelineAnchorRecord,
 )
 from backend.services.narrative_delta import NarrativeDeltaPayload
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
+from backend.services.setting_evolution import SettingEvolutionService
 from backend.services.timeline import timeline_service
 from backend.services.variants import active_variant_clause
 from backend.utils import json_dumps, json_loads
@@ -29,6 +31,7 @@ from backend.utils import json_dumps, json_loads
 @dataclass(slots=True)
 class DeltaApplyResult:
     state_changes: list[StateChangeRecord] = field(default_factory=list)
+    setting_changes: list[SettingChangeRecord] = field(default_factory=list)
     scene_count: int = 0
     npc_count: int = 0
     timeline_count: int = 0
@@ -38,9 +41,15 @@ class DeltaApplyResult:
 class NarrativeDeltaApplier:
     """补齐主模型遗漏的结构化变化，并跳过已经实时写入的内容。"""
 
-    def __init__(self, state_service: StateService, graph_service: RoleplayGraphService) -> None:
+    def __init__(
+        self,
+        state_service: StateService,
+        graph_service: RoleplayGraphService,
+        setting_evolution: SettingEvolutionService | None = None,
+    ) -> None:
         self.state_service = state_service
         self.graph_service = graph_service
+        self.setting_evolution = setting_evolution or SettingEvolutionService()
 
     def apply(self, db: Session, record: NarrativeDeltaRecord) -> DeltaApplyResult:
         raw = json_loads(record.payload_json) or {}
@@ -136,12 +145,32 @@ class NarrativeDeltaApplier:
                 change.new_value, change.reason,
             )
 
+        for change in payload.setting_changes:
+            proposed = self.setting_evolution.propose(
+                db=db,
+                chat_id=record.chat_id,
+                target_type=change.target_type,
+                target_id=change.target_id,
+                field=change.field,
+                new_value=change.new_value,
+                reason=change.reason,
+                evidence=change.evidence,
+                importance=change.importance,
+                confidence=change.confidence,
+                source_message_id=source_id,
+            )
+            if proposed is None:
+                result.skipped_count += 1
+            else:
+                result.setting_changes.append(proposed)
+
         stored = payload.model_dump(mode="json")
         stored["application"] = {
             "scene_count": result.scene_count,
             "npc_count": result.npc_count,
             "timeline_count": result.timeline_count,
             "state_change_ids": list(dict.fromkeys(item.id for item in result.state_changes)),
+            "setting_change_ids": list(dict.fromkeys(item.id for item in result.setting_changes)),
             "skipped_count": result.skipped_count,
         }
         graph_events = list(db.scalars(

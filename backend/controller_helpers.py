@@ -30,6 +30,7 @@ from backend.models import (
     PersonaTemplateRecord,
     SceneNodeRecord,
     RoleplayGraphEventRecord,
+    SettingChangeRecord,
     StateChangeRecord,
     StoryCheckpointRecord,
     StoryCharacterRecord,
@@ -391,18 +392,22 @@ def _attach_linked_world_books(
     world_book_ids_json: str,
     now: datetime,
 ) -> None:
+    template_ids = _clean_string_list(json_loads(world_book_ids_json) or [])
+    if not template_ids:
+        return
     existing = set(db.scalars(
         select(StoryWorldBookRecord.source_template_id).where(
-            StoryWorldBookRecord.chat_id == chat_id
+            StoryWorldBookRecord.chat_id == chat_id,
+            StoryWorldBookRecord.source_template_id.in_(template_ids),
         )
     ).all())
-    for template_id in _clean_string_list(json_loads(world_book_ids_json) or []):
-        if template_id in existing:
-            continue
-        template = db.get(WorldBookTemplateRecord, template_id)
-        if template:
-            db.add(_copy_world_to_story(template, chat_id, now))
-            existing.add(template_id)
+    pending_ids = [template_id for template_id in template_ids if template_id not in existing]
+    if not pending_ids:
+        return
+    templates = db.scalars(
+        select(WorldBookTemplateRecord).where(WorldBookTemplateRecord.id.in_(pending_ids))
+    ).all()
+    db.add_all(_copy_world_to_story(template, chat_id, now) for template in templates)
 
 def _agent_turn_read(
     runtime: AgentRuntime,
@@ -652,10 +657,13 @@ def _copy_story_branch(
         .where(StoryCharacterRecord.chat_id == source.id)
         .order_by(StoryCharacterRecord.created_at)
     ).all()
+    setting_target_ids: dict[str, str] = {}
     for item in characters:
+        copied_character_id = str(uuid4())
+        setting_target_ids[item.id] = copied_character_id
         db.add(
             StoryCharacterRecord(
-                id=str(uuid4()),
+                id=copied_character_id,
                 chat_id=branch.id,
                 source_template_id=item.source_template_id,
                 name=item.name,
@@ -684,9 +692,11 @@ def _copy_story_branch(
         .order_by(StoryWorldBookRecord.created_at)
     ).all()
     for item in world_entries:
+        copied_world_id = str(uuid4())
+        setting_target_ids[item.id] = copied_world_id
         db.add(
             StoryWorldBookRecord(
-                id=str(uuid4()),
+                id=copied_world_id,
                 chat_id=branch.id,
                 source_template_id=item.source_template_id,
                 title=item.title,
@@ -712,8 +722,10 @@ def _copy_story_branch(
         select(StoryPersonaRecord).where(StoryPersonaRecord.chat_id == source.id)
     )
     if persona:
+        copied_persona_id = str(uuid4())
+        setting_target_ids[persona.id] = copied_persona_id
         db.add(StoryPersonaRecord(
-            id=str(uuid4()), chat_id=branch.id,
+            id=copied_persona_id, chat_id=branch.id,
             source_template_id=persona.source_template_id, name=persona.name,
             avatar=persona.avatar, identity=persona.identity,
             personality=persona.personality, appearance=persona.appearance,
@@ -784,6 +796,37 @@ def _copy_story_branch(
                 resolved_at=item.resolved_at,
             )
         )
+    setting_changes = db.scalars(
+        select(SettingChangeRecord)
+        .where(
+            SettingChangeRecord.chat_id == source.id,
+            SettingChangeRecord.source_message_id.in_(message_ids),
+            active_variant_clause(SettingChangeRecord.variant_id),
+        )
+        .order_by(SettingChangeRecord.created_at)
+    ).all()
+    for item in setting_changes:
+        copied_target_id = setting_target_ids.get(item.target_id)
+        if copied_target_id is None:
+            continue
+        db.add(SettingChangeRecord(
+            id=str(uuid4()),
+            chat_id=branch.id,
+            target_type=item.target_type,
+            target_id=copied_target_id,
+            field=item.field,
+            base_value=item.base_value,
+            new_value=item.new_value,
+            reason=item.reason,
+            evidence=item.evidence,
+            importance=item.importance,
+            confidence=item.confidence,
+            source_message_id=message_ids.get(item.source_message_id or ""),
+            variant_id=variant_ids.get(item.variant_id or ""),
+            status=item.status,
+            created_at=item.created_at,
+            resolved_at=item.resolved_at,
+        ))
     graph_events = db.scalars(
         select(RoleplayGraphEventRecord)
         .where(
@@ -810,6 +853,7 @@ def _copy_story_branch(
     db.commit()
     runtime.state_service.rebuild_entries(db, branch.id)
     runtime.graph_service.rebuild_projections(db, branch.id)
+    runtime.setting_evolution_service.rebuild(db, branch.id)
     db.refresh(branch)
     return branch
 

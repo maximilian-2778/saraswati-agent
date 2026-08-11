@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { HelpTip } from "./HelpTip";
+import { PluginPanel } from "./PluginPanel";
 import { ThemedSelect } from "./ThemedSelect";
-import type { Chat, ChatSkillSelection, ExtensionCatalog, PluginCreate } from "../types";
+import type { Chat, ChatSkillSelection, ExtensionCatalog, PluginCreate, PluginExtension } from "../types";
 
 const EMPTY_PLUGIN: PluginCreate = {
   id: "",
@@ -30,6 +31,7 @@ export function ExtensionSettings({ selectedChatId }: { selectedChatId: string |
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [pendingArchive, setPendingArchive] = useState<{ kind: "skill" | "plugin"; id: string; name: string } | null>(null);
+  const [activePlugin, setActivePlugin] = useState<PluginExtension | null>(null);
 
   useEffect(() => {
     void refresh(false);
@@ -154,7 +156,7 @@ export function ExtensionSettings({ selectedChatId }: { selectedChatId: string |
       setBusy(`trust:${id}`);
       await api.trustPlugin(id, trusted);
       setCatalog(await api.extensions());
-      setNotice({ kind: "ok", text: trusted ? "已允许该插件启动本机程序。" : "已撤销信任并停用该插件。" });
+      setNotice({ kind: "ok", text: trusted ? "已授权该插件使用清单中声明的本机能力和故事数据。" : "已撤销授权并停用该插件。" });
     } catch (reason) {
       setNotice({ kind: "error", text: errorMessage(reason) });
     } finally {
@@ -244,7 +246,7 @@ export function ExtensionSettings({ selectedChatId }: { selectedChatId: string |
         {catalog?.plugins.length ? <div className="extension-list">{catalog.plugins.map((item) => (
           <article className="extension-card" key={item.id}>
             <div><div className="extension-card-title"><strong>{item.name}</strong><span className="extension-readiness ready">{pluginTypeLabel(item.plugin_type)}</span></div><small>{item.id}{item.version ? ` · ${item.version}` : ""} · {item.manifest_format === "codex" ? "Codex 兼容" : item.manifest_format === "legacy" ? "旧版兼容" : "Saraswati"}</small><p>{item.description || "暂无说明"}</p><small>{item.skills.length} 项技能 · {item.mcp_servers.length} 项工具服务 · {item.resources.length} 个文件</small>{item.missing_requirements.length > 0 && <em>尚需配置：{item.missing_requirements.join("、")}</em>}{item.tools.length > 0 && <small>已发现工具：{item.tools.join("、")}</small>}{item.error && <em>{item.error}</em>}</div>
-            <div className="extension-actions">{item.mcp_servers.length > 0 && <button className="ghost-button" disabled={!!busy} onClick={() => void testPlugin(item.id)}>测试</button>}{item.mcp_servers.some((server) => server.transport === "stdio") && !item.trusted && <button className="ghost-button" disabled={!!busy} onClick={() => void trustPlugin(item.id, true)}>信任</button>}<button className="ghost-button" disabled={!!busy} onClick={() => void exportPlugin(item.id)}>导出</button><button className="ghost-button danger" disabled={!!busy} onClick={() => setPendingArchive({ kind: "plugin", id: item.id, name: item.name })}>归档</button><label className="extension-switch"><input type="checkbox" checked={item.enabled} disabled={!!busy || item.missing_requirements.length > 0 || (item.mcp_servers.some((server) => server.transport === "stdio") && !item.trusted)} onChange={(event) => void toggle("plugin", item.id, event.target.checked)} /><span>{item.enabled ? "已启用" : "已停用"}</span></label></div>
+            <div className="extension-actions">{item.frontend?.surfaces.includes("panel") && <button className="ghost-button" disabled={!!busy || !item.enabled} title={item.enabled ? "在安全沙箱中打开插件界面" : "启用插件后才能打开界面"} onClick={() => setActivePlugin(item)}>打开界面</button>}{item.mcp_servers.length > 0 && <button className="ghost-button" disabled={!!busy} onClick={() => void testPlugin(item.id)}>测试</button>}{pluginNeedsTrust(item) && !item.trusted && <button className="ghost-button" disabled={!!busy} onClick={() => void trustPlugin(item.id, true)}>授权</button>}<button className="ghost-button" disabled={!!busy} onClick={() => void exportPlugin(item.id)}>导出</button><button className="ghost-button danger" disabled={!!busy} onClick={() => setPendingArchive({ kind: "plugin", id: item.id, name: item.name })}>归档</button><label className="extension-switch"><input type="checkbox" checked={item.enabled} disabled={!!busy || item.missing_requirements.length > 0 || (pluginNeedsTrust(item) && !item.trusted)} onChange={(event) => void toggle("plugin", item.id, event.target.checked)} /><span>{item.enabled ? "已启用" : "已停用"}</span></label></div>
           </article>
         ))}</div> : null}
         <div className="plugin-form">
@@ -257,6 +259,7 @@ export function ExtensionSettings({ selectedChatId }: { selectedChatId: string |
           <button className="primary-button" onClick={() => void registerPlugin()} disabled={!!busy || !plugin.id.trim() || !plugin.name.trim() || (plugin.transport === "stdio" ? !plugin.command.trim() || !plugin.trusted : !plugin.url.trim())}>创建插件</button>
         </div>
       </section>
+      {activePlugin && <PluginPanel plugin={activePlugin} story={stories.find((item) => item.id === storyId) ?? null} onClose={() => setActivePlugin(null)} />}
       {pendingArchive && <div className="extension-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingArchive(null); }}><section className="extension-confirm" role="alertdialog" aria-modal="true" aria-labelledby="extension-confirm-title"><small>整理扩展</small><h3 id="extension-confirm-title">归档「{pendingArchive.name}」？</h3><p>{pendingArchive.kind === "plugin" ? "插件及其内置技能会停止使用，保存的连接凭据也会移除。" : "技能将停止使用，但文件仍会保留在本机归档目录。"}</p><div><button className="ghost-button" onClick={() => setPendingArchive(null)}>取消</button><button className="primary-button danger" onClick={() => pendingArchive.kind === "plugin" ? void archivePlugin(pendingArchive.id, pendingArchive.name) : void archiveSkill(pendingArchive.id, pendingArchive.name)}>确认归档</button></div></section></div>}
     </div>
   );
@@ -266,8 +269,12 @@ function errorMessage(reason: unknown) {
   return reason instanceof Error ? reason.message : "发生了未知错误";
 }
 
-function pluginTypeLabel(type: "skill" | "tool" | "hybrid" | "resource") {
-  return type === "hybrid" ? "综合插件" : type === "skill" ? "技能插件" : type === "tool" ? "工具插件" : "资源插件";
+function pluginTypeLabel(type: "skill" | "tool" | "app" | "hybrid" | "resource") {
+  return type === "hybrid" ? "综合插件" : type === "skill" ? "技能插件" : type === "tool" ? "工具插件" : type === "app" ? "界面插件" : "资源插件";
+}
+
+function pluginNeedsTrust(plugin: PluginExtension) {
+  return plugin.mcp_servers.some((server) => server.transport === "stdio") || Boolean(plugin.frontend?.permissions.length);
 }
 
 function downloadBlob(blob: Blob, filename: string) {

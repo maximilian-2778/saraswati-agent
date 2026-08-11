@@ -3,7 +3,7 @@ import { api } from "../api";
 import type {
   AgentTrace, AuditIssue, Chat, CharacterTemplate, Memory, MemoryCoverage,
   Message, MessageBookmark, MessageVariant, NarrativeDelta, NarrativeNode, Npc,
-  PersonaTemplate, RuntimeInfo, SceneNode, StateEntry, StateProposal,
+  PersonaTemplate, RuntimeInfo, SceneNode, SettingChange, StateEntry, StateProposal,
   StoryCharacter, StoryCheckpoint, StoryPersona, TimelineAnchor, WorldBookTemplate,
   WorldEngineSnapshot,
 } from "../types";
@@ -33,6 +33,7 @@ export interface ChatSnapshot {
   timeline: TimelineAnchor[];
   state: StateEntry[];
   proposals: StateProposal[];
+  settingChanges: SettingChange[];
   audits: AuditIssue[];
   traces: AgentTrace[];
 }
@@ -53,17 +54,17 @@ export function chatSnapshotQueryOptions(chatId: string) {
     queryFn: async (): Promise<ChatSnapshot> => {
       const [messages, variants, bookmarks, checkpoints, characters, persona,
         memories, memoryGraph, memoryCoverage, deltas, worldEngine, scenes, npcs, timeline,
-        state, proposals, audits, traces] = await Promise.all([
+        state, proposals, settingChanges, audits, traces] = await Promise.all([
         api.messages(chatId), api.messageVariants(chatId), api.bookmarks(chatId),
         api.checkpoints(chatId), api.storyCharacters(chatId), api.storyPersona(chatId),
         api.memories(chatId), api.memoryGraph(chatId), api.memoryCoverage(chatId),
         api.narrativeDeltas(chatId), api.worldEngine(chatId), api.scenes(chatId), api.npcs(chatId),
-        api.timeline(chatId), api.state(chatId), api.proposals(chatId),
+        api.timeline(chatId), api.state(chatId), api.proposals(chatId), api.settingChanges(chatId),
         api.audits(chatId), api.traces(chatId),
       ]);
       return { messages, variants, bookmarks, checkpoints, characters, persona,
         memories, memoryGraph, memoryCoverage, deltas, worldEngine, scenes, npcs, timeline,
-        state, proposals, audits, traces };
+        state, proposals, settingChanges, audits, traces };
     },
   });
 }

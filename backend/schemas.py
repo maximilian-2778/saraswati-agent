@@ -60,7 +60,7 @@ class CharacterProfileUpdate(BaseModel):
     personality: str = Field(default="", max_length=10_000)
     speaking_style: str = Field(default="", max_length=10_000)
     scenario: str = Field(default="", max_length=10_000)
-    avatar: str = Field(default="", max_length=2_000_000)
+    avatar: str = Field(default="", max_length=12_000_000)
     appearance: str = Field(default="", max_length=10_000)
     first_message: str = Field(default="", max_length=20_000)
     alternate_greetings: list[str] = Field(default_factory=list, max_length=20)
@@ -72,7 +72,7 @@ class CharacterProfileUpdate(BaseModel):
     creator: str = Field(default="", max_length=200)
     character_version: str = Field(default="", max_length=100)
     favorite: bool = False
-    world_book_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    world_book_ids: list[UUID] = Field(default_factory=list, max_length=1_000)
     compatibility_data: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -128,7 +128,7 @@ class WorldBookEntryCreate(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     keywords: list[str] = Field(default_factory=list, max_length=30)
     secondary_keywords: list[str] = Field(default_factory=list, max_length=30)
-    content: str = Field(min_length=1, max_length=20_000)
+    content: str = Field(min_length=1, max_length=100_000)
     priority: int = Field(default=50, ge=0, le=10_000)
     enabled: bool = True
     constant: bool = False
@@ -152,6 +152,14 @@ class WorldBookEntryCreate(BaseModel):
 
 class WorldBookEntryUpdate(WorldBookEntryCreate):
     pass
+
+
+class WorldBookTemplateBatchCreate(BaseModel):
+    entries: list[WorldBookEntryCreate] = Field(min_length=1, max_length=1_000)
+
+
+class WorldBookTemplateIdsRequest(BaseModel):
+    ids: list[UUID] = Field(min_length=1, max_length=1_000)
 
 
 class WorldBookBatchRequest(BaseModel):
@@ -405,6 +413,24 @@ class StateChangeRead(BaseModel):
     old_value: Any | None
     new_value: Any
     reason: str
+    source_message_id: UUID | None
+    status: ProposalStatus
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+class SettingChangeRead(BaseModel):
+    id: UUID
+    chat_id: UUID
+    target_type: Literal["character", "persona", "world_book"]
+    target_id: UUID
+    field: str
+    base_value: str
+    new_value: str
+    reason: str
+    evidence: str
+    importance: Literal["major", "critical"]
+    confidence: float
     source_message_id: UUID | None
     status: ProposalStatus
     created_at: datetime

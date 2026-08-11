@@ -13,6 +13,7 @@ import type {
   Npc,
   RetrievedMemory,
   SceneNode,
+  SettingChange,
   StateEntry,
   StateProposal,
   TimelineAnchor,
@@ -37,6 +38,7 @@ interface MemoryHubProps {
   timeline: TimelineAnchor[];
   stateEntries: StateEntry[];
   proposals: StateProposal[];
+  settingChanges: SettingChange[];
   audits: AuditIssue[];
   traces: AgentTrace[];
   debugMode: boolean;
@@ -57,7 +59,10 @@ export function MemoryHub(props: MemoryHubProps) {
       ...props.timeline.map((item) => `${item.updated_at || item.created_at}|${item.id}`),
     ],
     memory: props.memoryGraph.map((item) => `${item.created_at}|${item.id}`),
-    diagnostics: props.audits.map((item) => `${item.created_at}|${item.id}`),
+    diagnostics: [
+      ...props.audits.map((item) => `${item.created_at}|${item.id}`),
+      ...props.settingChanges.map((item) => `${item.created_at}|${item.id}|${item.status}`),
+    ],
   });
   const tabs: { id: MemoryHubTab; label: string; count?: number }[] = [
     { id: "overview", label: "概览" },
@@ -92,13 +97,14 @@ function OverviewPanel(props: MemoryHubProps & { chatId: string }) {
   const latestDelta = [...props.deltas].reverse().find((item) => item.valid);
   const latestTime = props.timeline.filter((item) => !item.is_conflict).at(-1);
   const pending = props.proposals.filter((item) => item.status === "pending");
+  const pendingSettings = props.settingChanges.filter((item) => item.status === "pending");
   return <div className="console-overview">
     <section className="console-hero"><small>故事当前状态</small><h2>{currentScene?.name ?? "地点尚未记录"}</h2><p>{currentScene?.description || latestDelta?.payload.summary || "继续对话后，这里会整理当前剧情。"}</p></section>
     <div className="console-stat-grid">
       <article><small>故事时间</small><strong>{latestTime?.story_time || latestDelta?.payload.time_change || "未记录"}</strong></article>
       <article><small>在场人物</small><strong>{presentNpcs.length}</strong><span>{presentNpcs.map((item) => item.name).join("、") || "暂无"}</span></article>
       <article><small>物品</small><strong>{itemEntries(props.stateEntries).length}</strong></article>
-      <article><small>待确认</small><strong>{pending.length}</strong></article>
+      <article><small>待确认</small><strong>{pending.length + pendingSettings.length}</strong></article>
     </div>
     <section className="console-section"><h3>最近发生</h3>{latestDelta ? <article className="event-card"><strong>{latestDelta.payload.summary || "本轮剧情"}</strong>{Boolean(latestDelta.payload.facts?.length) && <p>{latestDelta.payload.facts?.join("；")}</p>}<time>{formatDateTime(latestDelta.created_at)}</time></article> : <Empty text="还没有整理出的剧情事件。" />}</section>
     {props.worldEngine && props.worldEngine.state.round > 0 && <section className="console-section"><h3>世界动向</h3><article className="world-digest-brief"><small>第 {props.worldEngine.state.round} 轮</small><p>{props.worldEngine.state.digest}</p><span>{props.worldEngine.state.events.filter((item) => item.active).length} 条持续事件 · {props.worldEngine.state.factions.length} 个势力 · {props.worldEngine.state.rumors.filter((item) => item.active).length} 条传闻</span></article></section>}
@@ -283,12 +289,18 @@ function DiagnosticsPanel(props: MemoryHubProps & { chatId: string }) {
   async function resolve(id: string, action: "resolve" | "dismiss") { try { await api.resolveAudit(props.chatId, id, action); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
   async function resolveState(id: string, action: "approve" | "reject") { try { await api.resolveProposal(props.chatId, id, action); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
   async function undo(id: string) { try { await api.undoStateChange(props.chatId, id); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
+  async function resolveSetting(id: string, action: "approve" | "reject") { try { await api.resolveSettingChange(props.chatId, id, action); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
+  async function undoSetting(id: string) { try { await api.undoSettingChange(props.chatId, id); await props.onRefresh(); } catch (reason) { props.onError(reason); } }
   const pending = props.proposals.filter((item) => item.status === "pending");
   const history = props.proposals.filter((item) => item.status !== "pending").slice(0, 30);
+  const pendingSettings = props.settingChanges.filter((item) => item.status === "pending");
+  const settingHistory = props.settingChanges.filter((item) => item.status !== "pending").slice(0, 30);
   return <div className="panel-stack">
+    <details open><summary>设定演化（待确认 {pendingSettings.length}）</summary>{pendingSettings.length === 0 ? <Empty text="目前没有需要确认的重大设定变化。" /> : pendingSettings.map((item) => <article className="proposal-card setting-change-card" key={item.id}><header><strong>{settingTargetLabel(item)} · {item.field}</strong><span>{item.importance === "critical" ? "重大" : "谨慎确认"}</span></header><div className="value-change"><code>{item.base_value}</code><b>→</b><code>{item.new_value}</code></div><p>{item.reason}</p><small>证据：{item.evidence} · 置信度 {Math.round(item.confidence * 100)}%</small><footer><button onClick={() => void resolveSetting(item.id, "reject")}>不采用</button><button className="approve" onClick={() => void resolveSetting(item.id, "approve")}>更新设定</button></footer></article>)}</details>
     <details open><summary>待确认变化（{pending.length}）</summary>{pending.length === 0 ? <Empty text="目前没有需要确认的变化。" /> : pending.map((item) => <article className="proposal-card" key={item.id}><header><strong>{stripLedgerPrefix(item.entity)} · {item.key}</strong><span>待确认</span></header><div className="value-change"><code>{displayValue(item.old_value)}</code><b>→</b><code>{displayValue(item.new_value)}</code></div><p>{item.reason}</p><footer><button onClick={() => void resolveState(item.id, "reject")}>不采用</button><button className="approve" onClick={() => void resolveState(item.id, "approve")}>确认</button></footer></article>)}</details>
     <details open><summary>冲突（{props.audits.length}）</summary>{props.audits.length === 0 ? <Empty text="暂无冲突" /> : props.audits.map((issue) => <article className={`audit-card ${issue.status}`} key={issue.id}><header><strong>{issue.category === "numeric_state_conflict" ? "数值冲突" : issue.category}</strong><span>{issue.status}</span></header><p>{issue.description}</p>{issue.status === "open" && <footer><button onClick={() => void resolve(issue.id, "dismiss")}>忽略</button><button className="approve" onClick={() => void resolve(issue.id, "resolve")}>已修复</button></footer>}</article>)}</details>
     {history.length > 0 && <details><summary>修改记录（{history.length}）</summary><div className="ledger-history">{history.map((item) => <div key={item.id}><span>{item.status === "approved" ? "已采用" : item.status === "reverted" ? "已撤销" : "未采用"}</span><strong>{stripLedgerPrefix(item.entity)} · {item.key}</strong><code>{displayValue(item.new_value)}</code>{item.status === "approved" && <button onClick={() => void undo(item.id)}>撤销</button>}</div>)}</div></details>}
+    {settingHistory.length > 0 && <details><summary>设定演化记录（{settingHistory.length}）</summary><div className="ledger-history">{settingHistory.map((item) => <div key={item.id}><span>{item.status === "approved" ? "已应用" : item.status === "reverted" ? "已撤销" : "未采用"}</span><strong>{settingTargetLabel(item)} · {item.field}</strong><code>{item.new_value}</code>{item.status === "approved" && <button onClick={() => void undoSetting(item.id)}>撤销</button>}</div>)}</div></details>}
     {props.debugMode && <details><summary>运行记录（{props.traces.length}）</summary>{props.traces.map((trace) => <details className="trace-card" key={trace.id}><summary><span>步骤 {trace.step}</span><strong>{trace.event_type}</strong><time>{formatDateTime(trace.created_at)}</time></summary><pre>{JSON.stringify(trace.payload, null, 2)}</pre></details>)}</details>}
   </div>;
 }
@@ -325,8 +337,14 @@ interface ModelMetricPayload {
   duration_ms?: number;
   input_tokens?: number;
   output_tokens?: number;
+  cached_tokens?: number;
+  usage_source?: "provider" | "tokenizer" | "heuristic";
   estimated_cost_usd?: number;
   pricing_configured?: boolean;
+}
+
+function settingTargetLabel(item: SettingChange) {
+  return item.target_type === "character" ? "角色副本" : item.target_type === "persona" ? "主控副本" : "世界书副本";
 }
 
 function ContextDebugPanel({ traces }: { traces: AgentTrace[] }) {
@@ -340,16 +358,30 @@ function ContextDebugPanel({ traces }: { traces: AgentTrace[] }) {
     .filter((trace) => trace.turn_id === contextTrace.turn_id && ["model_response", "forced_model_response", "model_error"].includes(trace.event_type))
     .map((trace) => trace.payload as ModelMetricPayload);
   const duration = modelMetrics.reduce((sum, item) => sum + (item.duration_ms ?? 0), 0);
+  const modelInputTokens = modelMetrics.reduce((sum, item) => sum + (item.input_tokens ?? 0), 0);
+  const modelOutputTokens = modelMetrics.reduce((sum, item) => sum + (item.output_tokens ?? 0), 0);
+  const cachedTokens = modelMetrics.reduce((sum, item) => sum + (item.cached_tokens ?? 0), 0);
+  const sourceSet = new Set(modelMetrics.map((item) => item.usage_source).filter(Boolean));
+  const usageSource = sourceSet.size === 1 && sourceSet.has("provider")
+    ? "服务商实际值"
+    : sourceSet.size === 1 && sourceSet.has("tokenizer")
+      ? "Tokenizer 本地计算"
+      : sourceSet.size === 1 && sourceSet.has("heuristic")
+        ? "heuristic 估算"
+        : sourceSet.size > 1 ? "混合来源" : "本地估算";
   const cost = modelMetrics.reduce((sum, item) => sum + (item.estimated_cost_usd ?? 0), 0);
   const pricingConfigured = modelMetrics.some((item) => item.pricing_configured);
   const completed = traces.find((trace) => trace.turn_id === contextTrace.turn_id && trace.event_type === "turn_completed");
   const turnDuration = Number((completed?.payload as { duration_ms?: number } | undefined)?.duration_ms ?? 0);
   const usagePercent = Math.min(100, budget.estimated_input_tokens / Math.max(1, budget.input_budget) * 100);
+  const sectionSource = budget.tokenizer?.startsWith("tiktoken:")
+    ? `Tokenizer（${budget.tokenizer}）`
+    : "heuristic 估算";
 
   return <div className="panel-stack context-debug">
     <div className="context-overview">
-      <div><small>本轮输入</small><strong>{budget.estimated_input_tokens.toLocaleString()} Token</strong><span>预算 {budget.input_budget.toLocaleString()}</span></div>
-      <div><small>剩余</small><strong>{budget.remaining_tokens.toLocaleString()}</strong><span>{budget.tokenizer ?? "估算器"}</span></div>
+      <div><small>本轮输入</small><strong>{(modelInputTokens || budget.estimated_input_tokens).toLocaleString()} Token</strong><span>{usageSource}</span></div>
+      <div><small>本轮输出</small><strong>{modelOutputTokens.toLocaleString()} Token</strong><span>{cachedTokens ? `缓存 ${cachedTokens.toLocaleString()} Token` : budget.tokenizer ?? "估算器"}</span></div>
       <div><small>本轮耗时</small><strong>{turnDuration ? `${turnDuration.toFixed(0)} ms` : "—"}</strong><span>模型调用 {duration.toFixed(0)} ms</span></div>
       <div><small>费用估算</small><strong>{pricingConfigured ? `$${cost.toFixed(6)}` : "未设置单价"}</strong><span>{budget.model ?? "当前模型"}</span></div>
     </div>
@@ -358,7 +390,7 @@ function ContextDebugPanel({ traces }: { traces: AgentTrace[] }) {
       {(["sections", "triggers", "rag", "prompt", "metrics"] as const).map((key) => <label key={key}><input type="checkbox" checked={visible[key]} onChange={(event) => setVisible((before) => ({ ...before, [key]: event.target.checked }))} />{{ sections: "上下文块", triggers: "世界书触发", rag: "RAG 分数", prompt: "最终 Prompt", metrics: "裁剪记录" }[key]}</label>)}
     </div>
 
-    {visible.sections && <section className="context-section-list"><h3>发送顺序</h3>{(budget.sections ?? []).map((section, index) => <details key={section.key} className={section.enabled ? "context-section enabled" : "context-section disabled"}><summary><b>{index + 1}</b><span><strong>{section.label}</strong><small>{section.reason}</small></span><em>{section.enabled ? `${section.estimated_tokens} Token` : "未加入"}</em></summary>{section.enabled && <pre>{section.content}</pre>}</details>)}</section>}
+    {visible.sections && <section className="context-section-list"><h3>发送顺序</h3><p className="muted">分类来源：{sectionSource}</p>{(budget.sections ?? []).map((section, index) => <details key={section.key} className={section.enabled ? "context-section enabled" : "context-section disabled"}><summary><b>{index + 1}</b><span><strong>{section.label}</strong><small>{section.reason}</small></span><em>{section.enabled ? `${section.estimated_tokens} Token` : "未加入"}</em></summary>{section.enabled && <pre>{section.content}</pre>}</details>)}</section>}
 
     {visible.metrics && <section className="context-debug-group"><h3>预算与裁剪</h3><p>组装前约 {budget.original_estimated_tokens.toLocaleString()} Token；裁掉 {budget.dropped_old_messages} 条旧消息{budget.system_prompt_truncated ? "，系统 Prompt 也进行了截断" : ""}。</p>{Boolean(budget.dropped_messages?.length) && <details><summary>查看被裁剪的消息</summary>{budget.dropped_messages?.map((item, index) => <article key={index}><strong>{item.role} · {item.estimated_tokens} Token</strong><p>{item.preview}</p></article>)}</details>}</section>}
 

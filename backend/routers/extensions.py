@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
@@ -233,6 +234,30 @@ def export_plugin(plugin_id: str, request: Request) -> Response:
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{plugin_id}.zip"'},
     )
+
+
+@router.get("/plugins/{plugin_id}/ui/{asset_path:path}")
+def plugin_frontend_asset(plugin_id: str, asset_path: str, request: Request) -> Response:
+    """Serve only enabled plugin UI assets under a restrictive browser policy."""
+    try:
+        path = _runtime(request).plugins.frontend_asset(plugin_id, asset_path)
+    except ValueError as exc:
+        code = status.HTTP_409_CONFLICT if "尚未启用" in str(exc) else status.HTTP_404_NOT_FOUND
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+    media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    headers = {
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Access-Control-Allow-Origin": "*",
+        "Cross-Origin-Resource-Policy": "cross-origin",
+        "Content-Security-Policy": (
+            "default-src 'none'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+            "font-src 'self'; media-src 'self' blob:; connect-src 'none'; "
+            "frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
+        ),
+    }
+    return Response(content=path.read_bytes(), media_type=media_type, headers=headers)
 
 
 @router.post("/plugins/{plugin_id}/trust")

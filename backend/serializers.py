@@ -13,6 +13,7 @@ from backend.models import (
     PersonaTemplateRecord,
     SceneNodeRecord,
     MessageRecord,
+    SettingChangeRecord,
     StateChangeRecord,
     StateEntryRecord,
     StoryCharacterRecord,
@@ -38,6 +39,7 @@ from backend.schemas import (
     MessageRead,
     MessageRole,
     ProposalStatus,
+    SettingChangeRead,
     StateChangeRead,
     StateEntryRead,
     StoryCharacterRead,
@@ -360,6 +362,26 @@ def state_change_read(record: StateChangeRecord) -> StateChangeRead:
         source_message_id=(
             UUID(record.source_message_id) if record.source_message_id else None
         ),
+        status=ProposalStatus(record.status),
+        created_at=record.created_at,
+        resolved_at=record.resolved_at,
+    )
+
+
+def setting_change_read(record: SettingChangeRecord) -> SettingChangeRead:
+    return SettingChangeRead(
+        id=UUID(record.id),
+        chat_id=UUID(record.chat_id),
+        target_type=record.target_type,  # type: ignore[arg-type]
+        target_id=UUID(record.target_id),
+        field=record.field,
+        base_value=record.base_value,
+        new_value=record.new_value,
+        reason=record.reason,
+        evidence=record.evidence,
+        importance=record.importance,  # type: ignore[arg-type]
+        confidence=record.confidence,
+        source_message_id=(UUID(record.source_message_id) if record.source_message_id else None),
         status=ProposalStatus(record.status),
         created_at=record.created_at,
         resolved_at=record.resolved_at,

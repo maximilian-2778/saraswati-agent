@@ -4,6 +4,7 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 datas = [
     ("frontend/dist", "frontend/dist"),
+    ("bundled_plugins", "bundled_plugins"),
     ("alembic", "alembic"),
     ("alembic.ini", "."),
 ]

@@ -88,6 +88,7 @@ from backend.schemas import (
     TimelineAnchorCreate,
     TimelineAnchorRead,
     WorldBookTemplateRead,
+    WorldBookTemplateBatchCreate,
     WorldBookBatchRequest,
     WorldBookBatchResult,
     WorldBookEntryCreate,
@@ -256,6 +257,28 @@ def create_world_book_template(
     db.commit()
     db.refresh(record)
     return world_book_template_read(record)
+
+@router.post(
+    "/world-book-templates/import",
+    response_model=list[WorldBookTemplateRead],
+    status_code=status.HTTP_201_CREATED,
+    tags=["libraries"],
+)
+def import_world_book_templates(
+    payload: WorldBookTemplateBatchCreate,
+    db: Session = Depends(get_db),
+) -> list[WorldBookTemplateRead]:
+    now = datetime.now(UTC)
+    records = [
+        WorldBookTemplateRecord(
+            id=str(uuid4()), created_at=now, updated_at=now,
+            **_world_values(entry),
+        )
+        for entry in payload.entries
+    ]
+    db.add_all(records)
+    db.commit()
+    return [world_book_template_read(record) for record in records]
 
 @router.post(
     "/world-book-templates/batch",

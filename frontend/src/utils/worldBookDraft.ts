@@ -21,7 +21,6 @@ export interface WorldEntryDraft {
   sticky: number;
   cooldown: number;
   delay: number;
-  tokenBudget: number;
   scope: "global" | "character" | "persona" | "story";
   compatibilityData: Record<string, unknown>;
 }
@@ -47,7 +46,6 @@ export const EMPTY_WORLD_ENTRY: WorldEntryDraft = {
   sticky: 0,
   cooldown: 0,
   delay: 0,
-  tokenBudget: 2048,
   scope: "global",
   compatibilityData: {},
 };
@@ -76,7 +74,6 @@ export function worldEntryToDraft(
     sticky: item.sticky,
     cooldown: item.cooldown,
     delay: item.delay,
-    tokenBudget: item.token_budget,
     scope: item.scope,
     compatibilityData: item.compatibility_data,
   };

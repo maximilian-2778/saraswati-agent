@@ -19,14 +19,15 @@ def test_empty_database_upgrades_to_head_and_matches_metadata(
     database = _database(tmp_path / "empty.db")
     try:
         assert upgrade_database(database) == "upgraded"
-        assert current_revision(database) == "0007"
+        assert current_revision(database) == "0008"
         assert "messages" in inspect(database.engine).get_table_names()
         assert "chat_skill_bindings" in inspect(database.engine).get_table_names()
         assert "world_evolutions" in inspect(database.engine).get_table_names()
+        assert "setting_changes" in inspect(database.engine).get_table_names()
         command.check(alembic_config(database.database_url))
 
         assert upgrade_database(database) == "upgraded"
-        assert current_revision(database) == "0007"
+        assert current_revision(database) == "0008"
     finally:
         database.close()
 
@@ -50,7 +51,7 @@ def test_unversioned_database_is_completed_stamped_and_keeps_data(
     try:
         assert current_revision(database) is None
         assert upgrade_database(database) == "legacy_stamped"
-        assert current_revision(database) == "0007"
+        assert current_revision(database) == "0008"
         with database.session_factory() as session:
             restored = session.scalar(select(ChatRecord).where(ChatRecord.id == chat.id))
             assert restored is not None
@@ -64,14 +65,14 @@ def test_baseline_can_downgrade_and_upgrade_again(tmp_path: Path) -> None:
     config = alembic_config(database.database_url)
     try:
         command.upgrade(config, "head")
-        assert current_revision(database) == "0007"
+        assert current_revision(database) == "0008"
 
         command.downgrade(config, "base")
         assert current_revision(database) is None
         assert "messages" not in inspect(database.engine).get_table_names()
 
         command.upgrade(config, "head")
-        assert current_revision(database) == "0007"
+        assert current_revision(database) == "0008"
         assert "messages" in inspect(database.engine).get_table_names()
     finally:
         database.close()

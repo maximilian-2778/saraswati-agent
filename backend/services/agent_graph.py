@@ -36,7 +36,7 @@ from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
 from backend.services.world_engine import WorldEngineService
 from backend.services.tools import ToolExecutor
-from backend.services.token_budget import estimate_tokens
+from backend.services.token_budget import estimate_tokens, token_counter_for_model
 from backend.services.variants import attach_turn_artifacts, selected_variant_id
 from backend.utils import json_dumps
 
@@ -221,6 +221,7 @@ async def _call_model(
                     input_tokens,
                     estimate_tokens("".join(streamed_parts), dependencies.model.model_name),
                     perf_counter() - started_at,
+                    usage_source=_local_usage_source(dependencies.model.model_name),
                 ),
             },
         )
@@ -242,9 +243,12 @@ async def _call_model(
             "tool_names": [call.name for call in reply.tool_calls],
             **_call_metrics(
                 dependencies.settings,
-                input_tokens,
-                _reply_tokens(reply.content, reply.tool_calls, dependencies.model.model_name),
+                reply.usage.input_tokens if reply.usage else input_tokens,
+                reply.usage.output_tokens if reply.usage else _reply_tokens(reply.content, reply.tool_calls, dependencies.model.model_name),
                 perf_counter() - started_at,
+                usage_source="provider" if reply.usage else _local_usage_source(dependencies.model.model_name),
+                cached_tokens=reply.usage.cached_tokens if reply.usage else 0,
+                total_tokens=reply.usage.total_tokens if reply.usage else None,
             ),
         },
     )
@@ -378,9 +382,12 @@ async def _force_final_response(
                 "has_content": bool(reply.content),
                 **_call_metrics(
                     dependencies.settings,
-                    input_tokens,
-                    estimate_tokens(reply.content or "", dependencies.model.model_name),
+                    reply.usage.input_tokens if reply.usage else input_tokens,
+                    reply.usage.output_tokens if reply.usage else estimate_tokens(reply.content or "", dependencies.model.model_name),
                     perf_counter() - started_at,
+                    usage_source="provider" if reply.usage else _local_usage_source(dependencies.model.model_name),
+                    cached_tokens=reply.usage.cached_tokens if reply.usage else 0,
+                    total_tokens=reply.usage.total_tokens if reply.usage else None,
                 ),
             },
         )
@@ -404,6 +411,7 @@ async def _force_final_response(
                     input_tokens,
                     estimate_tokens("".join(streamed_parts), dependencies.model.model_name),
                     perf_counter() - started_at,
+                    usage_source=_local_usage_source(dependencies.model.model_name),
                 ),
             },
         )
@@ -436,6 +444,9 @@ def _call_metrics(
     input_tokens: int,
     output_tokens: int,
     duration_seconds: float,
+    usage_source: str,
+    cached_tokens: int = 0,
+    total_tokens: int | None = None,
 ) -> dict[str, Any]:
     estimated_cost = (
         input_tokens * settings.input_price_per_million
@@ -445,11 +456,18 @@ def _call_metrics(
         "duration_ms": round(duration_seconds * 1000, 2),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
+        "total_tokens": total_tokens if total_tokens is not None else input_tokens + output_tokens,
+        "cached_tokens": cached_tokens,
+        "usage_source": usage_source,
         "estimated_cost_usd": round(estimated_cost, 8),
         "pricing_configured": bool(
             settings.input_price_per_million or settings.output_price_per_million
         ),
     }
+
+
+def _local_usage_source(model_name: str | None) -> str:
+    return "tokenizer" if token_counter_for_model(model_name).name.startswith("tiktoken:") else "heuristic"
 
 
 async def _persist_response(
@@ -491,7 +509,7 @@ async def _persist_response(
         state["turn_id"],
         state["step"],
         "response_persisted",
-        {"assistant_message_id": message.id},
+        {"assistant_message_id": message.id, "variant_id": variant.id},
     )
     if dependencies.on_progress is not None:
         await dependencies.on_progress("postprocessing")
@@ -592,6 +610,7 @@ async def _apply_narrative_delta(
             "scene_count": result.scene_count,
             "npc_count": result.npc_count,
             "state_change_ids": applied_ids,
+            "setting_change_ids": [item.id for item in result.setting_changes],
             "deduplicated_count": result.skipped_count,
         },
     )

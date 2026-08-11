@@ -25,6 +25,7 @@ import type {
   SceneNode,
   SettingsTestResult,
   SettingsUpdate,
+  SettingChange,
   SkillExtension,
   StateEntry,
   StateProposal,
@@ -47,7 +48,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => null);
-    throw new Error(data?.detail ?? `请求失败：HTTP ${response.status}`);
+    throw new Error(formatApiError(data?.detail, response.status));
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -57,7 +58,7 @@ async function upload<T>(path: string, body: FormData): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { method: "POST", body });
   if (!response.ok) {
     const data = await response.json().catch(() => null);
-    throw new Error(data?.detail ?? `请求失败：HTTP ${response.status}`);
+    throw new Error(formatApiError(data?.detail, response.status));
   }
   return response.json() as Promise<T>;
 }
@@ -66,9 +67,26 @@ async function download(path: string): Promise<Blob> {
   const response = await fetch(`${API_BASE}${path}`);
   if (!response.ok) {
     const data = await response.json().catch(() => null);
-    throw new Error(data?.detail ?? `请求失败：HTTP ${response.status}`);
+    throw new Error(formatApiError(data?.detail, response.status));
   }
   return response.blob();
+}
+
+function formatApiError(detail: unknown, status: number) {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => {
+      if (!item || typeof item !== "object") return String(item);
+      const issue = item as { loc?: unknown[]; msg?: string };
+      const location = Array.isArray(issue.loc) ? issue.loc.filter((part) => part !== "body").join(".") : "";
+      return `${location ? `${location}：` : ""}${issue.msg || "数据格式无效"}`;
+    }).filter(Boolean);
+    if (messages.length) return messages.join("；");
+  }
+  if (detail && typeof detail === "object") {
+    try { return JSON.stringify(detail); } catch { /* use the HTTP fallback */ }
+  }
+  return `请求失败：HTTP ${status}`;
 }
 
 type StreamTurnHandlers = {
@@ -93,7 +111,7 @@ async function streamTurn(
   });
   if (!response.ok || !response.body) {
     const data = await response.json().catch(() => null);
-    throw new Error(data?.detail ?? `请求失败：HTTP ${response.status}`);
+    throw new Error(formatApiError(data?.detail, response.status));
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -164,6 +182,8 @@ export const api = {
   testPlugin: (id: string) =>
     request<{ ok: boolean; plugin: PluginExtension; tool_count: number }>(`/extensions/plugins/${encodeURIComponent(id)}/test`, { method: "POST" }),
   exportPlugin: (id: string) => download(`/extensions/plugins/${encodeURIComponent(id)}/export`),
+  pluginFrontendUrl: (id: string, entry: string) =>
+    `${API_BASE}/extensions/plugins/${encodeURIComponent(id)}/ui/${entry.split("/").map(encodeURIComponent).join("/")}`,
   presets: () => request<PromptPreset[]>("/presets"),
   createPreset: (payload: object) => request<PromptPreset>("/presets", { method: "POST", body: JSON.stringify(payload) }),
   updatePreset: (id: string, payload: object) => request<PromptPreset>(`/presets/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
@@ -211,6 +231,11 @@ export const api = {
   worldBookTemplates: () => request<WorldBookTemplate[]>("/world-book-templates"),
   createWorldBookTemplate: (payload: object) =>
     request<WorldBookTemplate>("/world-book-templates", { method: "POST", body: JSON.stringify(payload) }),
+  importWorldBookTemplates: (entries: object[]) =>
+    request<WorldBookTemplate[]>("/world-book-templates/import", {
+      method: "POST",
+      body: JSON.stringify({ entries }),
+    }),
   updateWorldBookTemplate: (id: string, payload: object) =>
     request<WorldBookTemplate>(`/world-book-templates/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteWorldBookTemplate: (id: string) =>
@@ -230,6 +255,11 @@ export const api = {
   storyWorldBooks: (chatId: string) => request<StoryWorldBook[]>(`/chats/${chatId}/world-books`),
   attachWorldBook: (chatId: string, templateId: string) =>
     request<StoryWorldBook>(`/chats/${chatId}/world-books/from-template/${templateId}`, { method: "POST" }),
+  attachWorldBooks: (chatId: string, ids: string[]) =>
+    request<StoryWorldBook[]>(`/chats/${chatId}/world-books/from-templates`, {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
   updateStoryWorldBook: (chatId: string, id: string, payload: object) =>
     request<StoryWorldBook>(`/chats/${chatId}/world-books/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteStoryWorldBook: (chatId: string, id: string) =>
@@ -358,6 +388,17 @@ export const api = {
     }),
   undoStateChange: (chatId: string, proposalId: string) =>
     request<StateProposal>(`/chats/${chatId}/state/proposals/${proposalId}/undo`, {
+      method: "POST",
+    }),
+  settingChanges: (chatId: string) =>
+    request<SettingChange[]>(`/chats/${chatId}/setting-changes`),
+  resolveSettingChange: (chatId: string, changeId: string, action: "approve" | "reject") =>
+    request<SettingChange>(`/chats/${chatId}/setting-changes/${changeId}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    }),
+  undoSettingChange: (chatId: string, changeId: string) =>
+    request<SettingChange>(`/chats/${chatId}/setting-changes/${changeId}/undo`, {
       method: "POST",
     }),
   deleteStateEntry: (chatId: string, entryId: string) =>

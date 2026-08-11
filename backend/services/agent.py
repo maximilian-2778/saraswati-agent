@@ -35,6 +35,7 @@ from backend.services.agent_graph import (
     AgentGraphState,
     build_agent_graph,
 )
+from backend.services.token_budget import estimate_tokens, token_counter_for_model
 from backend.services.audit import AuditService
 from backend.services.context import ContextBuilder
 from backend.services.memory import MemoryService, RetrievedMemory
@@ -43,6 +44,7 @@ from backend.services.narrative_delta_apply import NarrativeDeltaApplier
 from backend.services.narrative_memory import NarrativeMemoryService
 from backend.services.roleplay_graph import RoleplayGraphService
 from backend.services.state import StateService
+from backend.services.setting_evolution import SettingEvolutionService
 from backend.services.world_engine import WorldEngineService
 from backend.services.tools import ToolExecutor
 from backend.services.variants import selected_variant_id
@@ -59,6 +61,20 @@ class AgentTurnResult:
     traces: list[AgentTraceRecord]
 
 
+@dataclass(slots=True)
+class CandidateResult:
+    content: str
+    diagnostics: dict[str, Any]
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    duration_ms: float
+    estimated_cost_usd: float
+    pricing_configured: bool
+    usage_source: str
+    cached_tokens: int
+
+
 class AgentRuntime:
     """通过 LangGraph 节点协调模型、工具、记忆和生成后审计。"""
 
@@ -67,16 +83,18 @@ class AgentRuntime:
         self.model = model
         self.memory_service = MemoryService(settings)
         self.state_service = StateService()
+        self.setting_evolution_service = SettingEvolutionService()
         self.audit_service = AuditService()
         self.graph_service = RoleplayGraphService()
         self.narrative_memory_service = NarrativeMemoryService(
             settings,
             self.memory_service,
         )
-        self.narrative_delta_service = NarrativeDeltaService()
+        self.narrative_delta_service = NarrativeDeltaService(self.setting_evolution_service)
         self.narrative_delta_applier = NarrativeDeltaApplier(
             self.state_service,
             self.graph_service,
+            self.setting_evolution_service,
         )
         self.world_engine_service = WorldEngineService()
         self.extensions = ExtensionRuntime()
@@ -227,7 +245,7 @@ class AgentRuntime:
         db: Session,
         chat: ChatRecord,
         user_message: MessageRecord,
-    ) -> str:
+    ) -> CandidateResult:
         """基于原用户消息生成一个无副作用的候选回复。"""
         context = await self.context_builder.build(
             db,
@@ -236,11 +254,69 @@ class AgentRuntime:
             user_message.content,
             through=user_message.created_at,
         )
+        started_at = perf_counter()
         try:
             reply = await self.model.complete(context.messages, None)
         except ModelProviderError as exc:
             raise ModelProviderError(f"候选回复生成失败：{exc}") from exc
-        return reply.content or "模型没有返回可显示的内容。"
+        content = reply.content or "模型没有返回可显示的内容。"
+        estimated_input_tokens = sum(
+            estimate_tokens(str(message.get("content") or ""), self.model.model_name)
+            for message in context.messages
+        )
+        input_tokens = reply.usage.input_tokens if reply.usage else estimated_input_tokens
+        output_tokens = reply.usage.output_tokens if reply.usage else estimate_tokens(content, self.model.model_name)
+        estimated_cost = (
+            input_tokens * self.settings.input_price_per_million
+            + output_tokens * self.settings.output_price_per_million
+        ) / 1_000_000
+        return CandidateResult(
+            content=content,
+            diagnostics=context.diagnostics,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=reply.usage.total_tokens if reply.usage else input_tokens + output_tokens,
+            duration_ms=round((perf_counter() - started_at) * 1000, 2),
+            estimated_cost_usd=round(estimated_cost, 8),
+            pricing_configured=bool(
+                self.settings.input_price_per_million
+                or self.settings.output_price_per_million
+            ),
+            usage_source=(
+                "provider" if reply.usage
+                else "tokenizer" if token_counter_for_model(self.model.model_name).name.startswith("tiktoken:")
+                else "heuristic"
+            ),
+            cached_tokens=reply.usage.cached_tokens if reply.usage else 0,
+        )
+
+    def record_candidate_usage(
+        self,
+        db: Session,
+        chat_id: str,
+        assistant_message_id: str,
+        variant_id: str,
+        candidate: CandidateResult,
+    ) -> None:
+        """Persist UI-only usage diagnostics; prompt assembly never reads these traces."""
+        turn_id = str(uuid4())
+        self._trace(db, chat_id, turn_id, 0, "context_built", {
+            "token_budget": candidate.diagnostics,
+        })
+        self._trace(db, chat_id, turn_id, 1, "model_response", {
+            "input_tokens": candidate.input_tokens,
+            "output_tokens": candidate.output_tokens,
+            "total_tokens": candidate.total_tokens,
+            "duration_ms": candidate.duration_ms,
+            "estimated_cost_usd": candidate.estimated_cost_usd,
+            "pricing_configured": candidate.pricing_configured,
+            "usage_source": candidate.usage_source,
+            "cached_tokens": candidate.cached_tokens,
+        })
+        self._trace(db, chat_id, turn_id, 2, "response_persisted", {
+            "assistant_message_id": assistant_message_id,
+            "variant_id": variant_id,
+        })
 
     async def process_candidate(
         self,

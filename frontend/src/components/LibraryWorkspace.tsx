@@ -40,6 +40,7 @@ export function LibraryWorkspace(props: {
   onWorldBooks: (items: WorldBookTemplate[]) => void;
   onPersonas: (items: PersonaTemplate[]) => void;
   onStoryPersona: (item: StoryPersona | null) => void;
+  onChatChanged: () => Promise<void>;
   onPresetActivated: () => Promise<void>;
   onError: (reason: unknown) => void;
   error: string | null;
@@ -69,6 +70,7 @@ export function LibraryWorkspace(props: {
           templates={props.characterTemplates}
           onTemplates={props.onCharacters}
           onStoryItems={props.onStoryCharacters}
+          onChatChanged={props.onChatChanged}
           onError={props.onError}
           worldBooks={props.worldBookTemplates}
         />
@@ -185,6 +187,7 @@ function CharacterLibrary(props: {
   templates: CharacterTemplate[];
   onTemplates: (items: CharacterTemplate[]) => void;
   onStoryItems: (items: StoryCharacter[]) => void;
+  onChatChanged: () => Promise<void>;
   onError: (reason: unknown) => void;
   worldBooks: WorldBookTemplate[];
 }) {
@@ -232,7 +235,7 @@ function CharacterLibrary(props: {
 
   async function attach(id: string) {
     if (!props.selectedChat) return;
-    try { await api.attachCharacter(props.selectedChat.id, id); await refreshStory(); }
+    try { await api.attachCharacter(props.selectedChat.id, id); await refreshStory(); await props.onChatChanged(); }
     catch (reason) { props.onError(reason); }
   }
 
@@ -255,13 +258,17 @@ function CharacterLibrary(props: {
 
   async function importCard(file: File | undefined) {
     if (!file) return;
+    let embedded: WorldBookTemplate[] = [];
     try {
       const raw = file.name.toLowerCase().endsWith(".png") ? await readPngCharacterCard(file) : JSON.parse(await file.text());
       const data = raw.data ?? raw;
-      const embedded = data.character_book ? await importWorldBookData(data.character_book, `${data.name || "角色"} · 世界书`) : [];
-      await api.createCharacterTemplate({ ...EMPTY_CHARACTER, name: data.name || "导入角色", avatar: file.name.toLowerCase().endsWith(".png") ? await fileToDataUrl(file) : "", identity: data.description || data.identity || "", personality: data.personality || "", scenario: data.scenario || "", first_message: data.first_mes || data.first_message || "", alternate_greetings: data.alternate_greetings || [], example_dialogue: data.mes_example || data.example_dialogue || "", tags: data.tags || [], creator_notes: data.creator_notes || "", system_prompt: data.system_prompt || "", post_history_instructions: data.post_history_instructions || "", creator: data.creator || "", character_version: data.character_version || "", world_book_ids: embedded.map((item) => item.id), compatibility_data: { source_format: raw.spec || "chara_card_v1", original_card: raw } });
-      props.onTemplates(await api.characterTemplates());
-    } catch (reason) { props.onError(reason); }
+      embedded = data.character_book ? await importWorldBookData(data.character_book, `${data.name || "角色"} · 世界书`) : [];
+      const created = await api.createCharacterTemplate({ ...EMPTY_CHARACTER, name: data.name || "导入角色", avatar: file.name.toLowerCase().endsWith(".png") ? await fileToDataUrl(file) : "", identity: data.description || data.identity || "", personality: data.personality || "", scenario: data.scenario || "", first_message: data.first_mes || data.first_message || "", alternate_greetings: data.alternate_greetings || [], example_dialogue: data.mes_example || data.example_dialogue || "", tags: data.tags || [], creator_notes: data.creator_notes || "", system_prompt: data.system_prompt || "", post_history_instructions: data.post_history_instructions || "", creator: data.creator || "", character_version: data.character_version || "", world_book_ids: embedded.map((item) => item.id), compatibility_data: { source_format: raw.spec || "chara_card_v1", original_card: raw } });
+      props.onTemplates([created, ...props.templates]);
+    } catch (reason) {
+      if (embedded.length) await rollbackWorldBookTemplates(embedded);
+      props.onError(reason);
+    }
   }
 
   const visibleTemplates = props.templates
@@ -362,7 +369,7 @@ function WorldLibrary(props: {
     secondary_keywords: draft.secondaryKeywords.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean),
     constant: draft.constant, case_sensitive: draft.caseSensitive, scan_depth: draft.scanDepth,
     insertion_position: draft.insertionPosition, group_name: draft.groupName,
-    recursive: draft.recursive, token_budget: draft.tokenBudget, scope: draft.scope,
+    recursive: draft.recursive, scope: draft.scope,
     selective_logic: draft.selectiveLogic, probability: draft.probability,
     match_whole_words: draft.matchWholeWords, prevent_recursion: draft.preventRecursion,
     depth: draft.depth, sticky: draft.sticky, cooldown: draft.cooldown, delay: draft.delay,
@@ -372,8 +379,8 @@ function WorldLibrary(props: {
   async function importBook(file: File | undefined) {
     if (!file) return;
     try {
-      await importWorldBookData(JSON.parse(await file.text()), file.name.replace(/\.json$/i, ""));
-      props.onTemplates(await api.worldBookTemplates());
+      const created = await importWorldBookData(JSON.parse(await file.text()), file.name.replace(/\.json$/i, ""));
+      props.onTemplates(sortWorldBooks([...created, ...props.templates]));
     } catch (reason) { props.onError(reason); }
   }
   async function save(event: FormEvent) {
@@ -393,8 +400,24 @@ function WorldLibrary(props: {
   }
   async function attach(id: string) {
     if (!props.selectedChat) return;
-    try { await api.attachWorldBook(props.selectedChat.id, id); await refreshStory(); }
+    try {
+      const created = await api.attachWorldBook(props.selectedChat.id, id);
+      setStoryItems((before) => sortWorldBooks([created, ...before]));
+    }
     catch (reason) { props.onError(reason); }
+  }
+  async function batchAttach() {
+    if (!props.selectedChat || !selectedTemplates.length) return;
+    const attachedIds = new Set(storyItems.map((item) => item.source_template_id).filter(Boolean));
+    const pendingIds = selectedTemplates.filter((id) => !attachedIds.has(id));
+    if (!pendingIds.length) { setSelectedTemplates([]); return; }
+    try {
+      setBatchBusy(true);
+      const created = await api.attachWorldBooks(props.selectedChat.id, pendingIds);
+      setSelectedTemplates([]);
+      setStoryItems((before) => sortWorldBooks([...created, ...before]));
+    } catch (reason) { props.onError(reason); }
+    finally { setBatchBusy(false); }
   }
   async function remove(scope: "template" | "story", id: string) {
     try {
@@ -410,18 +433,12 @@ function WorldLibrary(props: {
     if (scope === "template") setSelectedTemplates(checked ? props.templates.map((item) => item.id) : []);
     else setSelectedStoryItems(checked ? storyItems.map((item) => item.id) : []);
   }
-  async function batchEnable(scope: "template" | "story", enabled: boolean) {
-    const ids = scope === "template" ? selectedTemplates : selectedStoryItems;
-    if (!ids.length || (scope === "story" && !props.selectedChat)) return;
+  async function batchEnable(enabled: boolean) {
+    if (!selectedStoryItems.length || !props.selectedChat) return;
     try {
       setBatchBusy(true);
-      if (scope === "template") {
-        await api.batchWorldBookTemplates(ids, enabled ? "enable" : "disable");
-        props.onTemplates(await api.worldBookTemplates());
-      } else if (props.selectedChat) {
-        await api.batchStoryWorldBooks(props.selectedChat.id, ids, enabled ? "enable" : "disable");
-        await refreshStory();
-      }
+      await api.batchStoryWorldBooks(props.selectedChat.id, selectedStoryItems, enabled ? "enable" : "disable");
+      await refreshStory();
     } catch (reason) { props.onError(reason); }
     finally { setBatchBusy(false); }
   }
@@ -448,15 +465,15 @@ function WorldLibrary(props: {
     <div className="library-content">
       <LibraryColumn title="世界书库" note="这里保存可以重复使用的世界设定。" action="＋ 新建世界书" onAction={() => edit("template")}>
         <div className="library-tools"><label className="file-button">导入世界书<input type="file" accept=".json,application/json" onChange={(event) => { void importBook(event.target.files?.[0]); event.target.value = ""; }} /></label></div>
-        {props.templates.length > 0 && <WorldBookBatchBar count={selectedTemplates.length} total={props.templates.length} busy={batchBusy} onAll={(checked) => toggleAll("template", checked)} onEnable={(enabled) => void batchEnable("template", enabled)} onDelete={() => void batchRemove("template")} />}
+        {props.templates.length > 0 && <WorldBookBatchBar count={selectedTemplates.length} total={props.templates.length} busy={batchBusy} onAll={(checked) => toggleAll("template", checked)} onAdd={() => void batchAttach()} addDisabled={!props.selectedChat} onDelete={() => void batchRemove("template")} />}
         {props.templates.length === 0 ? <p className="muted">还没有世界书模板。</p> : props.templates.map((item) => (
           <LibraryCard key={item.id} title={item.title} detail={item.content} badge={`${item.enabled ? "已启用" : "已停用"} · 模板 · 优先级 ${item.priority}`} selected={selectedTemplates.includes(item.id)} onSelected={(checked) => toggleSelected("template", item.id, checked)}>
-            <button onClick={() => attach(item.id)} disabled={!props.selectedChat}>添加到故事</button><button onClick={() => edit("template", item)}>编辑</button><button className="delete-button" onClick={() => void remove("template", item.id)}>删除</button>
+            <button onClick={() => attach(item.id)} disabled={!props.selectedChat || storyItems.some((storyItem) => storyItem.source_template_id === item.id)}>{storyItems.some((storyItem) => storyItem.source_template_id === item.id) ? "已添加" : "添加到故事"}</button><button onClick={() => edit("template", item)}>编辑</button><button className="delete-button" onClick={() => void remove("template", item.id)}>删除</button>
           </LibraryCard>
         ))}
       </LibraryColumn>
       <LibraryColumn title={`当前故事使用的世界书${props.selectedChat ? ` · ${props.selectedChat.title}` : ""}`} note="这里的修改只影响当前故事。">
-        {props.selectedChat && storyItems.length > 0 && <WorldBookBatchBar count={selectedStoryItems.length} total={storyItems.length} busy={batchBusy} onAll={(checked) => toggleAll("story", checked)} onEnable={(enabled) => void batchEnable("story", enabled)} onDelete={() => void batchRemove("story")} />}
+        {props.selectedChat && storyItems.length > 0 && <WorldBookBatchBar count={selectedStoryItems.length} total={storyItems.length} busy={batchBusy} onAll={(checked) => toggleAll("story", checked)} onEnable={(enabled) => void batchEnable(enabled)} onDelete={() => void batchRemove("story")} />}
         {!props.selectedChat ? <p className="muted">请先从左侧选择一个故事。</p> : storyItems.length === 0 ? <p className="muted">这个故事尚未绑定世界书。</p> : storyItems.map((item) => (
           <LibraryCard key={item.id} title={item.title} detail={item.content} badge={`${item.enabled ? "已启用" : "已停用"} · ${item.source_template_id ? "当前故事" : "已有设定"}`} selected={selectedStoryItems.includes(item.id)} onSelected={(checked) => toggleSelected("story", item.id, checked)}>
             <button onClick={() => edit("story", item)}>编辑</button><button className="delete-button" onClick={() => void remove("story", item.id)}>移除</button>
@@ -472,7 +489,7 @@ function WorldLibrary(props: {
           <div className="world-form-row"><label><span>优先级 <HelpTip text="多条内容同时生效时，数值较高的排在前面；同一互斥组只保留最高项。" /></span><input type="number" min={0} max={100} value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: Number(e.target.value) })} /></label><label className="inline-check"><input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })} />启用</label></div>
           <details className="advanced-settings"><summary>高级设置</summary>
             <label className="field-with-help"><span>次要关键词 <HelpTip text="填写后，触发词和次要关键词需要各命中至少一个，词条才会启用。" /></span><input value={draft.secondaryKeywords} onChange={(e) => setDraft({ ...draft, secondaryKeywords: e.target.value })} placeholder="用逗号分隔" /></label>
-            <div className="world-form-row"><label><span>扫描深度 <HelpTip text="检查最近多少条消息。数值越大，较早出现的触发词也能生效。" /></span><input type="number" min={1} max={100} value={draft.scanDepth} onChange={(e) => setDraft({ ...draft, scanDepth: Number(e.target.value) })} /></label><label><span>Token 预算 <HelpTip text="这条世界书最多占用的上下文空间，超出的内容会被截短。" /></span><input type="number" min={64} max={20000} value={draft.tokenBudget} onChange={(e) => setDraft({ ...draft, tokenBudget: Number(e.target.value) })} /></label></div>
+            <div className="world-form-row"><label><span>扫描深度 <HelpTip text="检查最近多少条消息。数值越大，较早出现的触发词也能生效。" /></span><input type="number" min={1} max={100} value={draft.scanDepth} onChange={(e) => setDraft({ ...draft, scanDepth: Number(e.target.value) })} /></label></div>
             <label><span>插入位置 <HelpTip text="控制词条相对聊天记录的位置。越靠后，通常对本轮回复的影响越直接。" /></span><select value={draft.insertionPosition} onChange={(e) => setDraft({ ...draft, insertionPosition: e.target.value as WorldEntryDraft["insertionPosition"] })}><option value="before_history">对话记录前</option><option value="after_history">对话记录后</option><option value="system">系统提示词</option></select></label>
             <label><span>互斥组 <HelpTip text="组名相同的词条不会同时启用，只保留优先级最高的一条。留空表示不分组。" /></span><input value={draft.groupName} onChange={(e) => setDraft({ ...draft, groupName: e.target.value })} /></label>
             <label><span>归属 <HelpTip text="标记这条设定通常用于全部故事、特定角色、主控人物或当前故事。" /></span><select value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as WorldEntryDraft["scope"] })}><option value="global">通用</option><option value="character">角色专属</option><option value="persona">主控人物专属</option><option value="story">故事专属</option></select></label>
@@ -496,15 +513,18 @@ function WorldBookBatchBar(props: {
   total: number;
   busy: boolean;
   onAll: (checked: boolean) => void;
-  onEnable: (enabled: boolean) => void;
+  onAdd?: () => void;
+  addDisabled?: boolean;
+  onEnable?: (enabled: boolean) => void;
   onDelete: () => void;
 }) {
   const allSelected = props.total > 0 && props.count === props.total;
   return <div className="world-batch-bar">
     <label><input type="checkbox" checked={allSelected} disabled={!props.total || props.busy} onChange={(event) => props.onAll(event.target.checked)} />全选</label>
     <span>已选 {props.count} 项</span>
-    <button disabled={!props.count || props.busy} onClick={() => props.onEnable(true)}>批量启用</button>
-    <button disabled={!props.count || props.busy} onClick={() => props.onEnable(false)}>批量停用</button>
+    {props.onAdd && <button disabled={!props.count || props.busy || props.addDisabled} onClick={props.onAdd}>批量添加到故事</button>}
+    {props.onEnable && <button disabled={!props.count || props.busy} onClick={() => props.onEnable?.(true)}>批量启用</button>}
+    {props.onEnable && <button disabled={!props.count || props.busy} onClick={() => props.onEnable?.(false)}>批量停用</button>}
     <button className="delete-button" disabled={!props.count || props.busy} onClick={props.onDelete}>批量删除</button>
   </div>;
 }
@@ -516,30 +536,47 @@ function LibraryCard(props: { title: string; detail: string; badge: string; avat
 async function importWorldBookData(raw: Record<string, any>, fallbackName: string): Promise<WorldBookTemplate[]> {
   const sourceEntries = Array.isArray(raw.entries) ? raw.entries : Object.values(raw.entries || {});
   if (!sourceEntries.length) throw new Error("文件中没有可导入的世界书条目");
-  const created: WorldBookTemplate[] = [];
+  const entries: object[] = [];
   const logic = ["and_any", "not_all", "not_any", "and_all"] as const;
   for (const [index, entry] of sourceEntries.entries()) {
     if (!entry || typeof entry !== "object" || !String(entry.content || "").trim()) continue;
     const rawPosition = entry.extensions?.position ?? entry.position;
     const position = rawPosition === 1 || rawPosition === "after_char" ? "after_history" : rawPosition === 4 || rawPosition === 6 ? "system" : "before_history";
-    created.push(await api.createWorldBookTemplate({
-      title: String(entry.comment || entry.name || `${fallbackName} ${index + 1}`),
-      keywords: (Array.isArray(entry.key) ? entry.key : entry.keys || []).map(String),
-      secondary_keywords: (Array.isArray(entry.keysecondary) ? entry.keysecondary : entry.secondary_keys || []).map(String),
-      content: String(entry.content), priority: Math.max(0, Math.min(10000, Number(entry.order ?? entry.insertion_order ?? 100))),
-      enabled: entry.enabled !== undefined ? Boolean(entry.enabled) : !entry.disable, constant: Boolean(entry.constant), case_sensitive: Boolean(entry.caseSensitive ?? entry.case_sensitive),
-      scan_depth: Math.max(1, Math.min(100, Number(entry.scanDepth ?? entry.extensions?.scan_depth ?? 4))), insertion_position: position,
-      group_name: String(entry.group || ""), recursive: !entry.excludeRecursion,
-      token_budget: 2048, scope: "global", selective_logic: logic[Number(entry.selectiveLogic ?? entry.extensions?.selectiveLogic)] || "and_any",
-      probability: entry.useProbability === false ? 100 : Math.max(0, Math.min(100, Number(entry.probability ?? 100))),
-      match_whole_words: Boolean(entry.matchWholeWords), prevent_recursion: Boolean(entry.preventRecursion),
-      depth: Math.max(0, Math.min(100, Number(entry.depth ?? 4))), sticky: Math.max(0, Number(entry.sticky ?? 0)),
-      cooldown: Math.max(0, Number(entry.cooldown ?? 0)), delay: Math.max(0, Number(entry.delay ?? 0)),
-      compatibility_data: { source_format: "sillytavern_world_info", original_book: { ...raw, entries: undefined }, original_entry: entry },
-    }));
+    entries.push({
+        title: String(entry.comment || entry.name || `${fallbackName} ${index + 1}`).slice(0, 120),
+        keywords: (Array.isArray(entry.key) ? entry.key : entry.keys || []).map(String).slice(0, 30),
+        secondary_keywords: (Array.isArray(entry.keysecondary) ? entry.keysecondary : entry.secondary_keys || []).map(String).slice(0, 30),
+        content: String(entry.content), priority: boundedNumber(entry.order ?? entry.insertion_order, 100, 0, 10_000),
+        enabled: entry.enabled !== undefined ? Boolean(entry.enabled) : !entry.disable, constant: Boolean(entry.constant), case_sensitive: Boolean(entry.caseSensitive ?? entry.case_sensitive),
+        scan_depth: boundedNumber(entry.scanDepth ?? entry.extensions?.scan_depth, 4, 1, 100), insertion_position: position,
+        group_name: String(entry.group || "").slice(0, 100), recursive: !entry.excludeRecursion,
+        scope: "global", selective_logic: logic[boundedNumber(entry.selectiveLogic ?? entry.extensions?.selectiveLogic, 0, 0, 3)] || "and_any",
+        probability: entry.useProbability === false ? 100 : boundedNumber(entry.probability, 100, 0, 100),
+        match_whole_words: Boolean(entry.matchWholeWords), prevent_recursion: Boolean(entry.preventRecursion),
+        depth: boundedNumber(entry.depth, 4, 0, 100), sticky: boundedNumber(entry.sticky, 0, 0, 10_000),
+        cooldown: boundedNumber(entry.cooldown, 0, 0, 10_000), delay: boundedNumber(entry.delay, 0, 0, 10_000),
+        compatibility_data: { source_format: "sillytavern_world_info", original_book: { ...raw, entries: undefined }, original_entry: entry },
+    });
   }
-  if (!created.length) throw new Error("世界书中没有包含正文的有效条目");
-  return created;
+  if (!entries.length) throw new Error("世界书中没有包含正文的有效条目");
+  return api.importWorldBookTemplates(entries);
+}
+
+async function rollbackWorldBookTemplates(items: WorldBookTemplate[]) {
+  try {
+    await api.batchWorldBookTemplates(items.map((item) => item.id), "delete");
+  } catch {
+    // Preserve the original character-import error if cleanup also fails.
+  }
+}
+
+function boundedNumber(value: unknown, fallback: number, minimum: number, maximum: number) {
+  const parsed = Number(value);
+  return Math.max(minimum, Math.min(maximum, Number.isFinite(parsed) ? parsed : fallback));
+}
+
+function sortWorldBooks<T extends WorldBookTemplate | StoryWorldBook>(items: T[]): T[] {
+  return items.sort((left, right) => right.priority - left.priority || right.updated_at.localeCompare(left.updated_at));
 }
 
 async function readPngCharacterCard(file: File): Promise<Record<string, any>> {
@@ -548,22 +585,32 @@ async function readPngCharacterCard(file: File): Promise<Record<string, any>> {
   if (!signature.every((value, index) => bytes[index] === value)) throw new Error("这不是有效的 PNG 角色卡");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let offset = 8;
+  let legacyCard: Record<string, any> | null = null;
   while (offset + 12 <= bytes.length) {
     const length = view.getUint32(offset);
+    if (length > bytes.length - offset - 12) throw new Error("PNG 角色卡数据块不完整");
     const type = new TextDecoder().decode(bytes.slice(offset + 4, offset + 8));
     if (type === "tEXt") {
       const chunk = bytes.slice(offset + 8, offset + 8 + length);
       const zero = chunk.indexOf(0);
+      if (zero < 1) { offset += 12 + length; continue; }
       const key = new TextDecoder().decode(chunk.slice(0, zero));
-      if (key === "chara") {
+      if (key === "chara" || key === "ccv3") {
         const encoded = new TextDecoder("latin1").decode(chunk.slice(zero + 1));
-        const binary = atob(encoded);
-        const decoded = new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
-        return JSON.parse(decoded);
+        try {
+          const binary = atob(encoded);
+          const decoded = new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+          const parsed = JSON.parse(decoded) as Record<string, any>;
+          if (key === "ccv3") return parsed;
+          legacyCard = parsed;
+        } catch (reason) {
+          throw new Error(`${key} 角色卡元数据无法解析：${reason instanceof Error ? reason.message : "格式无效"}`);
+        }
       }
     }
     offset += 12 + length;
   }
+  if (legacyCard) return legacyCard;
   throw new Error("PNG 中没有找到角色卡数据");
 }
 

@@ -119,7 +119,10 @@ class TokenBudgetManager:
             "tokenizer": counter.name,
             "model": model_name,
             "sections": {
-                name: {"estimated_tokens": counter.count(text) if text else 0, "characters": len(text)}
+                name: {
+                    "estimated_tokens": counter.count(text) if text else 0,
+                    "characters": len(text),
+                }
                 for name, text in section_texts.items()
             },
         }

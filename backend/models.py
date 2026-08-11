@@ -645,6 +645,35 @@ class StateChangeRecord(Base):
     )
 
 
+class SettingChangeRecord(Base):
+    """Variant-scoped evolution event for an existing story setting field."""
+
+    __tablename__ = "setting_changes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    target_type: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
+    target_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    field: Mapped[str] = mapped_column(String(40), nullable=False)
+    base_value: Mapped[str] = mapped_column(Text, nullable=False)
+    new_value: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    importance: Mapped[str] = mapped_column(String(20), nullable=False, default="major")
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    source_message_id: Mapped[str | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    variant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("message_variants.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class AuditIssueRecord(Base):
     __tablename__ = "audit_issues"
 

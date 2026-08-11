@@ -30,6 +30,7 @@ from backend.models import (
     PersonaTemplateRecord,
     SceneNodeRecord,
     RoleplayGraphEventRecord,
+    SettingChangeRecord,
     StateChangeRecord,
     StoryCheckpointRecord,
     StoryCharacterRecord,
@@ -88,6 +89,7 @@ from backend.schemas import (
     TimelineAnchorCreate,
     TimelineAnchorRead,
     WorldBookTemplateRead,
+    WorldBookTemplateIdsRequest,
     WorldBookBatchRequest,
     WorldBookBatchResult,
     WorldBookEntryCreate,
@@ -260,6 +262,7 @@ def get_story_persona(
 def attach_persona_template(
     chat_id: UUID,
     persona_id: UUID,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> StoryPersonaRead:
     chat = _chat_or_404(db, chat_id)
@@ -268,6 +271,8 @@ def attach_persona_template(
         raise HTTPException(status_code=404, detail="主控人物不存在")
     old = db.scalar(select(StoryPersonaRecord).where(StoryPersonaRecord.chat_id == str(chat_id)))
     if old:
+        runtime: AgentRuntime = request.app.state.runtime
+        runtime.setting_evolution_service.delete_target_history(db, str(chat_id), "persona", old.id)
         db.delete(old)
     now = datetime.now(UTC)
     record = _copy_persona_to_story(template, str(chat_id), now)
@@ -286,6 +291,7 @@ def attach_persona_template(
 def update_story_persona(
     chat_id: UUID,
     payload: PersonaCreate,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> StoryPersonaRead:
     chat = _chat_or_404(db, chat_id)
@@ -298,6 +304,11 @@ def update_story_persona(
         )
         db.add(record)
     else:
+        runtime: AgentRuntime = request.app.state.runtime
+        for field in ("identity", "personality", "speaking_style", "appearance"):
+            runtime.setting_evolution_service.apply_manual_field(
+                db, str(chat_id), "persona", record.id, field, str(getattr(payload, field))
+            )
         _apply_persona(record, payload)
         record.updated_at = datetime.now(UTC)
     chat.updated_at = record.updated_at
@@ -312,6 +323,7 @@ def update_story_persona(
 )
 def delete_story_persona(
     chat_id: UUID,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
     chat = _chat_or_404(db, chat_id)
@@ -320,6 +332,8 @@ def delete_story_persona(
     )
     if not record:
         raise HTTPException(status_code=404, detail="当前故事没有主控人物")
+    runtime: AgentRuntime = request.app.state.runtime
+    runtime.setting_evolution_service.delete_target_history(db, str(chat_id), "persona", record.id)
     db.delete(record)
     chat.updated_at = datetime.now(UTC)
     db.commit()
@@ -360,6 +374,24 @@ def attach_character_template(
     now = datetime.now(UTC)
     record = _copy_character_to_story(template, str(chat_id), now)
     _attach_linked_world_books(db, str(chat_id), template.world_book_ids_json, now)
+    has_messages = db.scalar(
+        select(MessageRecord.id).where(MessageRecord.chat_id == str(chat_id)).limit(1)
+    )
+    if not has_messages and template.first_message.strip():
+        greeting = MessageRecord(
+            id=str(uuid4()), chat_id=str(chat_id), role="assistant",
+            content=template.first_message.strip(), created_at=now,
+        )
+        db.add(greeting)
+        greetings = [
+            template.first_message.strip(),
+            *_clean_string_list(json_loads(template.alternate_greetings_json) or []),
+        ]
+        for position, content in enumerate(dict.fromkeys(greetings)):
+            db.add(MessageVariantRecord(
+                id=str(uuid4()), chat_id=str(chat_id), message_id=greeting.id,
+                position=position, content=content, selected=position == 0, created_at=now,
+            ))
     chat.updated_at = now
     db.add(record)
     db.commit()
@@ -375,10 +407,16 @@ def update_story_character(
     chat_id: UUID,
     character_id: UUID,
     payload: CharacterTemplateCreate,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> StoryCharacterRead:
     chat = _chat_or_404(db, chat_id)
     record = _story_character_or_404(db, chat_id, character_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    for field in ("identity", "personality", "speaking_style", "scenario", "appearance"):
+        runtime.setting_evolution_service.apply_manual_field(
+            db, str(chat_id), "character", record.id, field, str(getattr(payload, field))
+        )
     _apply_character(record, payload)
     record.updated_at = datetime.now(UTC)
     chat.updated_at = record.updated_at
@@ -394,10 +432,14 @@ def update_story_character(
 def delete_story_character(
     chat_id: UUID,
     character_id: UUID,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
     _chat_or_404(db, chat_id)
-    db.delete(_story_character_or_404(db, chat_id, character_id))
+    record = _story_character_or_404(db, chat_id, character_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    runtime.setting_evolution_service.delete_target_history(db, str(chat_id), "character", record.id)
+    db.delete(record)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -426,6 +468,7 @@ def list_story_world_books(
 def batch_story_world_books(
     chat_id: UUID,
     payload: WorldBookBatchRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> WorldBookBatchResult:
     chat = _chat_or_404(db, chat_id)
@@ -443,7 +486,11 @@ def batch_story_world_books(
 
     now = datetime.now(UTC)
     if payload.action == "delete":
+        runtime: AgentRuntime = request.app.state.runtime
         for record in records:
+            runtime.setting_evolution_service.delete_target_history(
+                db, str(chat_id), "world_book", record.id
+            )
             db.delete(record)
     else:
         enabled = payload.action == "enable"
@@ -453,6 +500,43 @@ def batch_story_world_books(
     chat.updated_at = now
     db.commit()
     return WorldBookBatchResult(affected=len(records))
+
+@router.post(
+    "/chats/{chat_id}/world-books/from-templates",
+    response_model=list[StoryWorldBookRead],
+    status_code=status.HTTP_201_CREATED,
+    tags=["story-bindings"],
+)
+def attach_world_book_templates(
+    chat_id: UUID,
+    payload: WorldBookTemplateIdsRequest,
+    db: Session = Depends(get_db),
+) -> list[StoryWorldBookRead]:
+    chat = _chat_or_404(db, chat_id)
+    ids = list(dict.fromkeys(str(item) for item in payload.ids))
+    templates = list(db.scalars(
+        select(WorldBookTemplateRecord).where(WorldBookTemplateRecord.id.in_(ids))
+    ).all())
+    if len(templates) != len(ids):
+        raise HTTPException(status_code=404, detail="部分世界书模板不存在，请刷新后重试")
+
+    existing = set(db.scalars(
+        select(StoryWorldBookRecord.source_template_id).where(
+            StoryWorldBookRecord.chat_id == str(chat_id),
+            StoryWorldBookRecord.source_template_id.in_(ids),
+        )
+    ).all())
+    now = datetime.now(UTC)
+    records = [
+        _copy_world_to_story(template, str(chat_id), now)
+        for template in templates
+        if template.id not in existing
+    ]
+    if records:
+        db.add_all(records)
+        chat.updated_at = now
+        db.commit()
+    return [story_world_book_read(record) for record in records]
 
 @router.post(
     "/chats/{chat_id}/world-books/from-template/{template_id}",
@@ -486,10 +570,15 @@ def update_story_world_book(
     chat_id: UUID,
     entry_id: UUID,
     payload: WorldBookEntryUpdate,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> StoryWorldBookRead:
     chat = _chat_or_404(db, chat_id)
     record = _story_world_or_404(db, chat_id, entry_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    runtime.setting_evolution_service.apply_manual_field(
+        db, str(chat_id), "world_book", record.id, "content", payload.content
+    )
     _apply_world(record, payload)
     record.updated_at = datetime.now(UTC)
     chat.updated_at = record.updated_at
@@ -505,10 +594,14 @@ def update_story_world_book(
 def delete_story_world_book(
     chat_id: UUID,
     entry_id: UUID,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
     _chat_or_404(db, chat_id)
-    db.delete(_story_world_or_404(db, chat_id, entry_id))
+    record = _story_world_or_404(db, chat_id, entry_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    runtime.setting_evolution_service.delete_target_history(db, str(chat_id), "world_book", record.id)
+    db.delete(record)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -713,6 +806,18 @@ def update_message(
             change.status = ProposalStatus.REVERTED.value
             if not change.reason.startswith("源剧情已改写"):
                 change.reason = f"源剧情已改写，原修改已撤销：{change.reason}"
+        setting_changes = db.scalars(
+            select(SettingChangeRecord).where(
+                SettingChangeRecord.chat_id == str(chat_id),
+                SettingChangeRecord.source_message_id.in_(affected_sources),
+                SettingChangeRecord.status == ProposalStatus.APPROVED.value,
+            )
+        ).all()
+        for change in setting_changes:
+            change.status = ProposalStatus.REVERTED.value
+            change.resolved_at = datetime.now(UTC)
+            if not change.reason.startswith("源剧情已改写"):
+                change.reason = f"源剧情已改写，原设定修改已撤销：{change.reason}"
     record.content = payload.content.strip()
     selected_variant = db.scalar(
         select(MessageVariantRecord).where(
@@ -726,6 +831,7 @@ def update_message(
     runtime: AgentRuntime = request.app.state.runtime
     runtime.state_service.rebuild_entries(db, str(chat_id))
     runtime.graph_service.rebuild_projections(db, str(chat_id))
+    runtime.setting_evolution_service.rebuild(db, str(chat_id))
     db.refresh(record)
     return message_read(record)
 
@@ -788,6 +894,7 @@ def delete_message_and_following(
     runtime: AgentRuntime = request.app.state.runtime
     runtime.state_service.rebuild_entries(db, chat.id)
     runtime.graph_service.rebuild_projections(db, chat.id)
+    runtime.setting_evolution_service.rebuild(db, chat.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @router.get(
@@ -837,7 +944,7 @@ async def regenerate_message(
     variants = _ensure_message_variants(db, message)
     runtime: AgentRuntime = request.app.state.runtime
     try:
-        content = await runtime.generate_candidate(db, chat, user_message)
+        candidate = await runtime.generate_candidate(db, chat, user_message)
     except ModelProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     previous = next((item for item in variants if item.selected), None)
@@ -848,18 +955,20 @@ async def regenerate_message(
         chat_id=chat.id,
         message_id=message.id,
         position=len(variants),
-        content=content,
+        content=candidate.content,
         state_changes_json="[]",
         graph_events_json="[]",
         selected=True,
         created_at=datetime.now(UTC),
     )
     db.add(variant)
-    message.content = content
+    message.content = candidate.content
     chat.updated_at = variant.created_at
     db.commit()
+    runtime.record_candidate_usage(db, chat.id, message.id, variant.id, candidate)
     runtime.state_service.rebuild_entries(db, chat.id)
     runtime.graph_service.rebuild_projections(db, chat.id)
+    runtime.setting_evolution_service.rebuild(db, chat.id)
     try:
         await runtime.process_candidate(db, chat, user_message, message)
     except ModelProviderError as exc:
@@ -870,9 +979,11 @@ async def regenerate_message(
         db.commit()
         runtime.state_service.rebuild_entries(db, chat.id)
         runtime.graph_service.rebuild_projections(db, chat.id)
+        runtime.setting_evolution_service.rebuild(db, chat.id)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     runtime.state_service.rebuild_entries(db, chat.id)
     runtime.graph_service.rebuild_projections(db, chat.id)
+    runtime.setting_evolution_service.rebuild(db, chat.id)
     db.refresh(variant)
     return _message_variant_read(variant)
 
@@ -904,6 +1015,7 @@ async def select_message_variant(
     runtime: AgentRuntime = request.app.state.runtime
     runtime.state_service.rebuild_entries(db, chat.id)
     runtime.graph_service.rebuild_projections(db, chat.id)
+    runtime.setting_evolution_service.rebuild(db, chat.id)
     has_leaf = db.scalar(select(NarrativeLeafRecord.id).where(
         NarrativeLeafRecord.variant_id == selected.id
     ))
@@ -922,9 +1034,11 @@ async def select_message_variant(
             db.commit()
             runtime.state_service.rebuild_entries(db, chat.id)
             runtime.graph_service.rebuild_projections(db, chat.id)
+            runtime.setting_evolution_service.rebuild(db, chat.id)
             raise HTTPException(status_code=502, detail=str(exc)) from exc
     runtime.state_service.rebuild_entries(db, chat.id)
     runtime.graph_service.rebuild_projections(db, chat.id)
+    runtime.setting_evolution_service.rebuild(db, chat.id)
     db.refresh(message)
     return message_read(message)
 

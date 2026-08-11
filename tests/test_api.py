@@ -640,20 +640,17 @@ def test_templates_are_copied_into_isolated_story_snapshots(
 
 
 def test_world_books_support_atomic_batch_actions(client: TestClient) -> None:
-    templates = [
-        client.post(
-            "/api/world-book-templates",
-            json={
-                "title": title,
-                "content": content,
-                "enabled": False,
-            },
-        ).json()
+    imported = client.post(
+        "/api/world-book-templates/import",
+        json={"entries": [
+            {"title": title, "content": content, "enabled": False}
         for title, content in [
             ("月港规则", "月港入夜后禁止鸣笛。"),
             ("潮汐规则", "银潮升起时城门关闭。"),
-        ]
-    ]
+        ]]},
+    )
+    assert imported.status_code == 201
+    templates = imported.json()
     template_ids = [item["id"] for item in templates]
 
     enabled = client.post(
@@ -698,6 +695,13 @@ def test_world_books_support_atomic_batch_actions(client: TestClient) -> None:
     assert removed_from_story.status_code == 200
     assert removed_from_story.json() == {"affected": 2}
     assert client.get(f"/api/chats/{story['id']}/world-books").json() == []
+
+    attached = client.post(
+        f"/api/chats/{story['id']}/world-books/from-templates",
+        json={"ids": template_ids},
+    )
+    assert attached.status_code == 201
+    assert len(attached.json()) == 2
 
     removed_templates = client.post(
         "/api/world-book-templates/batch",
@@ -1013,6 +1017,24 @@ def test_persona_character_card_and_advanced_world_book_snapshots(
     assert len(variants) == 2
     assert client.delete(f"/api/chats/{story_id}/persona").status_code == 204
     assert client.get(f"/api/chats/{story_id}/persona").json() is None
+
+
+def test_attaching_character_to_empty_story_adds_card_greeting(
+    client: TestClient,
+) -> None:
+    character = client.post("/api/character-templates", json={
+        "name": "界面角色", "first_message": "[开局]\n[/开局]",
+        "alternate_greetings": ["另一个开场"],
+    }).json()
+    story_id = client.post("/api/chats", json={"title": "空故事"}).json()["id"]
+
+    attached = client.post(
+        f"/api/chats/{story_id}/characters/from-template/{character['id']}"
+    )
+
+    assert attached.status_code == 201
+    assert [item["content"] for item in client.get(f"/api/chats/{story_id}/messages").json()] == ["[开局]\n[/开局]"]
+    assert len(client.get(f"/api/chats/{story_id}/message-variants").json()) == 2
 
 
 def test_chat_turn_can_stream_ndjson_events(

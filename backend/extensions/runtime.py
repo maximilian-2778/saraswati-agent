@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
-from backend.config import DATA_ROOT
+from backend.config import DATA_ROOT, PROJECT_ROOT
 from backend.extensions.plugins import McpClient, PluginRegistry
 from backend.extensions.skills import SkillRegistry
 
@@ -17,6 +19,8 @@ class ExtensionRuntime:
 
     def __init__(self, root: Path | None = None) -> None:
         self.root = root or DATA_ROOT / "extensions"
+        if root is None:
+            _install_bundled_plugins(self.root)
         state_file = self.root / "state.json"
         self.skills = SkillRegistry(self.root / "skills", state_file)
         self.plugins = PluginRegistry(self.root / "plugins", state_file)
@@ -190,3 +194,39 @@ def _public_tool_name(plugin_id: str, remote_name: str, server_id: str = "") -> 
 def _optional(value: Any) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
+
+
+def _install_bundled_plugins(extension_root: Path) -> None:
+    """Install each bundled plugin once while preserving later user archive decisions."""
+    source_root = PROJECT_ROOT / "bundled_plugins"
+    if not source_root.is_dir():
+        return
+    plugin_root = extension_root / "plugins"
+    marker_path = extension_root / ".bundled-plugins.json"
+    try:
+        installed = set(json.loads(marker_path.read_text(encoding="utf-8"))) if marker_path.is_file() else set()
+    except (OSError, json.JSONDecodeError, TypeError):
+        installed = set()
+    changed = False
+    for source in sorted(item for item in source_root.iterdir() if item.is_dir()):
+        destination = plugin_root / source.name
+        if not destination.exists():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(source, destination)
+        elif _bundled_plugin_version(source) != _bundled_plugin_version(destination):
+            shutil.copytree(source, destination, dirs_exist_ok=True)
+        elif source.name in installed:
+            continue
+        installed.add(source.name)
+        changed = True
+    if changed:
+        extension_root.mkdir(parents=True, exist_ok=True)
+        marker_path.write_text(json.dumps(sorted(installed), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _bundled_plugin_version(root: Path) -> str:
+    manifest = root / ".saraswati-plugin" / "plugin.json"
+    try:
+        return str(json.loads(manifest.read_text(encoding="utf-8")).get("version") or "")
+    except (OSError, json.JSONDecodeError, TypeError):
+        return ""

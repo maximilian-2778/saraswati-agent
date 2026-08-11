@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { AvatarPicker } from "./Avatar";
 import { HelpTip } from "./HelpTip";
+import { TokenDonut } from "./TokenUsage";
+import type { TokenSlice } from "./TokenUsage";
 import { DEFAULT_UI_PREFERENCES } from "../hooks/useUiPreferences";
 import type { ThemeName, UiPreferences } from "../hooks/useUiPreferences";
 import type { AppSettings, RuntimeInfo, SettingsUpdate } from "../types";
 
-type SettingsTab = "model" | "generation" | "agent" | "appearance";
+type SettingsTab = "model" | "generation" | "agent" | "token" | "appearance";
 
 export function SettingsModal({
   preferences,
@@ -123,11 +125,13 @@ export function SettingsModal({
     { id: "model", label: "模型 API" },
     { id: "generation", label: "生成参数" },
     { id: "agent", label: "对话与记忆" },
+    { id: "token", label: "Token 管理" },
     { id: "appearance", label: "界面与隐私" },
   ];
   const weightTotal = form
     ? form.vector_weight + form.keyword_weight + form.importance_weight + form.recency_weight
     : 0;
+  const tokenBudgetValid = Boolean(form && form.max_output_tokens < form.context_window_tokens);
 
   return (
     <div className="settings-backdrop" onMouseDown={(event) => {
@@ -161,10 +165,6 @@ export function SettingsModal({
                   <label className="settings-field"><span>Embedding 模型 <HelpTip text="把长期记忆转换为向量，用于按语义寻找旧剧情。留空时使用本地哈希向量，效果较弱但无需额外接口。" /></span><input value={form.embedding_model ?? ""} onChange={(e) => updateField("embedding_model", e.target.value || null)} placeholder="可选" /></label>
                 </div>
                 <NumberSetting label="请求超时" note="单次模型请求最多等待多少秒。大型模型或网络较慢时可以提高；超时后本轮会报错，不会无限等待。" value={form.request_timeout} min={5} max={600} step={5} onChange={(value) => updateField("request_timeout", value)} />
-                <div className="settings-grid">
-                  <NumberSetting label="输入单价" note="服务商对输入内容的价格，单位为美元/百万 Token。只用于本地费用估算，填 0 表示不计算。" value={form.input_price_per_million} min={0} max={10000} step={0.01} onChange={(value) => updateField("input_price_per_million", value)} compact />
-                  <NumberSetting label="输出单价" note="服务商对模型回复的价格，单位为美元/百万 Token。只用于本地费用估算，填 0 表示不计算。" value={form.output_price_per_million} min={0} max={10000} step={0.01} onChange={(value) => updateField("output_price_per_million", value)} compact />
-                </div>
                 <div className={`connection-state ${current.provider_mode === "unconfigured" ? "unconfigured" : "configured"}`}><span className="status-dot" /><div><strong>{current.provider_mode === "unconfigured" ? "尚未连接模型 API" : "模型 API 已配置"}</strong><small>{current.provider_mode === "unconfigured" ? "填写地址、Key 和模型名后保存并测试" : current.llm_model}</small></div></div>
               </div>
             ) : activeTab === "generation" ? (
@@ -172,7 +172,6 @@ export function SettingsModal({
                 <SettingsHeading title="生成参数" />
                 <NumberSetting label="温度 Temperature" note="控制随机性。数值越高，表达越活跃但越容易偏离设定；数值越低，回复更稳定但可能单调。角色扮演通常从 0.7～1.0 开始。" value={form.temperature} min={0} max={2} step={0.05} onChange={(value) => updateField("temperature", value)} />
                 <NumberSetting label="Top-P" note="控制模型可选择的候选词范围。越低越保守，通常保持 1；一般只重点调整温度或 Top-P 中的一项。" value={form.top_p} min={0.05} max={1} step={0.05} onChange={(value) => updateField("top_p", value)} />
-                <NumberSetting label="最大输出 Token" note="单次回复允许生成的最大长度。它是上限而不是固定消耗；设得过低可能截断回复，过高会增加最坏情况下的费用。" value={form.max_output_tokens} min={64} max={32768} step={64} onChange={(value) => updateField("max_output_tokens", Math.round(value))} />
                 <NumberSetting label="Presence Penalty" note="根据某个词是否已经出现来施加惩罚。正值鼓励引入新内容，过高可能让剧情频繁跳题；0 表示不额外干预。" value={form.presence_penalty} min={-2} max={2} step={0.1} onChange={(value) => updateField("presence_penalty", value)} />
                 <NumberSetting label="Frequency Penalty" note="根据词语已经出现的次数施加惩罚。正值可减少重复措辞，过高会破坏自然表达；0 表示不额外干预。" value={form.frequency_penalty} min={-2} max={2} step={0.1} onChange={(value) => updateField("frequency_penalty", value)} />
               </div>
@@ -180,8 +179,6 @@ export function SettingsModal({
               <div className="settings-section">
                 <SettingsHeading title="对话与记忆" detail="" />
                 <NumberSetting label="最大处理步数" note="一轮对话中模型和工具最多往返多少次。步数越高，复杂任务更容易完成，但可能增加延迟和费用；普通对话通常 4 步足够。" value={form.max_agent_steps} min={1} max={12} step={1} onChange={(value) => updateField("max_agent_steps", Math.round(value))} />
-                <NumberSetting label="近期原文条数" note="每轮直接发送给模型的最近消息数量。增加后短期连贯性更好，但会占用更多上下文；更早内容由摘要和 RAG 补充。" value={form.recent_message_limit} min={2} max={100} step={2} onChange={(value) => updateField("recent_message_limit", Math.round(value))} />
-                <NumberSetting label="相关回忆数量" note="RAG 每轮最多召回多少条旧记忆。太少可能漏掉前情，太多会混入无关细节并增加 Token 消耗。" value={form.rag_limit} min={1} max={30} step={1} onChange={(value) => updateField("rag_limit", Math.round(value))} />
                 <div className="subsection-title"><strong>自动记忆整理 <HelpTip text="把每轮剧情压缩成楼层摘要，再按数量合并为章节和篇章总结，用于超长故事的长期记忆。" /></strong></div>
                 <label className="check-row"><input type="checkbox" checked={form.auto_summary_enabled} onChange={(e) => updateField("auto_summary_enabled", e.target.checked)} /><span><strong>启用自动摘要 <HelpTip text="角色回复完成后额外调用模型整理本轮变化。关闭后不会自动产生新的剧情摘要，但已有记忆仍会保留。" /></strong></span></label>
                 <label className="settings-field"><span>默认摘要模式 <HelpTip text="精简模式保留主要事件，消耗较低；详细模式会记录更多人物、物品和情节细节，也会使用更多 Token。" /></span><select value={form.summary_detail_mode} onChange={(e) => updateField("summary_detail_mode", e.target.value as "brief" | "detailed")}><option value="brief">精简</option><option value="detailed">详细</option></select></label>
@@ -199,8 +196,9 @@ export function SettingsModal({
                 <div className="settings-grid"><label className="settings-field"><span>Rerank 模型 <HelpTip text="服务商提供的重排序模型 ID。只有地址、模型和密钥都配置完整时才会启用。" /></span><input value={form.rerank_model ?? ""} onChange={(e) => updateField("rerank_model", e.target.value || null)} placeholder="reranker-model" /></label><label className="settings-field"><span>Rerank API Key <HelpTip text="访问 Reranker 服务的密钥，可以和对话模型的 API Key 不同。" /></span><small>{current.rerank_api_key_configured ? `已保存：${current.rerank_api_key_hint}；留空保持不变` : "尚未配置"}</small><input type="password" value={rerankApiKey} onChange={(e) => { setRerankApiKey(e.target.value); if (e.target.value) updateField("clear_rerank_api_key", false); }} placeholder="可与对话模型使用不同密钥" /></label></div>
                 {current.rerank_api_key_configured && <label className="check-row danger-check"><input type="checkbox" checked={form.clear_rerank_api_key} onChange={(e) => updateField("clear_rerank_api_key", e.target.checked)} /><span>保存时删除 Rerank API Key</span></label>}
                 <NumberSetting label="精排候选数" note="本地初筛后送给 Reranker 的记忆数量。提高可能改善漏召回，但会增加请求体和精排费用。" value={form.rerank_candidates} min={2} max={100} step={1} onChange={(value) => updateField("rerank_candidates", Math.round(value))} />
-                <NumberSetting label="上下文窗口" note="所用模型支持的总 Token 上限，必须与服务商规格一致。系统会先预留最大输出 Token，再用剩余空间装入角色、世界书、记忆和对话。" value={form.context_window_tokens} min={4096} max={2000000} step={1024} onChange={(value) => updateField("context_window_tokens", Math.round(value))} />
               </div>
+            ) : activeTab === "token" ? (
+              <TokenBudgetSettings form={form} updateField={updateField} />
             ) : (
               <div className="settings-section">
                 <SettingsHeading title="界面" />
@@ -217,8 +215,8 @@ export function SettingsModal({
         </div>
         {notice && <div className={`settings-notice ${notice.kind}`}>{notice.text}</div>}
         <footer className="settings-footer">
-          <button className="secondary-button" onClick={testConnection} disabled={!form || busy || weightTotal <= 0}>{busy ? "处理中…" : "保存并测试连接"}</button>
-          <div><button className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" onClick={() => void saveSettings()} disabled={!form || busy || weightTotal <= 0}>{busy ? "保存中…" : "保存并应用"}</button></div>
+          <button className="secondary-button" onClick={testConnection} disabled={!form || busy || weightTotal <= 0 || !tokenBudgetValid}>{busy ? "处理中…" : "保存并测试连接"}</button>
+          <div><button className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" onClick={() => void saveSettings()} disabled={!form || busy || weightTotal <= 0 || !tokenBudgetValid}>{busy ? "保存中…" : "保存并应用"}</button></div>
         </footer>
       </section>
     </div>
@@ -227,6 +225,49 @@ export function SettingsModal({
 
 function SettingsHeading({ title, detail }: { title: string; detail?: string }) {
   return <div className="settings-heading"><h3>{title}</h3>{detail && <p>{detail}</p>}</div>;
+}
+
+function TokenBudgetSettings({ form, updateField }: {
+  form: SettingsUpdate;
+  updateField: <K extends keyof SettingsUpdate>(key: K, value: SettingsUpdate[K]) => void;
+}) {
+  const inputCapacity = Math.max(0, form.context_window_tokens - form.max_output_tokens);
+  const slices: TokenSlice[] = [
+    { key: "input", label: "输入上下文", tokens: inputCapacity, color: "var(--token-history)" },
+    { key: "output", label: "输出预留", tokens: form.max_output_tokens, color: "var(--token-output)" },
+  ];
+  return <div className="settings-section token-budget-settings">
+    <SettingsHeading title="Token 管理" detail="集中调整上下文容量、输出预留和影响上下文规模的选项。" />
+    <div className="token-budget-hero">
+      <TokenDonut slices={slices} center={<><strong>{compactBudget(form.context_window_tokens)}</strong><small>模型上下文</small></>} className="budget-donut" />
+      <div className="token-budget-summary">
+        <p><span>可用输入预算</span><strong>{inputCapacity.toLocaleString()}</strong></p>
+        <p><span>最大输出预留</span><strong>{form.max_output_tokens.toLocaleString()}</strong></p>
+        <p><span>输出占上下文</span><strong>{(form.max_output_tokens / Math.max(1, form.context_window_tokens) * 100).toFixed(1)}%</strong></p>
+        <small>输入空间由预设、角色、世界书、记忆和对话动态共享，实际占比会显示在每条 AI 回复旁。</small>
+      </div>
+    </div>
+    <div className="token-context-presets" aria-label="上下文窗口快捷设置">
+      {[32768, 65536, 131072, 200000].map((value) => <button type="button" key={value} className={form.context_window_tokens === value ? "active" : ""} onClick={() => updateField("context_window_tokens", value)}>{compactBudget(value)}</button>)}
+    </div>
+    <NumberSetting label="上下文窗口" note="必须与模型服务商公布的上下文上限一致。" value={form.context_window_tokens} min={4096} max={2000000} step={1024} onChange={(value) => updateField("context_window_tokens", Math.round(value))} />
+    <NumberSetting label="最大输出 Token" note="从总上下文中提前保留给本次回答的最大空间。" value={form.max_output_tokens} min={64} max={32768} step={64} onChange={(value) => updateField("max_output_tokens", Math.round(value))} />
+    {form.max_output_tokens >= form.context_window_tokens && <p className="field-error">最大输出必须小于模型上下文窗口。</p>}
+    <div className="subsection-title"><strong>动态上下文规模</strong><small>修改后立即影响下一轮生成</small></div>
+    <div className="settings-grid">
+      <NumberSetting label="近期原文条数" note="直接保留在 Prompt 中的最近消息数量。" value={form.recent_message_limit} min={2} max={100} step={2} onChange={(value) => updateField("recent_message_limit", Math.round(value))} compact />
+      <NumberSetting label="RAG 召回数量" note="每轮最多加入多少条相关长期记忆。" value={form.rag_limit} min={1} max={30} step={1} onChange={(value) => updateField("rag_limit", Math.round(value))} compact />
+    </div>
+    <div className="subsection-title"><strong>费用估算</strong><small>美元／百万 Token</small></div>
+    <div className="settings-grid">
+      <NumberSetting label="输入单价" value={form.input_price_per_million} min={0} max={10000} step={0.01} onChange={(value) => updateField("input_price_per_million", value)} compact />
+      <NumberSetting label="输出单价" value={form.output_price_per_million} min={0} max={10000} step={0.01} onChange={(value) => updateField("output_price_per_million", value)} compact />
+    </div>
+  </div>;
+}
+
+function compactBudget(value: number) {
+  return value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}M` : `${Math.round(value / 1024)}K`;
 }
 
 function NumberSetting({ label, note, value, min, max, step, onChange, compact = false }: {

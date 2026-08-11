@@ -2,6 +2,24 @@
 
 All notable changes to Saraswati Agent are documented in this file.
 
+## [1.4.0] - 2026-08-11
+
+### Added
+
+- Added controlled story-setting evolution for character, persona, and world-book copies, with evidence, review, undo, and branch-aware rebuilding.
+- Added frontend plugin support and a bundled Tavern Card compatibility plugin.
+- Added visible token usage, context-budget details, and improved prompt diagnostics.
+
+### Changed
+
+- Story-derived records now follow the selected reply candidate, keeping regenerated replies and branches consistent.
+- Expanded world-book batch management and compatibility with large SillyTavern presets and character cards.
+
+### Fixed
+
+- Fixed stale summaries, events, state, scene, and NPC projections after switching or rewriting replies.
+- Fixed several world-book, extension, message, settings, and sidebar interface issues.
+
 ## [1.3.1] - 2026-08-11
 
 ### Added

@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>酒馆角色卡前端兼容器</title>
+  <style>html,body{margin:0;background:transparent}body{min-height:1px}</style>
+</head>
+<body>
+<script>
+(() => {
+  const channel = 'saraswati.plugin.v1';
+  let sequence = 0;
+  const pending = new Map();
+
+  window.addEventListener('message', event => {
+    const packet = event.data;
+    if (packet?.channel === channel && packet.type === 'response' && pending.has(packet.id)) {
+      const task = pending.get(packet.id);
+      pending.delete(packet.id);
+      return packet.ok ? task.resolve(packet.result) : task.reject(new Error(packet.error || '宿主请求失败'));
+    }
+    if (!packet || packet.channel !== channel || packet.type !== 'event' || packet.event !== 'host.message') return;
+    void renderMessage(packet.payload);
+  });
+
+  function request(method, params = {}) {
+    const id = `card-renderer-${++sequence}`;
+    parent.postMessage({ channel, type: 'request', id, method, params }, '*');
+    return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+  }
+
+  async function renderMessage(payload) {
+    const message = payload?.message;
+    if (!message || typeof message.content !== 'string') return void request('surface.setRendered', { rendered: false });
+    const card = payload?.character?.compatibility_data?.original_card || {};
+    const data = card.data || card;
+    const extensions = data.extensions || card.extensions || {};
+    const context = { message, character: payload.character, card: data };
+    let output = applyDisplayRegex(message.content, extensions.regex_scripts, message.depth, context);
+    output = substituteMacros(output, context);
+    let frontend = extractFrontend(output);
+    if (!frontend) frontend = recoverTaggedFrontend(message.content, extensions.regex_scripts, message.depth, context);
+    if (!frontend) return void request('surface.setRendered', { rendered: false });
+
+    void request('surface.setRendered', { rendered: true, height: 180 });
+    let messages = [];
+    try { messages = await request('chat.listMessages'); } catch (_) { messages = [message]; }
+    const currentIndex = messages.findIndex(item => item.id === message.id);
+    let storedVariables = {};
+    try { storedVariables = await request('variables.getAll', { messageId: message.id }); } catch (_) {}
+    const variables = buildVariableState(messages.slice(0, currentIndex < 0 ? messages.length : currentIndex + 1), storedVariables);
+    const documentHtml = installBridge(frontend, { ...context, chatId: payload.chatId }, variables);
+    document.open();
+    document.write(documentHtml);
+    document.close();
+  }
+
+  function buildVariableState(messages, seed = {}) {
+    const state = seed && typeof seed === 'object' ? structuredClone(seed) : {};
+    for (const item of Array.isArray(messages) ? messages : []) {
+      for (const operation of extractJsonPatchOperations(String(item?.content ?? ''))) applyPatch(state, operation);
+    }
+    return state;
+  }
+
+  function extractJsonPatchOperations(source) {
+    const operations = [];
+    for (const marker of source.matchAll(/<JSONPatch>/gi)) {
+      let depth = 0, start = -1, quoted = false, escaped = false;
+      for (let index = marker.index + marker[0].length; index < source.length; index++) {
+        const char = source[index];
+        if (quoted) {
+          if (escaped) escaped = false;
+          else if (char === '\\') escaped = true;
+          else if (char === '"') quoted = false;
+          continue;
+        }
+        if (char === '"') { quoted = true; continue; }
+        if (char === '{') { if (depth === 0) start = index; depth++; }
+        else if (char === '}' && depth > 0) {
+          depth--;
+          if (depth === 0 && start >= 0) {
+            try { operations.push(JSON.parse(source.slice(start, index + 1))); } catch (_) {}
+            start = -1;
+          }
+        } else if (char === '<' && depth === 0 && source.slice(index).match(/^<\/JSONPatch>/i)) break;
+      }
+    }
+    return operations;
+  }
+
+  function applyPatch(root, operation) {
+    if (!operation || typeof operation.path !== 'string') return;
+    const parts = operation.path.split('/').slice(1).map(part => part.replace(/~1/g, '/').replace(/~0/g, '~'));
+    if (!parts.length) return;
+    let target = root;
+    for (const part of parts.slice(0, -1)) {
+      if (!target[part] || typeof target[part] !== 'object') target[part] = {};
+      target = target[part];
+    }
+    const key = parts.at(-1);
+    if (operation.op === 'remove') delete target[key];
+    else if (operation.op === 'add' || operation.op === 'replace') target[key] = operation.value;
+  }
+
+  function applyDisplayRegex(source, scripts, depth, context) {
+    if (!Array.isArray(scripts)) return source;
+    return scripts.reduce((text, script) => {
+      if (!script || script.disabled || script.enabled === false) return text;
+      const placement = Array.isArray(script.placement) ? script.placement.map(Number) : [];
+      const displayRule = Boolean(script.markdownOnly ?? script.destination?.display) || placement.includes(0);
+      if (!displayRule || (!placement.includes(2) && !placement.includes(0) && !script.source?.ai_output)) return text;
+      const minDepth = numberOrNull(script.minDepth ?? script.min_depth);
+      const maxDepth = numberOrNull(script.maxDepth ?? script.max_depth);
+      if (minDepth !== null && minDepth >= -1 && depth < minDepth) return text;
+      if (maxDepth !== null && maxDepth >= 0 && depth > maxDepth) return text;
+      const find = script.findRegex ?? script.find_regex;
+      const replacement = script.replaceString ?? script.replace_string ?? '';
+      if (!find) return text;
+      try {
+        const regex = parseRegex(String(find));
+        const trimStrings = Array.isArray(script.trimStrings ?? script.trim_strings) ? (script.trimStrings ?? script.trim_strings) : [];
+        return text.replace(regex, (...args) => expandReplacement(String(replacement), args, trimStrings, context));
+      } catch (error) {
+        console.warn(`[Saraswati] 跳过无效酒馆正则 ${script.scriptName || script.script_name || ''}`, error);
+        return text;
+      }
+    }, source);
+  }
+
+  function parseRegex(value) {
+    if (!value.startsWith('/')) return new RegExp(value, 'g');
+    let slash = value.length - 1;
+    while (slash > 0) {
+      if (value[slash] === '/' && value[slash - 1] !== '\\') break;
+      slash--;
+    }
+    if (slash <= 0) return new RegExp(value, 'g');
+    const flags = value.slice(slash + 1).replace(/[^dgimsuvy]/g, '');
+    return new RegExp(value.slice(1, slash), flags);
+  }
+
+  function expandReplacement(template, args, trimStrings, context) {
+    const match = String(args[0] ?? '');
+    const maybeGroups = args.at(-1);
+    const groups = maybeGroups && typeof maybeGroups === 'object' ? maybeGroups : {};
+    const capturesEnd = maybeGroups && typeof maybeGroups === 'object' ? -3 : -2;
+    const captures = args.slice(1, capturesEnd);
+    const clean = value => trimStrings.reduce((text, item) => text.split(substituteMacros(String(item), context)).join(''), String(value ?? ''));
+    const expanded = template.replace(/\{\{match\}\}|\$&|\$(\d+)|\$<([^>]+)>|\$\$/gi, (token, number, name) => {
+      if (token === '$$') return '$';
+      if (/^\{\{match\}\}$/i.test(token) || token === '$&') return clean(match);
+      if (number) return clean(captures[Number(number) - 1]);
+      if (name) return clean(groups[name]);
+      return token;
+    });
+    return substituteMacros(expanded, context);
+  }
+
+  function substituteMacros(value, context) {
+    const characterName = context.character?.name || context.card?.name || '角色';
+    return String(value)
+      .replace(/\{\{char\}\}/gi, characterName)
+      .replace(/\{\{user\}\}/gi, '你')
+      .replace(/\{\{lastMessageId\}\}/gi, context.message?.id || '');
+  }
+
+  function recoverTaggedFrontend(source, scripts, depth, context) {
+    if (!Array.isArray(scripts)) return null;
+    const narrative = String(source)
+      .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .split(/<UpdateVariable>/i)[0]
+      .trim();
+    if (!narrative) return null;
+    for (const script of scripts) {
+      if (!script || script.disabled || script.enabled === false) continue;
+      const replacement = String(script.replaceString ?? script.replace_string ?? '');
+      const name = String(script.scriptName ?? script.script_name ?? '');
+      if (!/前端/.test(name) && !/<!doctype\s+html|<html[\s>]/i.test(replacement)) continue;
+      const find = String(script.findRegex ?? script.find_regex ?? '')
+        .replace(/\\</g, '<').replace(/\\>/g, '>').replace(/\\\//g, '/');
+      const tag = find.match(/<([a-z][\w:-]*)>/i)?.[1];
+      if (!tag || !find.toLowerCase().includes(`</${tag.toLowerCase()}>`)) continue;
+      const recovered = substituteMacros(
+        applyDisplayRegex(`<${tag}>${narrative}</${tag}>`, scripts, depth, context),
+        context,
+      );
+      const frontend = extractFrontend(recovered);
+      if (frontend) return frontend;
+    }
+    return null;
+  }
+
+  function extractFrontend(source) {
+    const blocks = [];
+    const withoutBlocks = source.replace(/```([^\r\n`]*)\r?\n([\s\S]*?)```/gi, (whole, language, html) => {
+      if (!/^(?:html|frontend)?\s*$/i.test(language) || !/<!doctype\s+html|<html[\s>]|<style[\s>]|<script[\s>]/i.test(html)) return whole;
+      blocks.push(html.trim());
+      return '';
+    });
+    if (!blocks.length && /<!doctype\s+html|<html[\s>]/i.test(source)) return source.trim();
+    if (!blocks.length) return null;
+    const narrative = withoutBlocks.trim();
+    if (blocks.length === 1 && /<!doctype\s+html|<html[\s>]/i.test(blocks[0])) return blocks[0];
+    return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${narrative ? `<div class="saraswati-card-narrative">${escapeHtml(narrative).replace(/\n/g, '<br>')}</div>` : ''}${blocks.join('\n')}</body></html>`;
+  }
+
+  function installBridge(html, context, variables) {
+    const safeContext = JSON.stringify({
+      message: context.message,
+      character: context.character,
+      card: context.card,
+      chatId: context.chatId,
+    }).replace(/</g, '\\u003c');
+    const safeVariables = JSON.stringify(variables ?? {}).replace(/</g, '\\u003c');
+    const bridge = `<script>(${cardBridgeRuntime.toString()})(${safeContext},${safeVariables});<\/script>`;
+    if (/<head[\s>]/i.test(html)) return html.replace(/<head([^>]*)>/i, `<head$1>${bridge}`);
+    return `<!doctype html><html><head><meta charset="utf-8">${bridge}</head><body>${html}</body></html>`;
+  }
+
+  function cardBridgeRuntime(localContext, initialVariables) {
+    const channel = 'saraswati.plugin.v1';
+    let sequence = 0;
+    const pending = new Map();
+    let mvuData = { stat_data: initialVariables && typeof initialVariables === 'object' ? initialVariables : {} };
+    const clone = value => typeof structuredClone === 'function' ? structuredClone(value) : JSON.parse(JSON.stringify(value));
+    window.addEventListener('message', event => {
+      const data = event.data;
+      if (!data || data.channel !== channel || data.type !== 'response' || !pending.has(data.id)) return;
+      const task = pending.get(data.id); pending.delete(data.id);
+      data.ok ? task.resolve(data.result) : task.reject(new Error(data.error));
+    });
+    function rpc(method, params = {}) {
+      const id = `card-api-${++sequence}`;
+      parent.postMessage({ channel, type: 'request', id, method, params }, '*');
+      return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+    }
+    function getPath(object, path, fallback) {
+      const parts = Array.isArray(path) ? path : String(path).replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
+      let value = object;
+      for (const part of parts) { if (value == null || !(part in Object(value))) return fallback; value = value[part]; }
+      return value === undefined ? fallback : value;
+    }
+    function setPath(object, path, value) {
+      const parts = Array.isArray(path) ? path : String(path).split('.').filter(Boolean);
+      let target = object;
+      for (const part of parts.slice(0, -1)) target = target[part] ??= {};
+      if (parts.length) target[parts.at(-1)] = value;
+      return object;
+    }
+    const mergeObjects = (target, ...sources) => { for (const source of sources) { if (!source || typeof source !== 'object') continue; for (const [key, value] of Object.entries(source)) target[key] = value && typeof value === 'object' && !Array.isArray(value) ? mergeObjects(target[key] && typeof target[key] === 'object' ? target[key] : {}, value) : clone(value); } return target; };
+    window._ = {
+      get: getPath, set: setPath, cloneDeep: clone, assign: Object.assign, merge: mergeObjects,
+      has: (object, path) => getPath(object, path, Symbol.for('missing')) !== Symbol.for('missing'),
+      unset: (object, path) => { const parts = Array.isArray(path) ? path : String(path).split('.'); let target = object; for (const part of parts.slice(0, -1)) target = target?.[part]; return Boolean(target && delete target[parts.at(-1)]); },
+      clamp: (number, lower, upper) => Math.min(Number(upper), Math.max(Number(lower), Number(number))),
+      includes: (collection, value) => Array.isArray(collection) || typeof collection === 'string' ? collection.includes(value) : Object.values(collection ?? {}).includes(value),
+      range: (start, end) => { if (end === undefined) { end = start; start = 0; } return Array.from({ length: Math.max(0, end - start) }, (_, index) => start + index); },
+      map: (collection, iteratee) => Object.entries(collection ?? {}).map(([key, value]) => iteratee(value, key)),
+      filter: (collection, predicate) => Object.values(collection ?? {}).filter(predicate),
+      find: (collection, predicate) => Object.values(collection ?? {}).find(predicate),
+      pick: (object, keys) => Object.fromEntries(keys.filter(key => key in (object ?? {})).map(key => [key, object[key]])),
+      omit: (object, keys) => Object.fromEntries(Object.entries(object ?? {}).filter(([key]) => !keys.includes(key))),
+      isArray: Array.isArray, isPlainObject: value => Boolean(value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype),
+      times: (count, iteratee) => Array.from({ length: count }, (_, index) => iteratee(index)), constant: value => () => value,
+      inRange: (number, start, end) => number >= start && number < end,
+    };
+
+    function MiniQuery(input) {
+      if (!(this instanceof MiniQuery)) return new MiniQuery(input);
+      if (input instanceof MiniQuery) return input;
+      if (typeof input === 'string' && input.trim().startsWith('<')) {
+        const template = document.createElement('template'); template.innerHTML = input.trim(); this.nodes = [...template.content.childNodes];
+      } else if (typeof input === 'string') this.nodes = [...document.querySelectorAll(input)];
+      else if (input && typeof input.length === 'number' && !input.nodeType && input !== window) this.nodes = [...input];
+      else this.nodes = input ? [input] : [];
+      this.length = this.nodes.length; this.nodes.forEach((node, index) => { this[index] = node; });
+    }
+    const q = MiniQuery.prototype;
+    q.each = function(callback) { this.nodes.forEach((node, index) => callback.call(node, index, node)); return this; };
+    q.text = function(value) { if (value === undefined) return this.nodes[0]?.textContent ?? ''; return this.each(function() { this.textContent = value; }); };
+    q.html = function(value) { if (value === undefined) return this.nodes[0]?.innerHTML ?? ''; return this.each(function() { this.innerHTML = value; }); };
+    q.val = function(value) { if (value === undefined) return this.nodes[0]?.value; return this.each(function() { this.value = value; }); };
+    q.show = function() { return this.each(function() { this.style.display = ''; }); };
+    q.hide = function() { return this.each(function() { this.style.display = 'none'; }); };
+    q.addClass = function(value) { const names = String(value).split(/\s+/).filter(Boolean); return this.each(function() { this.classList.add(...names); }); };
+    q.removeClass = function(value) { const names = String(value).split(/\s+/).filter(Boolean); return this.each(function() { this.classList.remove(...names); }); };
+    q.toggleClass = function(value) { return this.each(function() { this.classList.toggle(value); }); };
+    q.hasClass = function(value) { return Boolean(this.nodes[0]?.classList.contains(value)); };
+    q.on = function(events, handler) { const names = String(events).split(/\s+/).filter(Boolean); return this.each(function() { names.forEach(name => this.addEventListener(name, handler)); }); };
+    q.off = function(events, handler) { const names = String(events).split(/\s+/).filter(Boolean); return this.each(function() { names.forEach(name => this.removeEventListener(name, handler)); }); };
+    q.css = function(name, value) { if (typeof name === 'object') return this.each(function() { Object.assign(this.style, name); }); if (value === undefined) return this.nodes[0] ? getComputedStyle(this.nodes[0])[name] : undefined; return this.each(function() { this.style[name] = value; }); };
+    q.attr = function(name, value) { if (value === undefined) return this.nodes[0]?.getAttribute?.(name); return this.each(function() { this.setAttribute(name, value); }); };
+    q.prop = function(name, value) { if (value === undefined) return this.nodes[0]?.[name]; return this.each(function() { this[name] = value; }); };
+    q.empty = function() { return this.each(function() { this.replaceChildren(); }); };
+    q.focus = function() { this.nodes[0]?.focus(); return this; };
+    q.remove = function() { return this.each(function() { this.remove(); }); };
+    q.append = function(value) { const items = value instanceof MiniQuery ? value.nodes : (typeof value === 'string' ? MiniQuery(value).nodes : [value]); return this.each(function() { for (const item of items) if (item) this.append(item); }); };
+    q.before = function(value) { return this.each(function() { if (typeof value === 'string') this.insertAdjacentHTML('beforebegin', value); else if (value) this.before(value); }); };
+    q.scrollTop = function(value) { if (value === undefined) return this.nodes[0]?.scrollTop ?? 0; return this.each(function() { this.scrollTop = value; }); };
+    q.data = function(name) { const node = this.nodes[0]; return node?.dataset?.[name] ?? node?.getAttribute?.(`data-${name}`); };
+    q.first = function() { return MiniQuery(this.nodes[0]); };
+    q.next = function(selector) { const node = this.nodes[0]?.nextElementSibling; return MiniQuery(node && (!selector || node.matches(selector)) ? node : null); };
+    q.find = function(selector) { return MiniQuery(this.nodes.flatMap(node => [...(node.querySelectorAll?.(selector) ?? [])])); };
+    q.filter = function(value) { return MiniQuery(typeof value === 'function' ? this.nodes.filter((node, index) => value.call(node, index, node)) : this.nodes.filter(node => node.matches?.(value))); };
+    q.map = function(callback) { return MiniQuery(this.nodes.map((node, index) => callback.call(node, index, node)).filter(value => value != null)); };
+    q.parent = function(selector) { const nodes = this.nodes.map(node => node.parentElement).filter(node => node && (!selector || node.matches(selector))); return MiniQuery([...new Set(nodes)]); };
+    q.closest = function(selector) { return MiniQuery([...new Set(this.nodes.map(node => node.closest?.(selector)).filter(Boolean))]); };
+    q.wrap = function(html) { return this.each(function() { const wrapper = MiniQuery(html).nodes[0]; if (!wrapper || !this.parentNode) return; this.parentNode.insertBefore(wrapper, this); wrapper.append(this); }); };
+    q.eq = function(index) { return MiniQuery(this.nodes.at(index)); };
+    q.get = function(index) { return index === undefined ? [...this.nodes] : this.nodes.at(index); };
+    q.toArray = function() { return [...this.nodes]; };
+    q.is = function(selector) { return Boolean(this.nodes[0]?.matches?.(selector)); };
+    q.toggle = function(value) { return this.each(function() { this.style.display = value === undefined ? (this.style.display === 'none' ? '' : 'none') : (value ? '' : 'none'); }); };
+    q.ready = function(callback) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', callback, { once: true }); else queueMicrotask(callback); return this; };
+    window.$ = window.jQuery = MiniQuery;
+
+    const memoryStorage = new Map();
+    const storageShim = { getItem: key => memoryStorage.has(String(key)) ? memoryStorage.get(String(key)) : null, setItem: (key, value) => memoryStorage.set(String(key), String(value)), removeItem: key => memoryStorage.delete(String(key)), clear: () => memoryStorage.clear(), key: index => [...memoryStorage.keys()][index] ?? null, get length() { return memoryStorage.size; } };
+    try { void window.localStorage.length; } catch (_) { try { Object.defineProperty(window, 'localStorage', { value: storageShim }); } catch (_) {} }
+
+    const eventTarget = new EventTarget();
+    const initializedGlobals = new Map();
+    const notifyVariables = () => { window.dispatchEvent(new Event('mvu:variablesUpdated')); eventEmit('variables_updated', clone(mvuData.stat_data)); };
+    function normalizeVariableOption(option = { type: 'chat' }) { return typeof option === 'string' ? { type: option } : (option || { type: 'chat' }); }
+    function persistVariables(value, option = { type: 'chat' }) {
+      const normalized = normalizeVariableOption(option);
+      void rpc('variables.set', { type: normalized.type || 'chat', messageId: normalized.message_id, value }).catch(console.error);
+    }
+    window.getAllVariables = () => clone(mvuData.stat_data);
+    window.getVariables = option => clone(mvuData.stat_data);
+    window.replaceVariables = (variables, option = { type: 'chat' }) => { mvuData = { stat_data: clone(variables ?? {}) }; persistVariables(mvuData.stat_data, option); notifyVariables(); };
+    window.updateVariablesWith = (updater, option = { type: 'chat' }) => { const result = updater(clone(mvuData.stat_data)); if (result?.then) return result.then(value => { window.replaceVariables(value, option); return value; }); window.replaceVariables(result, option); return result; };
+    window.insertOrAssignVariables = (variables, option) => window.updateVariablesWith(current => Object.assign(current, clone(variables ?? {})), option);
+    window.insertVariables = window.insertOrAssignVariables;
+    window.deleteVariable = (path, option) => window.updateVariablesWith(current => { const parts = String(path).split('.').filter(Boolean); let target = current; for (const part of parts.slice(0, -1)) target = target?.[part]; if (target && parts.length) delete target[parts.at(-1)]; return current; }, option);
+    window.Mvu = {
+      getMvuData: async () => clone(mvuData),
+      replaceMvuData: async (data, option = { type: 'message', message_id: localContext.message?.id }) => { mvuData = clone(data?.stat_data ? data : { stat_data: data ?? {} }); await rpc('variables.set', { type: option.type || 'message', messageId: option.message_id, value: mvuData.stat_data }); notifyVariables(); return true; },
+    };
+
+    function eventOn(type, listener) { const wrapped = event => listener(...(event.detail ?? [])); eventTarget.addEventListener(String(type), wrapped); return () => eventTarget.removeEventListener(String(type), wrapped); }
+    function eventOnce(type, listener) { const stop = eventOn(type, (...args) => { stop(); listener(...args); }); return stop; }
+    function eventEmit(type, ...args) { eventTarget.dispatchEvent(new CustomEvent(String(type), { detail: args })); return Promise.resolve(args); }
+    window.eventOn = eventOn; window.eventOnce = eventOnce; window.eventEmit = eventEmit; window.eventEmitAndWait = eventEmit;
+    window.eventRemoveListener = (type, listener) => eventTarget.removeEventListener(String(type), listener);
+    window.eventClearAll = () => {};
+    window.tavern_events = { CHAT_CHANGED: 'chat_changed', MESSAGE_UPDATED: 'message_updated', MESSAGE_SENT: 'message_sent', GENERATION_STARTED: 'generation_started', GENERATION_ENDED: 'generation_ended' };
+    window.iframe_events = { MESSAGE_IFRAME_RENDER_STARTED: 'message_iframe_render_started', MESSAGE_IFRAME_RENDER_ENDED: 'message_iframe_render_ended', GENERATION_STARTED: 'generation_started', GENERATION_ENDED: 'generation_ended' };
+
+    window.initializeGlobal = (name, value) => { initializedGlobals.set(String(name), value); window[name] = value; eventEmit(`global:${name}`, value); };
+    window.waitGlobalInitialized = async name => { if (window[name] !== undefined) return window[name]; return new Promise(resolve => eventOnce(`global:${name}`, resolve)); };
+    window.getCurrentMessageId = () => localContext.message?.id;
+    window.getIframeName = () => `Saraswati-message-${localContext.message?.id ?? 'unknown'}`;
+    window.getCharData = () => clone(localContext.character);
+    window.getCharacter = window.getCharData;
+    window.getCurrentCharacterName = () => localContext.character?.name ?? '';
+    window.getCurrentCharacterId = () => localContext.character?.id ?? '';
+
+    function tavernMessage(item, index) { return { message_id: index, role: item.role, message: item.content, name: item.role === 'assistant' ? (localContext.character?.name ?? 'Assistant') : 'User', is_user: item.role === 'user', is_system: item.role === 'system', data: { id: item.id, created_at: item.created_at } }; }
+    window.getChatMessages = async () => (await rpc('chat.listMessages')).map(tavernMessage);
+    window.setChatMessage = async (messageId, value) => { const messages = await rpc('chat.listMessages'); const item = typeof messageId === 'number' ? messages.at(messageId) : messages.find(entry => entry.id === messageId); if (!item) throw new Error('消息不存在'); const content = typeof value === 'string' ? value : String(value?.message ?? value?.content ?? ''); const result = await rpc('chat.updateMessage', { messageId: item.id, content }); await eventEmit('message_updated', messageId); return result; };
+    window.setChatMessages = async values => { const results = []; for (const [index, value] of values.entries()) results.push(await window.setChatMessage(index, value)); return results; };
+
+    function tavernWorldEntry(item) { return { uid: item.id, id: item.id, name: item.title, comment: item.title, content: item.content, enabled: item.enabled, disable: !item.enabled, key: item.keywords ?? [], keysecondary: item.secondary_keywords ?? [], constant: item.constant, order: item.priority, position: item.insertion_position, extensions: clone(item.compatibility_data ?? {}), _source: item }; }
+    window.getWorldbook = async () => (await rpc('worldbook.list')).map(tavernWorldEntry);
+    window.getWorldbookEntries = window.getWorldbook;
+    window.getLorebookEntries = window.getWorldbook;
+    window.getCharWorldbookNames = () => ({ primary: localContext.character?.name ?? '当前故事', additional: [] });
+    window.updateWorldbookWith = async (_name, updater) => { const before = await window.getWorldbook(); const after = await updater(clone(before)) ?? before; for (const entry of after) { const old = before.find(item => item.id === entry.id || item.uid === entry.uid); if (!old) continue; const patch = { title: entry.name ?? entry.comment ?? old.name, content: entry.content ?? old.content, enabled: entry.enabled ?? !entry.disable, keywords: entry.key ?? old.key, secondary_keywords: entry.keysecondary ?? old.keysecondary, priority: entry.order ?? old.order }; if (JSON.stringify(patch) !== JSON.stringify({ title: old.name, content: old.content, enabled: old.enabled, keywords: old.key, secondary_keywords: old.keysecondary, priority: old.order })) await rpc('worldbook.update', { id: old.id, patch }); } await eventEmit('worldbook_updated'); return after; };
+
+    window.triggerSlash = async command => {
+      const source = String(command ?? '').trim();
+      const match = source.match(/^\/([\w-]+)(?:\s+([\s\S]*))?$/);
+      if (!match) return source;
+      const name = match[1].toLowerCase(), argument = (match[2] ?? '').trim();
+      if (name === 'send' || name === 'trigger') { if (!argument) throw new Error(`/${name} 需要正文`); await rpc('chat.send', { content: argument }); await eventEmit('message_sent', argument); return argument; }
+      if (name === 'pass' || name === 'echo') return argument;
+      if (name === 'setvar') { const pair = argument.match(/^(?:key=)?([^\s=]+)(?:\s+|=)([\s\S]*)$/); if (!pair) throw new Error('/setvar 格式应为 key value'); setPath(mvuData.stat_data, pair[1], pair[2]); window.replaceVariables(mvuData.stat_data); return pair[2]; }
+      if (name === 'getvar') return String(getPath(mvuData.stat_data, argument, ''));
+      throw new Error(`Saraswati 暂不支持 Slash 命令：/${name}`);
+    };
+    window.SaraswatiHost = { rpc, context: localContext, compatibility: 'tavern-helper-core-v1' };
+    window.TavernHelper = {
+      getChatMessages: window.getChatMessages, setChatMessages: window.setChatMessages, setChatMessage: window.setChatMessage,
+      getWorldbook: window.getWorldbook, getWorldbookEntries: window.getWorldbookEntries, getLorebookEntries: window.getLorebookEntries, updateWorldbookWith: window.updateWorldbookWith, getCharWorldbookNames: window.getCharWorldbookNames,
+      getCharData: window.getCharData, getCharacter: window.getCharacter, getCurrentCharacterName: window.getCurrentCharacterName, getCurrentCharacterId: window.getCurrentCharacterId,
+      getCurrentMessageId: window.getCurrentMessageId, getVariables: window.getVariables, getAllVariables: window.getAllVariables, replaceVariables: window.replaceVariables, updateVariablesWith: window.updateVariablesWith, insertOrAssignVariables: window.insertOrAssignVariables, insertVariables: window.insertVariables, deleteVariable: window.deleteVariable,
+      triggerSlash: window.triggerSlash, eventOn, eventOnce, eventEmit, eventEmitAndWait: eventEmit, initializeGlobal: window.initializeGlobal, waitGlobalInitialized: window.waitGlobalInitialized,
+      tavern_events: window.tavern_events, iframe_events: window.iframe_events,
+    };
+    window.SillyTavern = { getContext: () => ({ chatId: localContext.chatId, characterId: localContext.character?.id, messageId: localContext.message?.id, chat: window.getChatMessages, TavernHelper: window.TavernHelper }) };
+    eventEmit('message_iframe_render_started', window.getIframeName());
+    const resize = () => rpc('ui.setHeight', { height: Math.ceil(Math.max(document.body?.scrollHeight || 0, document.documentElement.scrollHeight || 0)) });
+    new ResizeObserver(resize).observe(document.documentElement); addEventListener('load', resize); setTimeout(resize, 0);
+  }
+
+  function numberOrNull(value) {
+    return value === null || value === undefined || value === '' || Number.isNaN(Number(value)) ? null : Number(value);
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+  }
+})();
+</script>
+</body>
+</html>

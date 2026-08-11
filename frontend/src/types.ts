@@ -69,12 +69,23 @@ export interface PluginExtension {
   skills: string[];
   resources: string[];
   interface: Record<string, unknown>;
+  frontend: PluginFrontendExtension | null;
   mcp_servers: McpServerExtension[];
-  plugin_type: "skill" | "tool" | "hybrid" | "resource";
+  plugin_type: "skill" | "tool" | "app" | "hybrid" | "resource";
   missing_requirements: string[];
   installed_at: string;
   source_url: string;
   location: string;
+}
+
+export interface PluginFrontendExtension {
+  entry: string;
+  title: string;
+  permissions: Array<"context.read" | "chat.read" | "chat.write" | "message.read" | "character.read" | "worldbook.read" | "worldbook.write" | "storage">;
+  surfaces: Array<"panel" | "message">;
+  message_patterns: string[];
+  character_extensions: string[];
+  height: number;
 }
 
 export interface McpServerExtension {
@@ -543,6 +554,24 @@ export interface StateProposal {
   old_value: unknown;
   new_value: unknown;
   reason: string;
+  source_message_id: string | null;
+  status: ProposalStatus;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export interface SettingChange {
+  id: string;
+  chat_id: string;
+  target_type: "character" | "persona" | "world_book";
+  target_id: string;
+  field: string;
+  base_value: string;
+  new_value: string;
+  reason: string;
+  evidence: string;
+  importance: "major" | "critical";
+  confidence: number;
   source_message_id: string | null;
   status: ProposalStatus;
   created_at: string;

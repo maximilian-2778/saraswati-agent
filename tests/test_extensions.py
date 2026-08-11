@@ -304,6 +304,78 @@ def test_codex_style_plugin_zip_installs_skills_and_local_mcp(tmp_path: Path) ->
         assert "cartographer/server.py" in archive.namelist()
 
 
+def test_frontend_plugin_is_permissioned_and_assets_stay_in_ui_directory(tmp_path: Path) -> None:
+    manifest = {
+        "id": "story-dashboard",
+        "name": "Story Dashboard",
+        "frontend": {
+            "entry": "frontend/index.html",
+            "permissions": ["context.read", "chat.read", "storage"],
+            "height": 700,
+        },
+    }
+    payload = _skill_zip({
+        ".saraswati-plugin/plugin.json": json.dumps(manifest),
+        "frontend/index.html": "<!doctype html><title>Dashboard</title>",
+        "frontend/app.js": "parent.postMessage({ ready: true }, '*');",
+        "private.txt": "must not be served by the UI route",
+    })
+    registry = PluginRegistry(tmp_path / "plugins", tmp_path / "state.json")
+    registry.reload()
+    installed = registry.install_zip(payload, "story-dashboard.zip")
+
+    assert installed.frontend == {
+        "entry": "frontend/index.html",
+        "title": "Story Dashboard",
+        "permissions": ["chat.read", "context.read", "storage"],
+        "surfaces": ["panel"],
+        "message_patterns": [],
+        "character_extensions": [],
+        "height": 700,
+    }
+    assert installed.capabilities == ["frontend"]
+    assert installed.public()["plugin_type"] == "app"
+    with pytest.raises(ValueError, match="尚未启用"):
+        registry.frontend_asset(installed.id, "frontend/index.html")
+
+    with pytest.raises(ValueError, match="明确授权"):
+        registry.set_enabled(installed.id, True)
+    registry.set_trusted(installed.id, True)
+    registry.set_enabled(installed.id, True)
+    assert registry.frontend_asset(installed.id, "frontend/app.js").name == "app.js"
+    with pytest.raises(ValueError, match="只能访问"):
+        registry.frontend_asset(installed.id, "private.txt")
+
+    invalid = _skill_zip({
+        "plugin.json": json.dumps({
+            "id": "unsafe-ui",
+            "frontend": {"entry": "frontend/index.html", "permissions": ["filesystem.write"]},
+        }),
+        "frontend/index.html": "<!doctype html>",
+    })
+    with pytest.raises(ValueError, match="不支持的前端插件权限"):
+        registry.install_zip(invalid, "unsafe-ui.zip")
+
+
+def test_bundled_tavern_card_frontend_declares_message_surface(tmp_path: Path) -> None:
+    source = Path(__file__).parents[1] / "bundled_plugins" / "tavern-card-frontend"
+    payload = _skill_zip({
+        ".saraswati-plugin/plugin.json": (source / ".saraswati-plugin" / "plugin.json").read_text(encoding="utf-8"),
+        "frontend/index.html": (source / "frontend" / "index.html").read_text(encoding="utf-8"),
+    })
+    registry = PluginRegistry(tmp_path / "plugins", tmp_path / "state.json")
+    registry.reload()
+    installed = registry.install_zip(payload, "tavern-card-frontend.zip")
+
+    assert installed.frontend is not None
+    assert installed.frontend["surfaces"] == ["message"]
+    assert "regex_scripts" in installed.frontend["character_extensions"]
+    assert {"message.read", "character.read", "chat.write", "worldbook.write"}.issubset(installed.frontend["permissions"])
+    assert installed.public()["plugin_type"] == "app"
+    with pytest.raises(ValueError, match="明确授权"):
+        registry.set_enabled(installed.id, True)
+
+
 def test_extension_api_lists_catalog(client: object) -> None:
     response = client.get("/api/extensions")  # type: ignore[attr-defined]
     assert response.status_code == 200

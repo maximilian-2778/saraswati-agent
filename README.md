@@ -50,7 +50,7 @@
 
 ## 下载与使用
 
-下载 [**Saraswati Agent v1.3.1 Windows x64**](https://github.com/maximilian-2778/saraswati-agent/releases/download/v1.3.1/Saraswati-Agent-v1.3.1-windows-x64.zip)，解压整个文件夹后双击 `SaraswatiAgent.exe` 即可使用。
+下载 [**Saraswati Agent v1.4.0 Windows x64**](https://github.com/maximilian-2778/saraswati-agent/releases/download/v1.4.0/Saraswati-Agent-v1.4.0-windows-x64.zip)，解压整个文件夹后双击 `SaraswatiAgent.exe` 即可使用。
 
 程序会自动启动服务并打开浏览器，不需要安装 Python、Node.js，也不需要分别启动前端和后端。故事、设置及扩展保存在 `%LOCALAPPDATA%\Saraswati Agent`，更新程序不会覆盖用户数据。
 

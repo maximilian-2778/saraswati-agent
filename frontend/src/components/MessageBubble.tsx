@@ -1,13 +1,20 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import type { Message, MessageVariant, StoryCharacter } from "../types";
+import type { Message, MessageVariant, PluginExtension, StoryCharacter } from "../types";
 import { Avatar } from "./Avatar";
+import { MessagePluginFrame } from "./MessagePluginFrame";
+import { MessageTokenUsage } from "./TokenUsage";
+import type { TokenUsage } from "./TokenUsage";
 
 export interface MessageBubbleProps {
   message: Message;
+  chatId: string;
+  depth: number;
   character: StoryCharacter | null;
+  messagePlugins: PluginExtension[];
   userAvatar: string;
   variants: MessageVariant[];
+  tokenUsage?: TokenUsage;
   bookmarked: boolean;
   busy: boolean;
   variantEnabled: boolean;
@@ -18,6 +25,8 @@ export interface MessageBubbleProps {
   onVariant: (id: string, direction: -1 | 1) => Promise<void>;
   onBranch: (id: string) => Promise<void>;
   onCheckpoint: (id: string) => Promise<void>;
+  onPluginSend: (content: string) => Promise<void>;
+  onPluginRefresh: () => Promise<void>;
 }
 
 export function MessageBubble(props: MessageBubbleProps) {
@@ -25,9 +34,12 @@ export function MessageBubble(props: MessageBubbleProps) {
   const assistant = message.role === "assistant";
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(message.content);
+  const [pluginRendered, setPluginRendered] = useState(false);
   useEffect(() => setContent(message.content), [message.content]);
+  useEffect(() => setPluginRendered(false), [message.content]);
   const selectedVariant = variants.findIndex((item) => item.selected);
   const pending = message.id.startsWith("pending-");
+  const messagePlugin = assistant ? props.messagePlugins.find((item) => matchesMessageSurface(item, message.content, character)) : undefined;
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -39,10 +51,23 @@ export function MessageBubble(props: MessageBubbleProps) {
   return <div id={`message-${message.id}`} className={`message-row ${assistant ? "assistant" : "user"}`}>
     <Avatar value={assistant ? character?.avatar ?? "" : userAvatar} fallback={assistant ? (character?.name ?? "S").charAt(0) : "你"} />
     <div className="message-column">
-      <div className="message-meta">{assistant ? character?.name ?? "Saraswati" : "你"}<span>{formatTime(message.created_at)}{bookmarked && " · 已收藏"}</span></div>
+      <div className="message-meta">{assistant ? character?.name ?? "Saraswati" : "你"}<span>{formatTime(message.created_at)}{bookmarked && " · 已收藏"}{assistant && props.tokenUsage && <MessageTokenUsage usage={props.tokenUsage} />}</span></div>
       {editing
         ? <form className="message-editor" onSubmit={save}><textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} /><footer><button type="button" onClick={() => setEditing(false)}>取消</button><button>保存修改</button></footer></form>
-        : <div className="bubble">{message.content}</div>}
+        : <>
+          <div className={`bubble${pluginRendered ? " plugin-render-source" : ""}`}>{message.content}</div>
+          {messagePlugin && <MessagePluginFrame
+            key={`${messagePlugin.id}:${message.id}:${message.content}`}
+            plugin={messagePlugin}
+            chatId={props.chatId}
+            message={message}
+            character={character}
+            depth={props.depth}
+            onRendered={setPluginRendered}
+            onSend={props.onPluginSend}
+            onRefresh={props.onPluginRefresh}
+          />}
+        </>}
       {!editing && !pending && <div className="message-toolbar">
         {assistant && props.variantEnabled && variants.length > 1 && <span className="variant-switcher">
           <button disabled={busy || selectedVariant <= 0} onClick={() => void props.onVariant(message.id, -1)}>‹</button>
@@ -59,6 +84,17 @@ export function MessageBubble(props: MessageBubbleProps) {
       </div>}
     </div>
   </div>;
+}
+
+function matchesMessageSurface(plugin: PluginExtension, content: string, character: StoryCharacter | null) {
+  const frontend = plugin.frontend;
+  if (!plugin.enabled || !frontend?.surfaces.includes("message")) return false;
+  const source = content.toLowerCase();
+  if (frontend.message_patterns.some((item) => source.includes(item.toLowerCase()))) return true;
+  const compatibility = character?.compatibility_data as { original_card?: Record<string, unknown> } | undefined;
+  const original = compatibility?.original_card as { data?: { extensions?: Record<string, unknown> }; extensions?: Record<string, unknown> } | undefined;
+  const extensions = original?.data?.extensions ?? original?.extensions ?? {};
+  return frontend.character_extensions.some((name) => Object.hasOwn(extensions, name));
 }
 
 function formatTime(value: string) {

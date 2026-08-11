@@ -8,6 +8,7 @@ import { useUiPreferences } from "../hooks/useUiPreferences";
 import { StorySidebar } from "../components/StorySidebar";
 import { Avatar } from "../components/Avatar";
 import { MessageBubble } from "../components/MessageBubble";
+import { buildTokenUsageIndex } from "../components/TokenUsage";
 import { SettingsModal } from "../components/SettingsModal";
 import { ClassicalIcon } from "../components/ClassicalIcon";
 import { GlobalNav, LibraryWorkspace } from "../components/LibraryWorkspace";
@@ -41,9 +42,11 @@ import type {
   NarrativeDelta,
   Npc,
   PersonaTemplate,
+  PluginExtension,
   RetrievedMemory,
   RuntimeInfo,
   SceneNode,
+  SettingChange,
   StateEntry,
   StateProposal,
   StoryCharacter,
@@ -80,6 +83,7 @@ export default function App() {
   const [retrieved, setRetrieved] = useState<RetrievedMemory[]>([]);
   const [stateEntries, setStateEntries] = useState<StateEntry[]>([]);
   const [proposals, setProposals] = useState<StateProposal[]>([]);
+  const [settingChanges, setSettingChanges] = useState<SettingChange[]>([]);
   const [audits, setAudits] = useState<AuditIssue[]>([]);
   const [traces, setTraces] = useState<AgentTrace[]>([]);
   const [timeline, setTimeline] = useState<TimelineAnchor[]>([]);
@@ -91,6 +95,7 @@ export default function App() {
   const [worldBookTemplates, setWorldBookTemplates] = useState<WorldBookTemplate[]>([]);
   const [personaTemplates, setPersonaTemplates] = useState<PersonaTemplate[]>([]);
   const [storyPersona, setStoryPersona] = useState<StoryPersona | null>(null);
+  const [messagePlugins, setMessagePlugins] = useState<PluginExtension[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendPhase, setSendPhase] = useState<"idle" | "generating" | "postprocessing">("idle");
@@ -127,6 +132,19 @@ export default function App() {
     setSelectedChatId((current) => current ?? data.chats[0]?.id ?? null);
     setLoading(false);
   }, [bootstrapQuery.data]);
+
+  useEffect(() => {
+    void refreshMessagePlugins();
+  }, []);
+
+  async function refreshMessagePlugins() {
+    try {
+      const catalog = await api.extensions();
+      setMessagePlugins(catalog.plugins.filter((item) => item.enabled && item.frontend?.surfaces.includes("message")));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -239,6 +257,7 @@ export default function App() {
     setTimeline(snapshot.timeline);
     setStateEntries(snapshot.state);
     setProposals(snapshot.proposals);
+    setSettingChanges(snapshot.settingChanges);
     setAudits(snapshot.audits);
     setTraces(snapshot.traces);
     setRetrieved([]);
@@ -247,7 +266,7 @@ export default function App() {
   }
 
   async function refreshInspector(chatId: string) {
-    const [memoryList, graph, coverage, deltaList, worldSnapshot, sceneList, npcList, timelineList, stateList, proposalList, auditList, traceList] = await Promise.all([
+    const [memoryList, graph, coverage, deltaList, worldSnapshot, sceneList, npcList, timelineList, stateList, proposalList, settingChangeList, auditList, traceList] = await Promise.all([
       api.memories(chatId),
       api.memoryGraph(chatId),
       api.memoryCoverage(chatId),
@@ -258,6 +277,7 @@ export default function App() {
       api.timeline(chatId),
       api.state(chatId),
       api.proposals(chatId),
+      api.settingChanges(chatId),
       api.audits(chatId),
       api.traces(chatId),
     ]);
@@ -271,6 +291,7 @@ export default function App() {
     setTimeline(timelineList);
     setStateEntries(stateList);
     setProposals(proposalList);
+    setSettingChanges(settingChangeList);
     setAudits(auditList);
     setTraces(traceList);
   }
@@ -313,7 +334,10 @@ export default function App() {
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
-    const content = draft.trim();
+    await submitMessage(draft.trim());
+  }
+
+  async function submitMessage(content: string) {
     if (!selectedChatId || !content || sending) return;
     if (apiConnection !== "connected") {
       const message = apiConnection === "unconfigured"
@@ -558,6 +582,7 @@ export default function App() {
   }
 
   const latestAssistantId = [...messages].reverse().find((item) => item.role === "assistant")?.id;
+  const tokenUsageIndex = useMemo(() => buildTokenUsageIndex(traces), [traces]);
 
   return (
     <div
@@ -637,12 +662,19 @@ export default function App() {
           ) : messages.length === 0 ? (
             <EmptyState title="" detail="" />
           ) : (
-            messages.map((message) => <MessageBubble
+            messages.map((message, index) => <MessageBubble
               key={message.id}
               message={message}
+              chatId={selectedChatId}
+              depth={messages.length - index - 1}
               character={storyCharacters[0] ?? null}
+              messagePlugins={messagePlugins}
               userAvatar={storyPersona?.avatar || uiPreferences.userAvatar}
               variants={messageVariants[message.id] ?? []}
+              tokenUsage={(() => {
+                const selected = (messageVariants[message.id] ?? []).find((item) => item.selected);
+                return (selected && tokenUsageIndex.byVariant[selected.id]) || tokenUsageIndex.byMessage[message.id];
+              })()}
               bookmarked={bookmarkedIds.has(message.id)}
               busy={sending}
               variantEnabled={message.id === latestAssistantId}
@@ -653,6 +685,8 @@ export default function App() {
               onVariant={selectVariant}
               onBranch={createBranch}
               onCheckpoint={createCheckpoint}
+              onPluginSend={submitMessage}
+              onPluginRefresh={async () => { if (selectedChatId) await loadChat(selectedChatId); }}
             />)
           )}
           {sending && sendPhase === "generating" && !messages.some((item) => item.id.startsWith("stream-")) && (
@@ -734,6 +768,7 @@ export default function App() {
         timeline={timeline}
         stateEntries={stateEntries}
         proposals={proposals}
+        settingChanges={settingChanges}
         audits={audits}
         traces={traces}
         debugMode={uiPreferences.debugMode}
@@ -747,7 +782,7 @@ export default function App() {
       {libraryOpen && (
         <LibraryWorkspace
           page={libraryOpen}
-          onClose={() => setLibraryOpen(null)}
+          onClose={() => { setLibraryOpen(null); void refreshMessagePlugins(); }}
           selectedChat={selectedChat}
           characterTemplates={characterTemplates}
           worldBookTemplates={worldBookTemplates}
@@ -758,6 +793,7 @@ export default function App() {
           onWorldBooks={setWorldBookTemplates}
           onPersonas={setPersonaTemplates}
           onStoryPersona={setStoryPersona}
+          onChatChanged={async () => { if (selectedChatId) await loadChat(selectedChatId); }}
           onPresetActivated={async () => setRuntime(await api.runtime())}
           onError={(reason) => setError(errorMessage(reason))}
           error={error}

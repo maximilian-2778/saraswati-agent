@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.llm import ModelClient, ModelProviderError
 from backend.models import MessageRecord, NarrativeDeltaRecord, RoleplayGraphEventRecord
+from backend.services.setting_evolution import SettingEvolutionService
 from backend.services.variants import active_variant_clause, selected_variant_id
 from backend.utils import json_dumps, json_loads
 
@@ -80,6 +81,21 @@ class NarrativeStateChange(BaseModel):
     reason: str = Field(default="剧情正文中的明确变化", max_length=2_000)
 
 
+class NarrativeSettingChange(BaseModel):
+    """A full-field replacement for one existing story-local setting target."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_type: Literal["character", "persona", "world_book"]
+    target_id: str = Field(min_length=1, max_length=36)
+    field: str = Field(min_length=1, max_length=40)
+    new_value: str = Field(min_length=1, max_length=30_000)
+    reason: str = Field(min_length=1, max_length=2_000)
+    evidence: str = Field(min_length=1, max_length=4_000)
+    importance: Literal["major", "critical"] = "major"
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
 class NarrativeDeltaPayload(BaseModel):
     """模型提取结果的严格边界，阻止异常字段进入剧情记录。"""
 
@@ -94,10 +110,14 @@ class NarrativeDeltaPayload(BaseModel):
     npc_changes: list[NarrativeNpcChange] = Field(default_factory=list, max_length=30)
     item_changes: list[NarrativeItemChange] = Field(default_factory=list, max_length=30)
     state_changes: list[NarrativeStateChange] = Field(default_factory=list, max_length=50)
+    setting_changes: list[NarrativeSettingChange] = Field(default_factory=list, max_length=10)
 
 
 class NarrativeDeltaService:
     """把自然语言回合压成可追溯 Delta，供回放、诊断和评测使用。"""
+
+    def __init__(self, setting_evolution: SettingEvolutionService | None = None) -> None:
+        self.setting_evolution = setting_evolution or SettingEvolutionService()
 
     async def process_turn(
         self,
@@ -116,7 +136,12 @@ class NarrativeDeltaService:
                 )
             ).all()
         )
-        extracted = await self._extract(model, user_message.content, assistant_message.content)
+        extracted = await self._extract(
+            model,
+            user_message.content,
+            assistant_message.content,
+            self.setting_evolution.target_catalog(db, chat_id),
+        )
         extracted["graph_event_ids"] = [event.id for event in events]
         extracted["graph_changes"] = [json_loads(event.payload_json) for event in events]
         now = datetime.now(UTC)
@@ -164,7 +189,13 @@ class NarrativeDeltaService:
             result.append((record, valid))
         return result
 
-    async def _extract(self, model: ModelClient, user_text: str, assistant_text: str) -> dict[str, Any]:
+    async def _extract(
+        self,
+        model: ModelClient,
+        user_text: str,
+        assistant_text: str,
+        setting_catalog: str = "[]",
+    ) -> dict[str, Any]:
         prompt = (
             "提取本轮剧情中明确发生的变化，只返回符合 JSON Schema 的对象，不要推测。"
             "scene_changes 记录地点路径与当前场景；npc_changes 记录人物登场、位置、关系、穿着和状态；"
@@ -172,10 +203,19 @@ class NarrativeDeltaService:
             "不要因为称呼变化创建新地点，应沿用已有路径中最具体的名称。"
             "item_changes 记录物品归属、数量、位置或状态；state_changes 记录金钱、属性、任务等精确状态。"
             "numbers 中尽量填写 entity 和 key。没有变化的数组返回空数组。"
+            "setting_changes 仅用于修改下方目录中已经存在的角色、主控或世界书副本。"
+            "只有复仇完成、势力覆灭、永久伤残、身份或阵营永久改变等明确发生且长期有效的重大结果才可填写；"
+            "计划、猜测、临时状态、情绪和小变化必须忽略。必须使用目录中的准确 target_id 和允许字段，"
+            "new_value 必须是该字段完整、精炼的新正文，保留所有未受影响的既有事实，不得创建新目标。"
+            "目录字段 complete=false 表示正文未完整提供，为防止信息丢失，禁止修改该字段。"
+            "critical 仅用于已经明确完成且不可逆的结果；有任何歧义时使用 major 或返回空数组。"
         )
         messages = [
             {"role": "system", "content": prompt},
-            {"role": "user", "content": f"玩家：{user_text}\n角色：{assistant_text}"},
+            {"role": "user", "content": (
+                f"【可修改的现有设定目录】\n{setting_catalog}\n\n"
+                f"【玩家行动】\n{user_text}\n\n【剧情结果】\n{assistant_text}"
+            )},
         ]
         parsed = await _structured_delta(model, messages)
         if parsed is not None:
@@ -190,6 +230,7 @@ class NarrativeDeltaService:
             "npc_changes": [],
             "item_changes": [],
             "state_changes": [],
+            "setting_changes": [],
         }
 
 
@@ -252,6 +293,7 @@ def _normalize(value: dict[str, Any]) -> dict[str, Any]:
         "npc_changes": _object_list(value.get("npc_changes"), 30),
         "item_changes": _object_list(value.get("item_changes"), 30),
         "state_changes": _object_list(value.get("state_changes"), 50),
+        "setting_changes": _object_list(value.get("setting_changes"), 10),
     }
 
 

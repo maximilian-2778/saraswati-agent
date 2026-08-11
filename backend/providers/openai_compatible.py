@@ -10,7 +10,7 @@ import httpx
 from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential
 
 from backend.config import Settings
-from backend.llm import ModelProviderError, ModelReply, ToolCall, local_embedding
+from backend.llm import ModelProviderError, ModelReply, ModelUsage, ToolCall, local_embedding
 
 
 class OpenAICompatibleClient:
@@ -31,6 +31,7 @@ class OpenAICompatibleClient:
         self.presence_penalty = settings.presence_penalty
         self.frequency_penalty = settings.frequency_penalty
         self._structured_output_supported: bool | None = None
+        self._stream_usage_supported: bool | None = None
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(settings.request_timeout),
             headers={"Authorization": f"Bearer {self.api_key}"},
@@ -111,8 +112,29 @@ class OpenAICompatibleClient:
     ) -> ModelReply:
         payload = self._completion_payload(messages, tools)
         payload["stream"] = True
+        if self._stream_usage_supported is not False:
+            payload["stream_options"] = {"include_usage": True}
+        try:
+            reply = await self._stream_request(payload, on_token)
+            if reply.usage is not None:
+                self._stream_usage_supported = True
+            return reply
+        except ModelProviderError as exc:
+            if self._stream_usage_supported is None and any(code in str(exc) for code in ("HTTP 400", "HTTP 404", "HTTP 422")):
+                self._stream_usage_supported = False
+                fallback = dict(payload)
+                fallback.pop("stream_options", None)
+                return await self._stream_request(fallback, on_token)
+            raise
+
+    async def _stream_request(
+        self,
+        payload: dict[str, Any],
+        on_token: Callable[[str], Awaitable[None]],
+    ) -> ModelReply:
         content_parts: list[str] = []
         tool_parts: dict[int, dict[str, str]] = {}
+        usage: ModelUsage | None = None
         try:
             async with self._client.stream(
                 "POST", self._url("chat/completions"), json=payload
@@ -125,6 +147,7 @@ class OpenAICompatibleClient:
                     if not raw or raw == "[DONE]":
                         continue
                     data = json.loads(raw)
+                    usage = self._parse_usage(data.get("usage")) or usage
                     choice = self._stream_choice(data)
                     if choice is None:
                         continue
@@ -142,6 +165,7 @@ class OpenAICompatibleClient:
         return ModelReply(
             content="".join(content_parts) or None,
             tool_calls=self._build_tool_calls(tool_parts),
+            usage=usage,
         )
 
     @staticmethod
@@ -219,7 +243,34 @@ class OpenAICompatibleClient:
                     arguments=self._parse_arguments(function.get("arguments") or "{}"),
                 )
             )
-        return ModelReply(content=message.get("content"), tool_calls=tool_calls)
+        return ModelReply(
+            content=message.get("content"),
+            tool_calls=tool_calls,
+            usage=self._parse_usage(data.get("usage")),
+        )
+
+    @staticmethod
+    def _parse_usage(value: Any) -> ModelUsage | None:
+        if not isinstance(value, dict):
+            return None
+        input_tokens = value.get("prompt_tokens", value.get("input_tokens"))
+        output_tokens = value.get("completion_tokens", value.get("output_tokens"))
+        if input_tokens is None or output_tokens is None:
+            return None
+        details = value.get("prompt_tokens_details") or value.get("input_tokens_details") or {}
+        cached = value.get(
+            "cached_tokens",
+            value.get("prompt_cache_hit_tokens", value.get("cache_read_input_tokens", 0)),
+        )
+        if isinstance(details, dict):
+            cached = details.get("cached_tokens", details.get("cache_read_tokens", cached))
+        try:
+            prompt = max(0, int(input_tokens))
+            completion = max(0, int(output_tokens))
+            total = max(0, int(value.get("total_tokens", prompt + completion)))
+            return ModelUsage(prompt, completion, total, max(0, int(cached or 0)))
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _collect_tool_parts(

@@ -1,0 +1,17 @@
+{
+  "id": "tavern-card-frontend",
+  "name": "酒馆角色卡前端兼容器",
+  "version": "0.3.0",
+  "description": "识别酒馆角色卡内置显示正则和 HTML 前端，并在消息中通过安全沙箱渲染。",
+  "author": "Saraswati Agent",
+  "license": "MIT",
+  "frontend": {
+    "entry": "frontend/index.html",
+    "title": "酒馆角色卡前端兼容器",
+    "height": 620,
+    "surfaces": ["message"],
+    "message_patterns": ["```html", "```frontend", "<!doctype html", "<html"],
+    "character_extensions": ["regex_scripts", "tavern_helper", "TavernHelper_scripts"],
+    "permissions": ["context.read", "chat.read", "chat.write", "message.read", "character.read", "worldbook.read", "worldbook.write", "storage"]
+  }
+}

@@ -30,6 +30,7 @@ from backend.models import (
     PersonaTemplateRecord,
     SceneNodeRecord,
     RoleplayGraphEventRecord,
+    SettingChangeRecord,
     StateChangeRecord,
     StoryCheckpointRecord,
     StoryCharacterRecord,
@@ -75,6 +76,7 @@ from backend.schemas import (
     MessageUpdate,
     MessageVariantRead,
     ProposalStatus,
+    SettingChangeRead,
     SceneNodeRead,
     SceneNodeUpsert,
     StateChangeRead,
@@ -103,6 +105,7 @@ from backend.serializers import (
     persona_template_read,
     scene_read,
     state_change_read,
+    setting_change_read,
     state_entry_read,
     story_character_read,
     story_persona_read,
@@ -272,6 +275,82 @@ def undo_state_change(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return state_change_read(reverted)
+
+
+@router.get(
+    "/chats/{chat_id}/setting-changes",
+    response_model=list[SettingChangeRead],
+    tags=["setting-evolution"],
+)
+def list_setting_changes(
+    chat_id: UUID,
+    request: Request,
+    proposal_status: ProposalStatus | None = Query(default=None, alias="status"),
+    db: Session = Depends(get_db),
+) -> list[SettingChangeRead]:
+    _chat_or_404(db, chat_id)
+    runtime: AgentRuntime = request.app.state.runtime
+    records = runtime.setting_evolution_service.list(
+        db,
+        str(chat_id),
+        proposal_status.value if proposal_status else None,
+    )
+    return [setting_change_read(record) for record in records]
+
+
+@router.post(
+    "/chats/{chat_id}/setting-changes/{change_id}/resolve",
+    response_model=SettingChangeRead,
+    tags=["setting-evolution"],
+)
+def resolve_setting_change(
+    chat_id: UUID,
+    change_id: UUID,
+    payload: StateResolution,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> SettingChangeRead:
+    _chat_or_404(db, chat_id)
+    record = db.scalar(select(SettingChangeRecord).where(
+        SettingChangeRecord.id == str(change_id),
+        SettingChangeRecord.chat_id == str(chat_id),
+    ))
+    if record is None:
+        raise HTTPException(status_code=404, detail="设定变更不存在")
+    runtime: AgentRuntime = request.app.state.runtime
+    try:
+        resolved = runtime.setting_evolution_service.resolve(
+            db, record, approve=payload.action == "approve"
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return setting_change_read(resolved)
+
+
+@router.post(
+    "/chats/{chat_id}/setting-changes/{change_id}/undo",
+    response_model=SettingChangeRead,
+    tags=["setting-evolution"],
+)
+def undo_setting_change(
+    chat_id: UUID,
+    change_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> SettingChangeRead:
+    _chat_or_404(db, chat_id)
+    record = db.scalar(select(SettingChangeRecord).where(
+        SettingChangeRecord.id == str(change_id),
+        SettingChangeRecord.chat_id == str(chat_id),
+    ))
+    if record is None:
+        raise HTTPException(status_code=404, detail="设定变更不存在")
+    runtime: AgentRuntime = request.app.state.runtime
+    try:
+        reverted = runtime.setting_evolution_service.undo(db, record)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return setting_change_read(reverted)
 
 
 @router.delete(
