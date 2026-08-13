@@ -1,0 +1,649 @@
+{
+  "metadata": {
+    "generated_at": "2026-08-13T11:58:50.733711+00:00",
+    "model": "qwen3.7-plus",
+    "temperature": 0.0,
+    "suite": "Saraswati Quick Roleplay Consistency Eval v1",
+    "notice": "Small synthetic quick test; use as a directional engineering result."
+  },
+  "metrics": {
+    "early_plot_recall": {
+      "cases": 10,
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0
+    },
+    "persona_adherence": {
+      "passed": 4,
+      "total": 4,
+      "rate": 1.0
+    },
+    "identity_consistency": {
+      "passed": 4,
+      "total": 4,
+      "rate": 1.0
+    },
+    "combined_setting_adherence": {
+      "passed": 8,
+      "total": 8,
+      "rate": 1.0
+    },
+    "unsupported_item_rate": {
+      "violations": 0,
+      "total": 4,
+      "rate": 0.0
+    },
+    "location_conflict_rate": {
+      "violations": 0,
+      "total": 4,
+      "rate": 0.0
+    },
+    "combined_setting_violation_rate": {
+      "violations": 0,
+      "total": 8,
+      "rate": 0.0
+    },
+    "world_ledger_update": {
+      "cases": 10,
+      "exact_cases": 8,
+      "exact_case_rate": 0.8,
+      "tp": 8,
+      "fp": 1,
+      "fn": 2,
+      "precision": 0.8888888888888888,
+      "recall": 0.8,
+      "f1": 0.8421052631578948
+    }
+  },
+  "retrieval_rows": [
+    {
+      "case_id": "early-01",
+      "expected": "赤月无声",
+      "rank": 1,
+      "ranked_ids": [
+        "early-01-relevant",
+        "early-01-d2",
+        "early-01-d4"
+      ],
+      "recall_at_1": 1,
+      "recall_at_3": 1
+    },
+    {
+      "case_id": "early-02",
+      "expected": "守钟人",
+      "rank": 1,
+      "ranked_ids": [
+        "early-02-relevant",
+        "early-02-d2",
+        "early-02-d3"
+      ],
+      "recall_at_1": 1,
+      "recall_at_3": 1
+    },
+    {
+      "case_id": "early-03",
+      "expected": "灰桥战役",
+      "rank": 1,
+      "ranked_ids": [
+        "early-03-relevant",
+        "early-03-d1",
+        "early-03-d2"
+      ],
+      "recall_at_1": 1,
+      "recall_at_3": 1
+    },
+    {
+      "case_id": "early-04",
+      "expected": "废弃盐仓",
+      "rank": 1,
+      "ranked_ids": [
+        "early-04-relevant",
+        "early-04-d2",
+        "early-04-d1"
+      ],
+      "recall_at_1": 1,
+      "recall_at_3": 1
+    },
+    {
+      "case_id": "early-05",
+      "expected": "月食",
+      "rank": 1,
+      "ranked_ids": [
+        "early-05-relevant",
+        "early-05-d2",
+        "early-05-d3"
+      ],
+      "recall_at_1": 1,
+      "recall_at_3": 1
+    },
+    {
+      "case_id": "early-06",
+      "expected": "弓弩",
+      "rank": 1,
+      "ranked_ids": [
+        "early-06-relevant",
+        "early-06-d3",
+        "early-06-d1"
+      ],
+      "recall_at_1": 1,
+      "recall_at_3": 1
+    },
+    {
+      "case_id": "early-07",
+      "expected": "栖霞岛",
+      "rank": 1,
+      "ranked_ids": [
+        "early-07-relevant",
+        "early-07-d1",
+        "early-07-d3"
+      ],
+      "recall_at_1": 1,
+      "recall_at_3": 1
+    },
+    {
+      "case_id": "early-08",
+      "expected": "夜昙",
+      "rank": 1,
+      "ranked_ids": [
+        "early-08-relevant",
+        "early-08-d2",
+        "early-08-d1"
+      ],
+      "recall_at_1": 1,
+      "recall_at_3": 1
+    },
+    {
+      "case_id": "early-09",
+      "expected": "蓝色",
+      "rank": 1,
+      "ranked_ids": [
+        "early-09-relevant",
+        "early-09-d2",
+        "early-09-d3"
+      ],
+      "recall_at_1": 1,
+      "recall_at_3": 1
+    },
+    {
+      "case_id": "early-10",
+      "expected": "双月同升",
+      "rank": 1,
+      "ranked_ids": [
+        "early-10-relevant",
+        "early-10-d3",
+        "early-10-d2"
+      ],
+      "recall_at_1": 1,
+      "recall_at_3": 1
+    }
+  ],
+  "qa_rows": [
+    {
+      "case_id": "persona-01",
+      "category": "persona_adherence",
+      "answer": "拒绝饮酒",
+      "expected": [
+        "拒绝饮酒"
+      ],
+      "forbidden": [
+        "接受饮酒"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "persona-01-m1",
+        "persona-01-m2"
+      ]
+    },
+    {
+      "case_id": "persona-02",
+      "category": "persona_adherence",
+      "answer": "拒绝编造",
+      "expected": [
+        "拒绝编造"
+      ],
+      "forbidden": [
+        "接受编造"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "persona-02-m2",
+        "persona-02-m1"
+      ]
+    },
+    {
+      "case_id": "persona-03",
+      "category": "persona_adherence",
+      "answer": "不会触碰",
+      "expected": [
+        "不会触碰"
+      ],
+      "forbidden": [
+        "会触碰"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "persona-03-m1",
+        "persona-03-m2"
+      ]
+    },
+    {
+      "case_id": "persona-04",
+      "category": "persona_adherence",
+      "answer": "停止攻击",
+      "expected": [
+        "停止攻击"
+      ],
+      "forbidden": [
+        "继续攻击"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "persona-04-m1",
+        "persona-04-m2"
+      ]
+    },
+    {
+      "case_id": "identity-01",
+      "category": "identity_consistency",
+      "answer": "药师",
+      "expected": [
+        "药师"
+      ],
+      "forbidden": [
+        "军官"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "identity-01-m1",
+        "identity-01-m2"
+      ]
+    },
+    {
+      "case_id": "identity-02",
+      "category": "identity_consistency",
+      "answer": "白塔议会",
+      "expected": [
+        "白塔议会"
+      ],
+      "forbidden": [
+        "黑旗团"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "identity-02-m1",
+        "identity-02-m2"
+      ]
+    },
+    {
+      "case_id": "identity-03",
+      "category": "identity_consistency",
+      "answer": "人类",
+      "expected": [
+        "人类"
+      ],
+      "forbidden": [
+        "精灵"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "identity-03-m1",
+        "identity-03-m2"
+      ]
+    },
+    {
+      "case_id": "identity-04",
+      "category": "identity_consistency",
+      "answer": "商会书记",
+      "expected": [
+        "商会书记"
+      ],
+      "forbidden": [
+        "守城队长"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "identity-04-m2",
+        "identity-04-m1"
+      ]
+    },
+    {
+      "case_id": "item-01",
+      "category": "item_hallucination",
+      "answer": "没有",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "item-01-m1",
+        "item-01-m2"
+      ]
+    },
+    {
+      "case_id": "item-02",
+      "category": "item_hallucination",
+      "answer": "没有",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "item-02-m1",
+        "item-02-m2"
+      ]
+    },
+    {
+      "case_id": "item-03",
+      "category": "item_hallucination",
+      "answer": "没有",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "item-03-m1",
+        "item-03-m2"
+      ]
+    },
+    {
+      "case_id": "item-04",
+      "category": "item_hallucination",
+      "answer": "没有",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "item-04-m1",
+        "item-04-m2"
+      ]
+    },
+    {
+      "case_id": "location-01",
+      "category": "location_consistency",
+      "answer": "钟楼顶层",
+      "expected": [
+        "钟楼顶层"
+      ],
+      "forbidden": [
+        "北门"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "location-01-m1",
+        "location-01-m2"
+      ]
+    },
+    {
+      "case_id": "location-02",
+      "category": "location_consistency",
+      "answer": "松风旅店",
+      "expected": [
+        "松风旅店"
+      ],
+      "forbidden": [
+        "黑林"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "location-02-m1",
+        "location-02-m2"
+      ]
+    },
+    {
+      "case_id": "location-03",
+      "category": "location_consistency",
+      "answer": "白塔档案室",
+      "expected": [
+        "白塔档案室"
+      ],
+      "forbidden": [
+        "旧码头"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "location-03-m1",
+        "location-03-m2"
+      ]
+    },
+    {
+      "case_id": "location-04",
+      "category": "location_consistency",
+      "answer": "南坡营地",
+      "expected": [
+        "南坡营地"
+      ],
+      "forbidden": [
+        "观星台"
+      ],
+      "passed": true,
+      "retrieved_ids": [
+        "location-04-m1",
+        "location-04-m2"
+      ]
+    }
+  ],
+  "state_rows": [
+    {
+      "case_id": "state-001",
+      "expected": [
+        {
+          "entity": "队伍:阿岚",
+          "key": "金币",
+          "new_value": 31
+        }
+      ],
+      "actual": [
+        {
+          "entity": "阿岚小队",
+          "key": "金币",
+          "new_value": 31,
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "case_id": "state-002",
+      "expected": [
+        {
+          "entity": "角色:白芷",
+          "key": "生命值",
+          "new_value": 62
+        }
+      ],
+      "actual": [
+        {
+          "entity": "白芷",
+          "key": "生命值",
+          "new_value": "62",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "case_id": "state-003",
+      "expected": [
+        {
+          "entity": "任务:密信-3",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "玩家",
+          "key": "任务状态",
+          "new_value": "密信-3：已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "case_id": "state-004",
+      "expected": [
+        {
+          "entity": "角色:丹砂",
+          "key": "商会声望",
+          "new_value": 14
+        }
+      ],
+      "actual": [
+        {
+          "entity": "丹砂",
+          "key": "商会声望",
+          "new_value": "14",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "case_id": "state-005",
+      "expected": [
+        {
+          "entity": "角色:青禾",
+          "key": "力量",
+          "new_value": 13
+        },
+        {
+          "entity": "角色:青禾",
+          "key": "敏捷",
+          "new_value": 16
+        }
+      ],
+      "actual": [
+        {
+          "entity": "青禾",
+          "key": "力量",
+          "new_value": "13",
+          "reason": "剧情正文中的明确变化"
+        },
+        {
+          "entity": "青禾",
+          "key": "敏捷",
+          "new_value": "16",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "case_id": "state-006",
+      "expected": [],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "case_id": "state-007",
+      "expected": [],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "case_id": "state-008",
+      "expected": [
+        {
+          "entity": "任务:遗迹-8",
+          "key": "状态",
+          "new_value": "已完成"
+        },
+        {
+          "entity": "角色:照夜",
+          "key": "探索积分",
+          "new_value": 108
+        }
+      ],
+      "actual": [
+        {
+          "entity": "照夜",
+          "key": "探索积分",
+          "new_value": "108",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "case_id": "state-009",
+      "expected": [
+        {
+          "entity": "队伍:云岫",
+          "key": "金币",
+          "new_value": 39
+        }
+      ],
+      "actual": [
+        {
+          "entity": "云岫小队",
+          "key": "金币",
+          "new_value": 39,
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "case_id": "state-010",
+      "expected": [
+        {
+          "entity": "角色:南星",
+          "key": "生命值",
+          "new_value": 70
+        }
+      ],
+      "actual": [
+        {
+          "entity": "南星",
+          "key": "生命值",
+          "new_value": "70",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    }
+  ]
+}

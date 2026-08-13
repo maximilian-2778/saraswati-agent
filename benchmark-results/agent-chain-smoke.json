@@ -1,0 +1,145 @@
+{
+  "metadata": {
+    "generated_at": "2026-08-13T09:43:06.953488+00:00",
+    "model": "qwen3.7-plus",
+    "turns": 5,
+    "max_output_tokens": 512,
+    "max_agent_steps": 2,
+    "scope": "small end-to-end smoke; not a 100-case latency benchmark"
+  },
+  "summary": {
+    "successful_turns": 5,
+    "total_api_calls": 24,
+    "mean_api_calls_per_turn": 4.8,
+    "mean_input_tokens_per_turn": 4721.4,
+    "mean_output_tokens_per_turn": 3452.4,
+    "mean_standard_price_cost_rmb_per_turn": 0.037062,
+    "total_standard_price_cost_rmb": 0.18531,
+    "mean_end_to_end_latency_ms": 64642.636,
+    "p95_end_to_end_latency_ms": 101463.772
+  },
+  "turns": [
+    {
+      "turn": 1,
+      "prompt": "我在雨夜抵达白石镇，请用两三句话描写我走进旅店的情景。",
+      "assistant_chars": 54,
+      "end_to_end_latency_ms": 37267.8,
+      "api_calls": 4,
+      "input_tokens": 3314,
+      "output_tokens": 1733,
+      "standard_price_cost_rmb": 0.020492,
+      "trace_types": [
+        "context_built",
+        "model_response",
+        "tool_result",
+        "model_response",
+        "response_persisted",
+        "narrative_delta_created",
+        "narrative_delta_applied",
+        "turn_completed"
+      ],
+      "state_proposals": 0,
+      "audit_issues": 0
+    },
+    {
+      "turn": 2,
+      "prompt": "旅店老板告诉我，失踪的信使最后去了北门。请继续这一幕。",
+      "assistant_chars": 63,
+      "end_to_end_latency_ms": 98953.86,
+      "api_calls": 6,
+      "input_tokens": 5298,
+      "output_tokens": 5469,
+      "standard_price_cost_rmb": 0.054348,
+      "trace_types": [
+        "context_built",
+        "model_response",
+        "tool_result",
+        "tool_result",
+        "tool_result",
+        "model_response",
+        "tool_result",
+        "forced_model_response",
+        "response_persisted",
+        "narrative_delta_created",
+        "narrative_delta_applied",
+        "turn_completed"
+      ],
+      "state_proposals": 2,
+      "audit_issues": 0
+    },
+    {
+      "turn": 3,
+      "prompt": "我花了3枚金币买下地图，现在还剩27枚金币。请写出交易结果。",
+      "assistant_chars": 60,
+      "end_to_end_latency_ms": 43554.8,
+      "api_calls": 5,
+      "input_tokens": 5070,
+      "output_tokens": 2265,
+      "standard_price_cost_rmb": 0.02826,
+      "trace_types": [
+        "context_built",
+        "model_response",
+        "tool_result",
+        "tool_result",
+        "model_response",
+        "tool_result",
+        "forced_model_response",
+        "response_persisted",
+        "narrative_delta_created",
+        "narrative_delta_applied",
+        "turn_completed"
+      ],
+      "state_proposals": 2,
+      "audit_issues": 0
+    },
+    {
+      "turn": 4,
+      "prompt": "我答应老板天亮前寻找信使，然后立即前往北门。",
+      "assistant_chars": 54,
+      "end_to_end_latency_ms": 41345.47,
+      "api_calls": 4,
+      "input_tokens": 4383,
+      "output_tokens": 2168,
+      "standard_price_cost_rmb": 0.02611,
+      "trace_types": [
+        "context_built",
+        "model_response",
+        "tool_result",
+        "tool_result",
+        "tool_result",
+        "tool_result",
+        "model_response",
+        "response_persisted",
+        "narrative_delta_created",
+        "narrative_delta_applied",
+        "turn_completed"
+      ],
+      "state_proposals": 2,
+      "audit_issues": 0
+    },
+    {
+      "turn": 5,
+      "prompt": "我在北门发现一枚刻着银羽纹章的铜扣，把它收进行囊。",
+      "assistant_chars": 61,
+      "end_to_end_latency_ms": 102091.25,
+      "api_calls": 5,
+      "input_tokens": 5542,
+      "output_tokens": 5627,
+      "standard_price_cost_rmb": 0.0561,
+      "trace_types": [
+        "context_built",
+        "model_response",
+        "tool_result",
+        "model_response",
+        "tool_result",
+        "forced_model_response",
+        "response_persisted",
+        "narrative_delta_created",
+        "narrative_delta_applied",
+        "turn_completed"
+      ],
+      "state_proposals": 2,
+      "audit_issues": 0
+    }
+  ]
+}
