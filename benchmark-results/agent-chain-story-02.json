@@ -1,0 +1,152 @@
+{
+  "metadata": {
+    "generated_at": "2026-08-13T10:07:31.837081+00:00",
+    "model": "qwen3.7-plus",
+    "turns": 5,
+    "stories": 1,
+    "max_output_tokens": 512,
+    "max_agent_steps": 2,
+    "scope": "fixed synthetic end-to-end AgentRuntime benchmark"
+  },
+  "summary": {
+    "successful_turns": 5,
+    "failed_turns": 0,
+    "total_api_calls": 20,
+    "mean_api_calls_per_turn": 4,
+    "mean_input_tokens_per_turn": 4126.8,
+    "mean_output_tokens_per_turn": 2737.0,
+    "mean_standard_price_cost_rmb_per_turn": 0.0301496,
+    "total_standard_price_cost_rmb": 0.150748,
+    "mean_end_to_end_latency_ms": 50957.976,
+    "p95_end_to_end_latency_ms": 63535.52
+  },
+  "turns": [
+    {
+      "story": 2,
+      "turn": 1,
+      "status": "ok",
+      "prompt": "我在雨夜抵达雾港，请用两三句话描写我找到落脚处的情景。",
+      "assistant_chars": 40,
+      "end_to_end_latency_ms": 43000.81,
+      "api_calls": 4,
+      "input_tokens": 3328,
+      "output_tokens": 2248,
+      "standard_price_cost_rmb": 0.02464,
+      "trace_types": [
+        "context_built",
+        "model_response",
+        "tool_result",
+        "model_response",
+        "response_persisted",
+        "narrative_delta_created",
+        "narrative_delta_applied",
+        "turn_completed"
+      ],
+      "state_proposals": 0,
+      "audit_issues": 0
+    },
+    {
+      "story": 2,
+      "turn": 2,
+      "status": "ok",
+      "prompt": "灯塔守卫告诉我，失联的巡逻员最后去了旧码头。请继续这一幕。",
+      "assistant_chars": 105,
+      "end_to_end_latency_ms": 41573.87,
+      "api_calls": 4,
+      "input_tokens": 3879,
+      "output_tokens": 2206,
+      "standard_price_cost_rmb": 0.025406,
+      "trace_types": [
+        "context_built",
+        "model_response",
+        "tool_result",
+        "tool_result",
+        "tool_result",
+        "model_response",
+        "response_persisted",
+        "narrative_delta_created",
+        "narrative_delta_applied",
+        "turn_completed"
+      ],
+      "state_proposals": 1,
+      "audit_issues": 0
+    },
+    {
+      "story": 2,
+      "turn": 3,
+      "status": "ok",
+      "prompt": "我花了4枚金币买下潮汐图，现在还剩36枚金币。请写出交易结果。",
+      "assistant_chars": 55,
+      "end_to_end_latency_ms": 56404.16,
+      "api_calls": 4,
+      "input_tokens": 4108,
+      "output_tokens": 3087,
+      "standard_price_cost_rmb": 0.032912,
+      "trace_types": [
+        "context_built",
+        "model_response",
+        "tool_result",
+        "tool_result",
+        "model_response",
+        "response_persisted",
+        "narrative_delta_created",
+        "narrative_delta_applied",
+        "turn_completed"
+      ],
+      "state_proposals": 3,
+      "audit_issues": 0
+    },
+    {
+      "story": 2,
+      "turn": 4,
+      "status": "ok",
+      "prompt": "我答应灯塔守卫午夜前处理这件事，然后立即前往旧码头。",
+      "assistant_chars": 86,
+      "end_to_end_latency_ms": 65318.36,
+      "api_calls": 4,
+      "input_tokens": 4678,
+      "output_tokens": 3545,
+      "standard_price_cost_rmb": 0.037716,
+      "trace_types": [
+        "context_built",
+        "model_response",
+        "tool_result",
+        "tool_result",
+        "tool_result",
+        "tool_result",
+        "model_response",
+        "response_persisted",
+        "narrative_delta_created",
+        "narrative_delta_applied",
+        "turn_completed"
+      ],
+      "state_proposals": 1,
+      "audit_issues": 0
+    },
+    {
+      "story": 2,
+      "turn": 5,
+      "status": "ok",
+      "prompt": "我在旧码头发现蓝蜡封信，把它收进行囊。",
+      "assistant_chars": 96,
+      "end_to_end_latency_ms": 48492.68,
+      "api_calls": 4,
+      "input_tokens": 4641,
+      "output_tokens": 2599,
+      "standard_price_cost_rmb": 0.030074,
+      "trace_types": [
+        "context_built",
+        "model_response",
+        "tool_result",
+        "tool_result",
+        "model_response",
+        "response_persisted",
+        "narrative_delta_created",
+        "narrative_delta_applied",
+        "turn_completed"
+      ],
+      "state_proposals": 3,
+      "audit_issues": 0
+    }
+  ]
+}
