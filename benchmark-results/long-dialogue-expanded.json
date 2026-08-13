@@ -1,0 +1,3880 @@
+{
+  "metadata": {
+    "generated_at": "2026-08-13T12:44:16.721897+00:00",
+    "suite": "Saraswati Expanded Long Dialogue Consistency Eval v2",
+    "model": "qwen3.7-plus",
+    "temperature": 0.0,
+    "dataset_type": "ten deterministic synthetic 50-turn histories",
+    "reused_audited_v1_stories": 2,
+    "newly_executed_stories": 8,
+    "notice": "Synthetic in-project evaluation; paper results use different datasets and are reference-only."
+  },
+  "metrics": {
+    "long_dialogue": {
+      "stories": 10,
+      "turns_per_story": 50,
+      "total_turns": 500,
+      "total_messages": 1000,
+      "questions": 90,
+      "fact_turn_min": 2,
+      "fact_turn_max": 40,
+      "distance_to_query_turns_min": 10,
+      "distance_to_query_turns_max": 48
+    },
+    "answer_accuracy": {
+      "overall": {
+        "passed": 85,
+        "total": 90,
+        "rate": 0.9444444444444444,
+        "wilson_95_ci": [
+          0.8764626377820048,
+          0.976039028383038
+        ]
+      },
+      "by_category": {
+        "early_plot": {
+          "passed": 10,
+          "total": 10,
+          "rate": 1.0,
+          "wilson_95_ci": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "faction_consistency": {
+          "passed": 10,
+          "total": 10,
+          "rate": 1.0,
+          "wilson_95_ci": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "identity_consistency": {
+          "passed": 10,
+          "total": 10,
+          "rate": 1.0,
+          "wilson_95_ci": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "item_consistency": {
+          "passed": 10,
+          "total": 10,
+          "rate": 1.0,
+          "wilson_95_ci": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "location_consistency": {
+          "passed": 7,
+          "total": 10,
+          "rate": 0.7,
+          "wilson_95_ci": [
+            0.39677814746114537,
+            0.8922087325936989
+          ]
+        },
+        "persona_adherence": {
+          "passed": 10,
+          "total": 10,
+          "rate": 1.0,
+          "wilson_95_ci": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "promise_consistency": {
+          "passed": 9,
+          "total": 10,
+          "rate": 0.9,
+          "wilson_95_ci": [
+            0.5958499732047615,
+            0.9821237869049271
+          ]
+        },
+        "state_value": {
+          "passed": 9,
+          "total": 10,
+          "rate": 0.9,
+          "wilson_95_ci": [
+            0.5958499732047615,
+            0.9821237869049271
+          ]
+        },
+        "unsupported_item": {
+          "passed": 10,
+          "total": 10,
+          "rate": 1.0,
+          "wilson_95_ci": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        }
+      }
+    },
+    "retrieval": {
+      "recall_at_1": 0.8111111111111111,
+      "recall_at_3": 0.9444444444444444,
+      "recall_at_5": 0.9666666666666667
+    },
+    "explicit_contradiction": {
+      "violations": 1,
+      "total": 70
+    },
+    "world_ledger_event_extraction": {
+      "events": 40,
+      "exact_events": 15,
+      "exact_event_rate": 0.375,
+      "tp": 15,
+      "fp": 6,
+      "fn": 25,
+      "precision": 0.7142857142857143,
+      "recall": 0.375,
+      "f1": 0.4918032786885245
+    },
+    "world_ledger_final_projection": {
+      "stories": 10,
+      "exact_stories": 0,
+      "exact_story_rate": 0.0,
+      "tp": 15,
+      "fp": 6,
+      "fn": 15,
+      "precision": 0.7142857142857143,
+      "recall": 0.5
+    }
+  },
+  "question_rows": [
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-passphrase",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "旧王密门的口令是什么？只回答口令。",
+      "expected": [
+        "赤月无声"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "mist-harbor-m-02",
+      "retrieved_ids": [
+        "mist-harbor-m-02",
+        "mist-harbor-m-20",
+        "mist-harbor-m-22",
+        "mist-harbor-m-06",
+        "mist-harbor-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "赤月无声",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "宴会上有人向林澈递酒，他会怎么做？只回答“拒绝饮酒”或“接受饮酒”。",
+      "expected": [
+        "拒绝饮酒"
+      ],
+      "forbidden": [
+        "接受饮酒"
+      ],
+      "relevant_memory_id": "mist-harbor-m-04",
+      "retrieved_ids": [
+        "mist-harbor-m-04",
+        "mist-harbor-m-20",
+        "mist-harbor-m-12",
+        "mist-harbor-m-26",
+        "mist-harbor-m-24"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "拒绝饮酒",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "林澈的真实身份是什么？只回答身份名称。",
+      "expected": [
+        "旧王室最后一名档案官",
+        "旧王室档案官"
+      ],
+      "forbidden": [
+        "商旅"
+      ],
+      "relevant_memory_id": "mist-harbor-m-06",
+      "retrieved_ids": [
+        "mist-harbor-m-20",
+        "mist-harbor-m-28",
+        "mist-harbor-m-06",
+        "mist-harbor-m-24",
+        "mist-harbor-m-14"
+      ],
+      "relevant_rank": 3,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "旧王室最后一名档案官",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "林澈当前效忠哪个阵营？只回答阵营名称。",
+      "expected": [
+        "白塔议会"
+      ],
+      "forbidden": [
+        "灰帆商会"
+      ],
+      "relevant_memory_id": "mist-harbor-m-12",
+      "retrieved_ids": [
+        "mist-harbor-m-20",
+        "mist-harbor-m-12",
+        "mist-harbor-m-06",
+        "mist-harbor-m-04",
+        "mist-harbor-m-30"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "白塔议会",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-item-owner",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "星纹钥匙现在由谁保管？只回答人物名称。",
+      "expected": [
+        "守钟人"
+      ],
+      "forbidden": [
+        "林澈"
+      ],
+      "relevant_memory_id": "mist-harbor-m-24",
+      "retrieved_ids": [
+        "mist-harbor-m-24",
+        "mist-harbor-m-20",
+        "mist-harbor-m-14",
+        "mist-harbor-m-28",
+        "mist-harbor-m-40"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "守钟人",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-location",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "林澈当前在哪里？只回答地点名称。",
+      "expected": [
+        "钟楼档案室"
+      ],
+      "forbidden": [
+        "旧码头"
+      ],
+      "relevant_memory_id": "mist-harbor-m-30",
+      "retrieved_ids": [
+        "mist-harbor-m-20",
+        "mist-harbor-m-40",
+        "mist-harbor-m-04",
+        "mist-harbor-m-12",
+        "mist-harbor-m-24"
+      ],
+      "relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_5": 0,
+      "answer": "未提及",
+      "passed": false,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "档案安全转移的联络信号是什么？只回答信号。",
+      "expected": [
+        "黎明前连续敲三次钟",
+        "连续敲三次钟"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "mist-harbor-m-22",
+      "retrieved_ids": [
+        "mist-harbor-m-22",
+        "mist-harbor-m-20",
+        "mist-harbor-m-24",
+        "mist-harbor-m-06",
+        "mist-harbor-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "黎明前连续敲三次钟",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-absent-item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "林澈现在拥有黑铁王冠吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "mist-harbor-m-28",
+      "retrieved_ids": [
+        "mist-harbor-m-28",
+        "mist-harbor-m-24",
+        "mist-harbor-m-20",
+        "mist-harbor-m-26",
+        "mist-harbor-m-32"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "没有。",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-coins",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "队伍当前有多少枚金币？只回答数字。",
+      "expected": [
+        "31"
+      ],
+      "forbidden": [
+        "42"
+      ],
+      "relevant_memory_id": "mist-harbor-m-40",
+      "retrieved_ids": [
+        "mist-harbor-m-40",
+        "mist-harbor-m-20",
+        "mist-harbor-m-10",
+        "mist-harbor-m-24",
+        "mist-harbor-m-30"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "42",
+      "passed": false,
+      "forbidden_selected": true
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-cure",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "解除石化诅咒需要哪种花？只回答花名。",
+      "expected": [
+        "夜昙"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "twin-moons-m-02",
+      "retrieved_ids": [
+        "twin-moons-m-02",
+        "twin-moons-m-40",
+        "twin-moons-m-04",
+        "twin-moons-m-20",
+        "twin-moons-m-32"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "夜昙",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "有人要求照夜伪造观测记录，她会怎么做？只回答“拒绝伪造”或“接受伪造”。",
+      "expected": [
+        "拒绝伪造"
+      ],
+      "forbidden": [
+        "接受伪造"
+      ],
+      "relevant_memory_id": "twin-moons-m-04",
+      "retrieved_ids": [
+        "twin-moons-m-04",
+        "twin-moons-m-06",
+        "twin-moons-m-20",
+        "twin-moons-m-02",
+        "twin-moons-m-12"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "拒绝伪造",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "照夜是什么种族、从事什么职业？只回答“人类观星师”或“精灵祭司”。",
+      "expected": [
+        "人类观星师"
+      ],
+      "forbidden": [
+        "精灵祭司"
+      ],
+      "relevant_memory_id": "twin-moons-m-06",
+      "retrieved_ids": [
+        "twin-moons-m-06",
+        "twin-moons-m-02",
+        "twin-moons-m-20",
+        "twin-moons-m-04",
+        "twin-moons-m-30"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "人类观星师",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "照夜当前属于哪个阵营？只回答阵营名称。",
+      "expected": [
+        "南坡学社"
+      ],
+      "forbidden": [
+        "北境学院"
+      ],
+      "relevant_memory_id": "twin-moons-m-12",
+      "retrieved_ids": [
+        "twin-moons-m-12",
+        "twin-moons-m-30",
+        "twin-moons-m-20",
+        "twin-moons-m-10",
+        "twin-moons-m-04"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "南坡学社",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-item-owner",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "海镜现在由谁保管？只回答名称。",
+      "expected": [
+        "藏镜阁"
+      ],
+      "forbidden": [
+        "照夜"
+      ],
+      "relevant_memory_id": "twin-moons-m-24",
+      "retrieved_ids": [
+        "twin-moons-m-24",
+        "twin-moons-m-02",
+        "twin-moons-m-10",
+        "twin-moons-m-40",
+        "twin-moons-m-26"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "藏镜阁",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-location",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "照夜当前在哪里？只回答地点名称。",
+      "expected": [
+        "南坡营地"
+      ],
+      "forbidden": [
+        "星桥"
+      ],
+      "relevant_memory_id": "twin-moons-m-30",
+      "retrieved_ids": [
+        "twin-moons-m-20",
+        "twin-moons-m-30",
+        "twin-moons-m-40",
+        "twin-moons-m-04",
+        "twin-moons-m-12"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "南坡营地",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "海镜预言开始生效的约定信号是什么？只回答信号。",
+      "expected": [
+        "双月同升时点燃一盏蓝灯",
+        "点燃一盏蓝灯"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "twin-moons-m-22",
+      "retrieved_ids": [
+        "twin-moons-m-22",
+        "twin-moons-m-02",
+        "twin-moons-m-20",
+        "twin-moons-m-10",
+        "twin-moons-m-26"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "双月同升时点燃一盏蓝灯。",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-absent-item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "照夜现在拥有龙骨短笛吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "twin-moons-m-28",
+      "retrieved_ids": [
+        "twin-moons-m-24",
+        "twin-moons-m-35",
+        "twin-moons-m-18",
+        "twin-moons-m-26",
+        "twin-moons-m-28"
+      ],
+      "relevant_rank": 5,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_5": 1,
+      "answer": "没有。",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-herbs",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "营地当前有多少份药草？只回答数字。",
+      "expected": [
+        "11"
+      ],
+      "forbidden": [
+        "18"
+      ],
+      "relevant_memory_id": "twin-moons-m-40",
+      "retrieved_ids": [
+        "twin-moons-m-40",
+        "twin-moons-m-10",
+        "twin-moons-m-30",
+        "twin-moons-m-20",
+        "twin-moons-m-26"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "11",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "case_id": "frost-bridge-early",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "旧烽台的求援灯号是什么？只回答灯号。",
+      "expected": [
+        "三短一长"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "frost-bridge-m-02",
+      "retrieved_ids": [
+        "frost-bridge-m-02",
+        "frost-bridge-m-10",
+        "frost-bridge-m-06",
+        "frost-bridge-m-22",
+        "frost-bridge-m-40"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "三短一长",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "case_id": "frost-bridge-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "有人把不属于寒露的封缄信交给她，她会怎么做？只回答“拒绝拆封”或“立即拆封”。",
+      "expected": [
+        "拒绝拆封"
+      ],
+      "forbidden": [
+        "立即拆封"
+      ],
+      "relevant_memory_id": "frost-bridge-m-04",
+      "retrieved_ids": [
+        "frost-bridge-m-04",
+        "frost-bridge-m-02",
+        "frost-bridge-m-22",
+        "frost-bridge-m-10",
+        "frost-bridge-m-20"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "拒绝拆封",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "case_id": "frost-bridge-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "寒露的真实身份是什么？只回答身份名称。",
+      "expected": [
+        "霜桥巡守官"
+      ],
+      "forbidden": [
+        "赏金猎人"
+      ],
+      "relevant_memory_id": "frost-bridge-m-06",
+      "retrieved_ids": [
+        "frost-bridge-m-06",
+        "frost-bridge-m-40",
+        "frost-bridge-m-10",
+        "frost-bridge-m-12",
+        "frost-bridge-m-20"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "霜桥巡守官",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "case_id": "frost-bridge-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "寒露当前属于哪个阵营？只回答阵营名称。",
+      "expected": [
+        "霜桥守军"
+      ],
+      "forbidden": [
+        "北岭佣兵团"
+      ],
+      "relevant_memory_id": "frost-bridge-m-12",
+      "retrieved_ids": [
+        "frost-bridge-m-12",
+        "frost-bridge-m-20",
+        "frost-bridge-m-06",
+        "frost-bridge-m-10",
+        "frost-bridge-m-30"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "霜桥守军",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "case_id": "frost-bridge-item_current",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "寒星号角现在由谁保管？只回答名称。",
+      "expected": [
+        "烽台司号员"
+      ],
+      "forbidden": [
+        "寒露"
+      ],
+      "relevant_memory_id": "frost-bridge-m-24",
+      "retrieved_ids": [
+        "frost-bridge-m-24",
+        "frost-bridge-m-14",
+        "frost-bridge-m-10",
+        "frost-bridge-m-28",
+        "frost-bridge-m-20"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "烽台司号员",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "case_id": "frost-bridge-location_current",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "寒露当前在哪里？只回答地点名称。",
+      "expected": [
+        "霜桥烽台"
+      ],
+      "forbidden": [
+        "北侧栈道"
+      ],
+      "relevant_memory_id": "frost-bridge-m-30",
+      "retrieved_ids": [
+        "frost-bridge-m-12",
+        "frost-bridge-m-20",
+        "frost-bridge-m-06",
+        "frost-bridge-m-28",
+        "frost-bridge-m-40"
+      ],
+      "relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_5": 0,
+      "answer": "未知",
+      "passed": false,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "case_id": "frost-bridge-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "伤员已经撤离的约定信号是什么？只回答信号。",
+      "expected": [
+        "日落后升起两面白旗"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "frost-bridge-m-22",
+      "retrieved_ids": [
+        "frost-bridge-m-22",
+        "frost-bridge-m-26",
+        "frost-bridge-m-24",
+        "frost-bridge-m-02",
+        "frost-bridge-m-04"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "日落后升起两面白旗",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "case_id": "frost-bridge-absent_item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "寒露现在拥有黑曜石匕首吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "frost-bridge-m-28",
+      "retrieved_ids": [
+        "frost-bridge-m-28",
+        "frost-bridge-m-24",
+        "frost-bridge-m-10",
+        "frost-bridge-m-20",
+        "frost-bridge-m-26"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "没有。",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "case_id": "frost-bridge-resource_current",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "守军当前有多少份口粮？只回答数字。",
+      "expected": [
+        "24"
+      ],
+      "forbidden": [
+        "36"
+      ],
+      "relevant_memory_id": "frost-bridge-m-40",
+      "retrieved_ids": [
+        "frost-bridge-m-40",
+        "frost-bridge-m-10",
+        "frost-bridge-m-20",
+        "frost-bridge-m-28",
+        "frost-bridge-m-32"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "24",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "white-oasis",
+      "case_id": "white-oasis-early",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "沙海唯一稳定的淡水源是什么？只回答名称。",
+      "expected": [
+        "白石井"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "white-oasis-m-02",
+      "retrieved_ids": [
+        "white-oasis-m-02",
+        "white-oasis-m-06",
+        "white-oasis-m-20",
+        "white-oasis-m-10",
+        "white-oasis-m-40"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "白石井",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "white-oasis",
+      "case_id": "white-oasis-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "补给不足时有人建议苏筝偷走平民的水袋，她会怎么做？只回答“拒绝偷窃”或“接受偷窃”。",
+      "expected": [
+        "拒绝偷窃"
+      ],
+      "forbidden": [
+        "接受偷窃"
+      ],
+      "relevant_memory_id": "white-oasis-m-04",
+      "retrieved_ids": [
+        "white-oasis-m-04",
+        "white-oasis-m-40",
+        "white-oasis-m-20",
+        "white-oasis-m-12",
+        "white-oasis-m-06"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "拒绝偷窃",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "white-oasis",
+      "case_id": "white-oasis-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "苏筝的真实身份是什么？只回答身份名称。",
+      "expected": [
+        "沙海医师"
+      ],
+      "forbidden": [
+        "受雇佣兵"
+      ],
+      "relevant_memory_id": "white-oasis-m-06",
+      "retrieved_ids": [
+        "white-oasis-m-06",
+        "white-oasis-m-20",
+        "white-oasis-m-12",
+        "white-oasis-m-30",
+        "white-oasis-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "沙海医师",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "white-oasis",
+      "case_id": "white-oasis-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "苏筝当前属于哪个阵营？只回答阵营名称。",
+      "expected": [
+        "绿洲救护会"
+      ],
+      "forbidden": [
+        "赤沙商队"
+      ],
+      "relevant_memory_id": "white-oasis-m-12",
+      "retrieved_ids": [
+        "white-oasis-m-12",
+        "white-oasis-m-20",
+        "white-oasis-m-30",
+        "white-oasis-m-06",
+        "white-oasis-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "绿洲救护会",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "white-oasis",
+      "case_id": "white-oasis-item_current",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "琉璃罗盘现在由谁保管？只回答名称。",
+      "expected": [
+        "白石井守"
+      ],
+      "forbidden": [
+        "苏筝"
+      ],
+      "relevant_memory_id": "white-oasis-m-24",
+      "retrieved_ids": [
+        "white-oasis-m-24",
+        "white-oasis-m-14",
+        "white-oasis-m-20",
+        "white-oasis-m-18",
+        "white-oasis-m-10"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "白石井守",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "white-oasis",
+      "case_id": "white-oasis-location_current",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "苏筝当前在哪里？只回答地点名称。",
+      "expected": [
+        "白石井营地"
+      ],
+      "forbidden": [
+        "盐碱滩"
+      ],
+      "relevant_memory_id": "white-oasis-m-30",
+      "retrieved_ids": [
+        "white-oasis-m-20",
+        "white-oasis-m-30",
+        "white-oasis-m-12",
+        "white-oasis-m-06",
+        "white-oasis-m-40"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "白石井营地",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "white-oasis",
+      "case_id": "white-oasis-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "饮水检验安全的约定信号是什么？只回答信号。",
+      "expected": [
+        "正午在井栏系一条蓝布"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "white-oasis-m-22",
+      "retrieved_ids": [
+        "white-oasis-m-22",
+        "white-oasis-m-02",
+        "white-oasis-m-06",
+        "white-oasis-m-20",
+        "white-oasis-m-42"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "正午在井栏系一条蓝布。",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "white-oasis",
+      "case_id": "white-oasis-absent_item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "苏筝现在拥有黄金圣杯吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "white-oasis-m-28",
+      "retrieved_ids": [
+        "white-oasis-m-28",
+        "white-oasis-m-24",
+        "white-oasis-m-20",
+        "white-oasis-m-37",
+        "white-oasis-m-38"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "没有",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "white-oasis",
+      "case_id": "white-oasis-resource_current",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "救护会当前有多少袋净水？只回答数字。",
+      "expected": [
+        "19"
+      ],
+      "forbidden": [
+        "28"
+      ],
+      "relevant_memory_id": "white-oasis-m-40",
+      "retrieved_ids": [
+        "white-oasis-m-40",
+        "white-oasis-m-10",
+        "white-oasis-m-12",
+        "white-oasis-m-20",
+        "white-oasis-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "19",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "case_id": "cloud-engine-early",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "浮城主引擎需要什么部件才能启动？只回答部件名称。",
+      "expected": [
+        "云铜齿轮"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "cloud-engine-m-02",
+      "retrieved_ids": [
+        "cloud-engine-m-02",
+        "cloud-engine-m-28",
+        "cloud-engine-m-40",
+        "cloud-engine-m-06",
+        "cloud-engine-m-10"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "云铜齿轮",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "case_id": "cloud-engine-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "有人建议云眠从无护栏高台抄近路，她会怎么做？只回答“拒绝登高”或“走上高台”。",
+      "expected": [
+        "拒绝登高"
+      ],
+      "forbidden": [
+        "走上高台"
+      ],
+      "relevant_memory_id": "cloud-engine-m-04",
+      "retrieved_ids": [
+        "cloud-engine-m-04",
+        "cloud-engine-m-22",
+        "cloud-engine-m-24",
+        "cloud-engine-m-20",
+        "cloud-engine-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "拒绝登高",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "case_id": "cloud-engine-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "云眠的真实身份是什么？只回答身份名称。",
+      "expected": [
+        "浮城机械师"
+      ],
+      "forbidden": [
+        "天空骑士"
+      ],
+      "relevant_memory_id": "cloud-engine-m-06",
+      "retrieved_ids": [
+        "cloud-engine-m-06",
+        "cloud-engine-m-12",
+        "cloud-engine-m-27",
+        "cloud-engine-m-32",
+        "cloud-engine-m-26"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "浮城机械师",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "case_id": "cloud-engine-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "云眠当前属于哪个阵营？只回答阵营名称。",
+      "expected": [
+        "云机工坊"
+      ],
+      "forbidden": [
+        "苍羽骑团"
+      ],
+      "relevant_memory_id": "cloud-engine-m-12",
+      "retrieved_ids": [
+        "cloud-engine-m-12",
+        "cloud-engine-m-20",
+        "cloud-engine-m-30",
+        "cloud-engine-m-28",
+        "cloud-engine-m-06"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "云机工坊",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "case_id": "cloud-engine-item_current",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "云铜齿轮现在由谁保管？只回答名称。",
+      "expected": [
+        "主机库管理员"
+      ],
+      "forbidden": [
+        "云眠"
+      ],
+      "relevant_memory_id": "cloud-engine-m-24",
+      "retrieved_ids": [
+        "cloud-engine-m-24",
+        "cloud-engine-m-14",
+        "cloud-engine-m-02",
+        "cloud-engine-m-20",
+        "cloud-engine-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "主机库管理员",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "case_id": "cloud-engine-location_current",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "云眠当前在哪里？只回答地点名称。",
+      "expected": [
+        "主引擎舱"
+      ],
+      "forbidden": [
+        "东侧吊桥"
+      ],
+      "relevant_memory_id": "cloud-engine-m-30",
+      "retrieved_ids": [
+        "cloud-engine-m-20",
+        "cloud-engine-m-12",
+        "cloud-engine-m-28",
+        "cloud-engine-m-40",
+        "cloud-engine-m-06"
+      ],
+      "relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_5": 0,
+      "answer": "云机工坊",
+      "passed": false,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "case_id": "cloud-engine-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "检修人员可以进入的约定信号是什么？只回答信号。",
+      "expected": [
+        "主轴停稳后亮起三盏绿灯"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "cloud-engine-m-22",
+      "retrieved_ids": [
+        "cloud-engine-m-22",
+        "cloud-engine-m-02",
+        "cloud-engine-m-24",
+        "cloud-engine-m-10",
+        "cloud-engine-m-20"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "亮起三盏绿灯",
+      "passed": false,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "case_id": "cloud-engine-absent_item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "云眠现在拥有雷晶长枪吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "cloud-engine-m-28",
+      "retrieved_ids": [
+        "cloud-engine-m-28",
+        "cloud-engine-m-24",
+        "cloud-engine-m-04",
+        "cloud-engine-m-20",
+        "cloud-engine-m-38"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "没有。",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "case_id": "cloud-engine-resource_current",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "工坊当前有多少枚能量晶体？只回答数字。",
+      "expected": [
+        "14"
+      ],
+      "forbidden": [
+        "25"
+      ],
+      "relevant_memory_id": "cloud-engine-m-40",
+      "retrieved_ids": [
+        "cloud-engine-m-40",
+        "cloud-engine-m-10",
+        "cloud-engine-m-28",
+        "cloud-engine-m-20",
+        "cloud-engine-m-12"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "14",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "deep-current",
+      "case_id": "deep-current-early",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "遗城海门的古代口令是什么？只回答口令。",
+      "expected": [
+        "潮落见星"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "deep-current-m-02",
+      "retrieved_ids": [
+        "deep-current-m-02",
+        "deep-current-m-06",
+        "deep-current-m-30",
+        "deep-current-m-04",
+        "deep-current-m-40"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "潮落见星",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "deep-current",
+      "case_id": "deep-current-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "船长要求临雾伪造潜航数据，她会怎么做？只回答“拒绝伪造”或“接受伪造”。",
+      "expected": [
+        "拒绝伪造"
+      ],
+      "forbidden": [
+        "接受伪造"
+      ],
+      "relevant_memory_id": "deep-current-m-04",
+      "retrieved_ids": [
+        "deep-current-m-04",
+        "deep-current-m-20",
+        "deep-current-m-32",
+        "deep-current-m-28",
+        "deep-current-m-24"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "拒绝伪造",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "deep-current",
+      "case_id": "deep-current-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "临雾的真实身份是什么？只回答身份名称。",
+      "expected": [
+        "深海测绘师"
+      ],
+      "forbidden": [
+        "海盗"
+      ],
+      "relevant_memory_id": "deep-current-m-06",
+      "retrieved_ids": [
+        "deep-current-m-06",
+        "deep-current-m-04",
+        "deep-current-m-20",
+        "deep-current-m-32",
+        "deep-current-m-26"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "深海测绘师",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "deep-current",
+      "case_id": "deep-current-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "临雾当前属于哪个阵营？只回答阵营名称。",
+      "expected": [
+        "深潮考察团"
+      ],
+      "forbidden": [
+        "黑帆舰队"
+      ],
+      "relevant_memory_id": "deep-current-m-12",
+      "retrieved_ids": [
+        "deep-current-m-12",
+        "deep-current-m-04",
+        "deep-current-m-20",
+        "deep-current-m-28",
+        "deep-current-m-30"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "深潮考察团",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "deep-current",
+      "case_id": "deep-current-item_current",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "潮汐刻盘现在由谁保管？只回答名称。",
+      "expected": [
+        "遗城译码员"
+      ],
+      "forbidden": [
+        "临雾"
+      ],
+      "relevant_memory_id": "deep-current-m-24",
+      "retrieved_ids": [
+        "deep-current-m-24",
+        "deep-current-m-14",
+        "deep-current-m-20",
+        "deep-current-m-10",
+        "deep-current-m-32"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "遗城译码员",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "deep-current",
+      "case_id": "deep-current-location_current",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "临雾当前在哪里？只回答地点名称。",
+      "expected": [
+        "遗城海门前厅"
+      ],
+      "forbidden": [
+        "沉船甲板"
+      ],
+      "relevant_memory_id": "deep-current-m-30",
+      "retrieved_ids": [
+        "deep-current-m-20",
+        "deep-current-m-04",
+        "deep-current-m-28",
+        "deep-current-m-30",
+        "deep-current-m-40"
+      ],
+      "relevant_rank": 4,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_5": 1,
+      "answer": "遗城海门前厅",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "deep-current",
+      "case_id": "deep-current-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "测绘队已经返航的约定信号是什么？只回答信号。",
+      "expected": [
+        "连续释放两枚紫色浮标"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "deep-current-m-22",
+      "retrieved_ids": [
+        "deep-current-m-22",
+        "deep-current-m-06",
+        "deep-current-m-04",
+        "deep-current-m-26",
+        "deep-current-m-02"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "连续释放两枚紫色浮标",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "deep-current",
+      "case_id": "deep-current-absent_item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "临雾现在拥有海皇三叉戟吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "deep-current-m-28",
+      "retrieved_ids": [
+        "deep-current-m-24",
+        "deep-current-m-28",
+        "deep-current-m-20",
+        "deep-current-m-42",
+        "deep-current-m-04"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "没有",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "deep-current",
+      "case_id": "deep-current-resource_current",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "考察团当前有多少瓶氧气瓶？只回答数字。",
+      "expected": [
+        "13"
+      ],
+      "forbidden": [
+        "22"
+      ],
+      "relevant_memory_id": "deep-current-m-40",
+      "retrieved_ids": [
+        "deep-current-m-40",
+        "deep-current-m-10",
+        "deep-current-m-30",
+        "deep-current-m-20",
+        "deep-current-m-04"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "13",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "silver-forest",
+      "case_id": "silver-forest-early",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "腐心菇中毒需要什么解药？只回答名称。",
+      "expected": [
+        "银叶苔"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "silver-forest-m-02",
+      "retrieved_ids": [
+        "silver-forest-m-02",
+        "silver-forest-m-20",
+        "silver-forest-m-06",
+        "silver-forest-m-22",
+        "silver-forest-m-35"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "银叶苔",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "silver-forest",
+      "case_id": "silver-forest-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "有人要求青黛用活体村民试药，她会怎么做？只回答“拒绝试药”或“接受试药”。",
+      "expected": [
+        "拒绝试药"
+      ],
+      "forbidden": [
+        "接受试药"
+      ],
+      "relevant_memory_id": "silver-forest-m-04",
+      "retrieved_ids": [
+        "silver-forest-m-04",
+        "silver-forest-m-20",
+        "silver-forest-m-24",
+        "silver-forest-m-14",
+        "silver-forest-m-10"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "拒绝试药",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "silver-forest",
+      "case_id": "silver-forest-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "青黛的真实身份是什么？只回答身份名称。",
+      "expected": [
+        "森林药剂师"
+      ],
+      "forbidden": [
+        "神殿祭司"
+      ],
+      "relevant_memory_id": "silver-forest-m-06",
+      "retrieved_ids": [
+        "silver-forest-m-06",
+        "silver-forest-m-20",
+        "silver-forest-m-22",
+        "silver-forest-m-04",
+        "silver-forest-m-30"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "森林药剂师",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "silver-forest",
+      "case_id": "silver-forest-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "青黛当前属于哪个阵营？只回答阵营名称。",
+      "expected": [
+        "银叶守林会"
+      ],
+      "forbidden": [
+        "枯木教团"
+      ],
+      "relevant_memory_id": "silver-forest-m-12",
+      "retrieved_ids": [
+        "silver-forest-m-20",
+        "silver-forest-m-12",
+        "silver-forest-m-30",
+        "silver-forest-m-10",
+        "silver-forest-m-06"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "银叶守林会",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "silver-forest",
+      "case_id": "silver-forest-item_current",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "月纹药杵现在由谁保管？只回答名称。",
+      "expected": [
+        "守林会药库"
+      ],
+      "forbidden": [
+        "青黛"
+      ],
+      "relevant_memory_id": "silver-forest-m-24",
+      "retrieved_ids": [
+        "silver-forest-m-24",
+        "silver-forest-m-20",
+        "silver-forest-m-14",
+        "silver-forest-m-10",
+        "silver-forest-m-22"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "守林会药库",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "silver-forest",
+      "case_id": "silver-forest-location_current",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "青黛当前在哪里？只回答地点名称。",
+      "expected": [
+        "银叶药圃"
+      ],
+      "forbidden": [
+        "黑松谷"
+      ],
+      "relevant_memory_id": "silver-forest-m-30",
+      "retrieved_ids": [
+        "silver-forest-m-20",
+        "silver-forest-m-12",
+        "silver-forest-m-30",
+        "silver-forest-m-28",
+        "silver-forest-m-06"
+      ],
+      "relevant_rank": 3,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "银叶药圃",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "silver-forest",
+      "case_id": "silver-forest-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "解药已经配成的约定信号是什么？只回答信号。",
+      "expected": [
+        "在药圃门口挂起四束白花"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "silver-forest-m-22",
+      "retrieved_ids": [
+        "silver-forest-m-22",
+        "silver-forest-m-20",
+        "silver-forest-m-06",
+        "silver-forest-m-35",
+        "silver-forest-m-10"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "在药圃门口挂起四束白花",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "silver-forest",
+      "case_id": "silver-forest-absent_item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "青黛现在拥有翡翠王冠吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "silver-forest-m-28",
+      "retrieved_ids": [
+        "silver-forest-m-28",
+        "silver-forest-m-24",
+        "silver-forest-m-20",
+        "silver-forest-m-18",
+        "silver-forest-m-32"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "没有。",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "silver-forest",
+      "case_id": "silver-forest-resource_current",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "药库当前有多少束银叶苔？只回答数字。",
+      "expected": [
+        "21"
+      ],
+      "forbidden": [
+        "32"
+      ],
+      "relevant_memory_id": "silver-forest-m-40",
+      "retrieved_ids": [
+        "silver-forest-m-40",
+        "silver-forest-m-10",
+        "silver-forest-m-20",
+        "silver-forest-m-30",
+        "silver-forest-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "21",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "case_id": "midnight-clock-early",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "钟塔的控制短语是什么？只回答短语。",
+      "expected": [
+        "午夜停摆"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "midnight-clock-m-02",
+      "retrieved_ids": [
+        "midnight-clock-m-02",
+        "midnight-clock-m-06",
+        "midnight-clock-m-30",
+        "midnight-clock-m-20",
+        "midnight-clock-m-12"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "午夜停摆",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "case_id": "midnight-clock-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "有人建议重光用禁术启动机械，他会怎么做？只回答“拒绝施法”或“使用禁术”。",
+      "expected": [
+        "拒绝施法"
+      ],
+      "forbidden": [
+        "使用禁术"
+      ],
+      "relevant_memory_id": "midnight-clock-m-04",
+      "retrieved_ids": [
+        "midnight-clock-m-04",
+        "midnight-clock-m-20",
+        "midnight-clock-m-24",
+        "midnight-clock-m-30",
+        "midnight-clock-m-14"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "拒绝施法",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "case_id": "midnight-clock-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "重光的真实身份是什么？只回答身份名称。",
+      "expected": [
+        "钟城工程师"
+      ],
+      "forbidden": [
+        "宫廷魔法师"
+      ],
+      "relevant_memory_id": "midnight-clock-m-06",
+      "retrieved_ids": [
+        "midnight-clock-m-06",
+        "midnight-clock-m-20",
+        "midnight-clock-m-30",
+        "midnight-clock-m-12",
+        "midnight-clock-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "钟城工程师",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "case_id": "midnight-clock-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "重光当前属于哪个阵营？只回答阵营名称。",
+      "expected": [
+        "自由钟匠会"
+      ],
+      "forbidden": [
+        "王室工造局"
+      ],
+      "relevant_memory_id": "midnight-clock-m-12",
+      "retrieved_ids": [
+        "midnight-clock-m-12",
+        "midnight-clock-m-20",
+        "midnight-clock-m-30",
+        "midnight-clock-m-28",
+        "midnight-clock-m-06"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "自由钟匠会",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "case_id": "midnight-clock-item_current",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "黄铜擒纵器现在由谁保管？只回答名称。",
+      "expected": [
+        "钟匠会会长"
+      ],
+      "forbidden": [
+        "重光"
+      ],
+      "relevant_memory_id": "midnight-clock-m-24",
+      "retrieved_ids": [
+        "midnight-clock-m-24",
+        "midnight-clock-m-14",
+        "midnight-clock-m-20",
+        "midnight-clock-m-10",
+        "midnight-clock-m-04"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "钟匠会会长",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "case_id": "midnight-clock-location_current",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "重光当前在哪里？只回答地点名称。",
+      "expected": [
+        "主钟控制室"
+      ],
+      "forbidden": [
+        "旧报时厅"
+      ],
+      "relevant_memory_id": "midnight-clock-m-30",
+      "retrieved_ids": [
+        "midnight-clock-m-20",
+        "midnight-clock-m-30",
+        "midnight-clock-m-12",
+        "midnight-clock-m-06",
+        "midnight-clock-m-40"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "主钟控制室",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "case_id": "midnight-clock-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "齿轮组恢复同步的约定信号是什么？只回答信号。",
+      "expected": [
+        "主钟连续报时五响"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "midnight-clock-m-22",
+      "retrieved_ids": [
+        "midnight-clock-m-22",
+        "midnight-clock-m-10",
+        "midnight-clock-m-02",
+        "midnight-clock-m-26",
+        "midnight-clock-m-06"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "主钟连续报时五响。",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "case_id": "midnight-clock-absent_item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "重光现在拥有时间水晶吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "midnight-clock-m-28",
+      "retrieved_ids": [
+        "midnight-clock-m-28",
+        "midnight-clock-m-36",
+        "midnight-clock-m-32",
+        "midnight-clock-m-38",
+        "midnight-clock-m-17"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "没有",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "case_id": "midnight-clock-resource_current",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "钟匠会当前有多少枚备用齿轮？只回答数字。",
+      "expected": [
+        "27"
+      ],
+      "forbidden": [
+        "40"
+      ],
+      "relevant_memory_id": "midnight-clock-m-40",
+      "retrieved_ids": [
+        "midnight-clock-m-40",
+        "midnight-clock-m-10",
+        "midnight-clock-m-30",
+        "midnight-clock-m-28",
+        "midnight-clock-m-20"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "27",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "star-academy",
+      "case_id": "star-academy-early",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "禁书库的隐蔽入口在哪里？只回答地点。",
+      "expected": [
+        "西侧旋梯之后"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "star-academy-m-02",
+      "retrieved_ids": [
+        "star-academy-m-02",
+        "star-academy-m-20",
+        "star-academy-m-24",
+        "star-academy-m-30",
+        "star-academy-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "西侧旋梯之后。",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "star-academy",
+      "case_id": "star-academy-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "对手已经放下武器并投降，夕叶会怎么做？只回答“停止攻击”或“继续攻击”。",
+      "expected": [
+        "停止攻击"
+      ],
+      "forbidden": [
+        "继续攻击"
+      ],
+      "relevant_memory_id": "star-academy-m-04",
+      "retrieved_ids": [
+        "star-academy-m-04",
+        "star-academy-m-30",
+        "star-academy-m-24",
+        "star-academy-m-28",
+        "star-academy-m-22"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "停止攻击",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "star-academy",
+      "case_id": "star-academy-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "夕叶的真实身份是什么？只回答身份名称。",
+      "expected": [
+        "学院档案官"
+      ],
+      "forbidden": [
+        "普通学生"
+      ],
+      "relevant_memory_id": "star-academy-m-06",
+      "retrieved_ids": [
+        "star-academy-m-06",
+        "star-academy-m-20",
+        "star-academy-m-28",
+        "star-academy-m-04",
+        "star-academy-m-02"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "学院档案官",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "star-academy",
+      "case_id": "star-academy-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "夕叶当前属于哪个阵营？只回答阵营名称。",
+      "expected": [
+        "星穹研究会"
+      ],
+      "forbidden": [
+        "旧校董会"
+      ],
+      "relevant_memory_id": "star-academy-m-12",
+      "retrieved_ids": [
+        "star-academy-m-20",
+        "star-academy-m-12",
+        "star-academy-m-30",
+        "star-academy-m-28",
+        "star-academy-m-02"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "星穹研究会",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "star-academy",
+      "case_id": "star-academy-item_current",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "银星目录现在由谁保管？只回答名称。",
+      "expected": [
+        "禁书库管理员"
+      ],
+      "forbidden": [
+        "夕叶"
+      ],
+      "relevant_memory_id": "star-academy-m-24",
+      "retrieved_ids": [
+        "star-academy-m-24",
+        "star-academy-m-14",
+        "star-academy-m-20",
+        "star-academy-m-28",
+        "star-academy-m-10"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "禁书库管理员",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "star-academy",
+      "case_id": "star-academy-location_current",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "夕叶当前在哪里？只回答地点名称。",
+      "expected": [
+        "禁书库内厅"
+      ],
+      "forbidden": [
+        "东庭讲堂"
+      ],
+      "relevant_memory_id": "star-academy-m-30",
+      "retrieved_ids": [
+        "star-academy-m-20",
+        "star-academy-m-30",
+        "star-academy-m-28",
+        "star-academy-m-12",
+        "star-academy-m-40"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "禁书库内厅",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "star-academy",
+      "case_id": "star-academy-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "禁书重新封存的约定信号是什么？只回答信号。",
+      "expected": [
+        "午夜熄灭七盏廊灯"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "star-academy-m-22",
+      "retrieved_ids": [
+        "star-academy-m-22",
+        "star-academy-m-06",
+        "star-academy-m-04",
+        "star-academy-m-35",
+        "star-academy-m-10"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "午夜熄灭七盏廊灯",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "star-academy",
+      "case_id": "star-academy-absent_item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "夕叶现在拥有贤者法杖吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "star-academy-m-28",
+      "retrieved_ids": [
+        "star-academy-m-28",
+        "star-academy-m-24",
+        "star-academy-m-20",
+        "star-academy-m-04",
+        "star-academy-m-38"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "没有。",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "star-academy",
+      "case_id": "star-academy-resource_current",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "研究会当前有多少张封印符？只回答数字。",
+      "expected": [
+        "18"
+      ],
+      "forbidden": [
+        "30"
+      ],
+      "relevant_memory_id": "star-academy-m-40",
+      "retrieved_ids": [
+        "star-academy-m-40",
+        "star-academy-m-10",
+        "star-academy-m-12",
+        "star-academy-m-20",
+        "star-academy-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "18",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "north-fortress",
+      "case_id": "north-fortress-early",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "冰洞中可信的安全标记是什么？只回答标记。",
+      "expected": [
+        "红色绳结"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "north-fortress-m-02",
+      "retrieved_ids": [
+        "north-fortress-m-02",
+        "north-fortress-m-22",
+        "north-fortress-m-06",
+        "north-fortress-m-12",
+        "north-fortress-m-35"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "红色绳结",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "north-fortress",
+      "case_id": "north-fortress-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "火盆里有一封信，白芦会徒手拿取吗？只回答“不会触碰”或“会徒手拿取”。",
+      "expected": [
+        "不会触碰"
+      ],
+      "forbidden": [
+        "会徒手拿取"
+      ],
+      "relevant_memory_id": "north-fortress-m-04",
+      "retrieved_ids": [
+        "north-fortress-m-04",
+        "north-fortress-m-02",
+        "north-fortress-m-20",
+        "north-fortress-m-18",
+        "north-fortress-m-14"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "不会触碰",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "north-fortress",
+      "case_id": "north-fortress-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "白芦的真实身份是什么？只回答身份名称。",
+      "expected": [
+        "冰堡军需官"
+      ],
+      "forbidden": [
+        "前线指挥官"
+      ],
+      "relevant_memory_id": "north-fortress-m-06",
+      "retrieved_ids": [
+        "north-fortress-m-06",
+        "north-fortress-m-20",
+        "north-fortress-m-28",
+        "north-fortress-m-12",
+        "north-fortress-m-04"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "冰堡军需官",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "north-fortress",
+      "case_id": "north-fortress-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "白芦当前属于哪个阵营？只回答阵营名称。",
+      "expected": [
+        "北境守备队"
+      ],
+      "forbidden": [
+        "南境远征军"
+      ],
+      "relevant_memory_id": "north-fortress-m-12",
+      "retrieved_ids": [
+        "north-fortress-m-12",
+        "north-fortress-m-20",
+        "north-fortress-m-30",
+        "north-fortress-m-06",
+        "north-fortress-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "北境守备队",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "north-fortress",
+      "case_id": "north-fortress-item_current",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "霜纹军令现在由谁保管？只回答名称。",
+      "expected": [
+        "冰堡副官"
+      ],
+      "forbidden": [
+        "白芦"
+      ],
+      "relevant_memory_id": "north-fortress-m-24",
+      "retrieved_ids": [
+        "north-fortress-m-24",
+        "north-fortress-m-14",
+        "north-fortress-m-20",
+        "north-fortress-m-06",
+        "north-fortress-m-10"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "冰堡副官",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "north-fortress",
+      "case_id": "north-fortress-location_current",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "白芦当前在哪里？只回答地点名称。",
+      "expected": [
+        "地下军需库"
+      ],
+      "forbidden": [
+        "外墙哨塔"
+      ],
+      "relevant_memory_id": "north-fortress-m-30",
+      "retrieved_ids": [
+        "north-fortress-m-20",
+        "north-fortress-m-30",
+        "north-fortress-m-06",
+        "north-fortress-m-28",
+        "north-fortress-m-12"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "地下军需库",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "north-fortress",
+      "case_id": "north-fortress-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "补给清点安全的约定信号是什么？只回答信号。",
+      "expected": [
+        "清晨在库门放置三块黑石"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "north-fortress-m-22",
+      "retrieved_ids": [
+        "north-fortress-m-02",
+        "north-fortress-m-22",
+        "north-fortress-m-04",
+        "north-fortress-m-10",
+        "north-fortress-m-28"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "清晨在库门放置三块黑石",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "north-fortress",
+      "case_id": "north-fortress-absent_item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "白芦现在拥有炎龙盾牌吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "north-fortress-m-28",
+      "retrieved_ids": [
+        "north-fortress-m-28",
+        "north-fortress-m-24",
+        "north-fortress-m-20",
+        "north-fortress-m-02",
+        "north-fortress-m-18"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "没有。",
+      "passed": true,
+      "forbidden_selected": false
+    },
+    {
+      "story_id": "north-fortress",
+      "case_id": "north-fortress-resource_current",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "守备队当前有多少支弩箭？只回答数字。",
+      "expected": [
+        "33"
+      ],
+      "forbidden": [
+        "48"
+      ],
+      "relevant_memory_id": "north-fortress-m-40",
+      "retrieved_ids": [
+        "north-fortress-m-40",
+        "north-fortress-m-10",
+        "north-fortress-m-28",
+        "north-fortress-m-12",
+        "north-fortress-m-20"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "answer": "33",
+      "passed": true,
+      "forbidden_selected": false
+    }
+  ],
+  "state_rows": [
+    {
+      "story_id": "mist-harbor",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "队伍",
+          "key": "金币",
+          "new_value": 42
+        }
+      ],
+      "actual": [
+        {
+          "entity": "队伍",
+          "key": "金币",
+          "new_value": "42枚",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "林澈",
+          "key": "生命值",
+          "new_value": 78
+        }
+      ],
+      "actual": [
+        {
+          "entity": "林澈",
+          "key": "生命值",
+          "new_value": "78",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "mist-harbor",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:雾港密约",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "玩家",
+          "key": "任务状态",
+          "new_value": "雾港密约：已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "队伍",
+          "key": "金币",
+          "new_value": 31
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "twin-moons",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "营地",
+          "key": "药草",
+          "new_value": 18
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "twin-moons",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "照夜",
+          "key": "法力值",
+          "new_value": 63
+        }
+      ],
+      "actual": [
+        {
+          "entity": "照夜",
+          "key": "法力值",
+          "new_value": "63",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "twin-moons",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:双月校准",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "双月校准",
+          "key": "状态",
+          "new_value": "已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "twin-moons",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "营地",
+          "key": "药草",
+          "new_value": 11
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "守军",
+          "key": "口粮",
+          "new_value": 36
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "寒露",
+          "key": "耐力值",
+          "new_value": 71
+        }
+      ],
+      "actual": [
+        {
+          "entity": "寒露",
+          "key": "耐力值",
+          "new_value": "71",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "frost-bridge",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:霜桥救援",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "任务",
+          "key": "霜桥救援",
+          "new_value": "已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "frost-bridge",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "守军",
+          "key": "口粮",
+          "new_value": 24
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "white-oasis",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "救护会",
+          "key": "净水",
+          "new_value": 28
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "white-oasis",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "苏筝",
+          "key": "生命值",
+          "new_value": 82
+        }
+      ],
+      "actual": [
+        {
+          "entity": "苏筝",
+          "key": "生命值",
+          "new_value": "82",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "white-oasis",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:绿洲净化",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "玩家",
+          "key": "任务状态",
+          "new_value": "任务“绿洲净化”已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "white-oasis",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "救护会",
+          "key": "净水",
+          "new_value": 19
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "工坊",
+          "key": "能量晶体",
+          "new_value": 25
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "云眠",
+          "key": "专注值",
+          "new_value": 76
+        }
+      ],
+      "actual": [
+        {
+          "entity": "云眠",
+          "key": "专注值",
+          "new_value": "76",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "cloud-engine",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:主轴修复",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "主控",
+          "key": "任务状态",
+          "new_value": "主轴修复：已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "工坊",
+          "key": "能量晶体",
+          "new_value": 14
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "deep-current",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "考察团",
+          "key": "氧气瓶",
+          "new_value": 22
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "deep-current",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "临雾",
+          "key": "压力服完整度",
+          "new_value": 88
+        }
+      ],
+      "actual": [
+        {
+          "entity": "临雾",
+          "key": "压力服完整度",
+          "new_value": "88",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "deep-current",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:海门测绘",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "任务",
+          "key": "海门测绘",
+          "new_value": "已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "deep-current",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "考察团",
+          "key": "氧气瓶",
+          "new_value": 13
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "silver-forest",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "药库",
+          "key": "银叶苔",
+          "new_value": 32
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "silver-forest",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "青黛",
+          "key": "声望值",
+          "new_value": 17
+        }
+      ],
+      "actual": [
+        {
+          "entity": "青黛",
+          "key": "声望值",
+          "new_value": "17",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "silver-forest",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:腐心解药",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "任务",
+          "key": "腐心解药",
+          "new_value": "已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "silver-forest",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "药库",
+          "key": "银叶苔",
+          "new_value": 21
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "钟匠会",
+          "key": "备用齿轮",
+          "new_value": 40
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "重光",
+          "key": "机械稳定度",
+          "new_value": 91
+        }
+      ],
+      "actual": [
+        {
+          "entity": "重光",
+          "key": "机械稳定度",
+          "new_value": "91",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "midnight-clock",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:主钟复位",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "主控",
+          "key": "任务状态",
+          "new_value": "主钟复位：已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "钟匠会",
+          "key": "备用齿轮",
+          "new_value": 27
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "star-academy",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "研究会",
+          "key": "封印符",
+          "new_value": 30
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "star-academy",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "夕叶",
+          "key": "知识完整度",
+          "new_value": 84
+        }
+      ],
+      "actual": [
+        {
+          "entity": "夕叶",
+          "key": "知识完整度",
+          "new_value": "84",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "star-academy",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:禁书封存",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "任务",
+          "key": "禁书封存",
+          "new_value": "已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "star-academy",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "研究会",
+          "key": "封印符",
+          "new_value": 18
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "north-fortress",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "守备队",
+          "key": "弩箭",
+          "new_value": 48
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "north-fortress",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "白芦",
+          "key": "士气值",
+          "new_value": 74
+        }
+      ],
+      "actual": [
+        {
+          "entity": "白芦",
+          "key": "士气值",
+          "new_value": 74,
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "north-fortress",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:冬季补给",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "玩家",
+          "key": "任务状态",
+          "new_value": "任务“冬季补给”已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "north-fortress",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "守备队",
+          "key": "弩箭",
+          "new_value": 33
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    }
+  ],
+  "projection_rows": [
+    {
+      "story_id": "mist-harbor",
+      "expected": [
+        {
+          "entity": "队伍",
+          "key": "金币",
+          "new_value": 31
+        },
+        {
+          "entity": "林澈",
+          "key": "生命值",
+          "new_value": 78
+        },
+        {
+          "entity": "任务:雾港密约",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "林澈",
+          "key": "生命值",
+          "new_value": "78"
+        },
+        {
+          "entity": "玩家",
+          "key": "任务状态",
+          "new_value": "雾港密约：已完成"
+        },
+        {
+          "entity": "队伍",
+          "key": "金币",
+          "new_value": "42枚"
+        }
+      ],
+      "tp": 1,
+      "fp": 2,
+      "fn": 2,
+      "exact": false
+    },
+    {
+      "story_id": "twin-moons",
+      "expected": [
+        {
+          "entity": "营地",
+          "key": "药草",
+          "new_value": 11
+        },
+        {
+          "entity": "照夜",
+          "key": "法力值",
+          "new_value": 63
+        },
+        {
+          "entity": "任务:双月校准",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "双月校准",
+          "key": "状态",
+          "new_value": "已完成"
+        },
+        {
+          "entity": "照夜",
+          "key": "法力值",
+          "new_value": "63"
+        }
+      ],
+      "tp": 2,
+      "fp": 0,
+      "fn": 1,
+      "exact": false
+    },
+    {
+      "story_id": "frost-bridge",
+      "expected": [
+        {
+          "entity": "守军",
+          "key": "口粮",
+          "new_value": 24
+        },
+        {
+          "entity": "寒露",
+          "key": "耐力值",
+          "new_value": 71
+        },
+        {
+          "entity": "任务:霜桥救援",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "任务",
+          "key": "霜桥救援",
+          "new_value": "已完成"
+        },
+        {
+          "entity": "寒露",
+          "key": "耐力值",
+          "new_value": "71"
+        }
+      ],
+      "tp": 2,
+      "fp": 0,
+      "fn": 1,
+      "exact": false
+    },
+    {
+      "story_id": "white-oasis",
+      "expected": [
+        {
+          "entity": "救护会",
+          "key": "净水",
+          "new_value": 19
+        },
+        {
+          "entity": "苏筝",
+          "key": "生命值",
+          "new_value": 82
+        },
+        {
+          "entity": "任务:绿洲净化",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "玩家",
+          "key": "任务状态",
+          "new_value": "任务“绿洲净化”已完成"
+        },
+        {
+          "entity": "苏筝",
+          "key": "生命值",
+          "new_value": "82"
+        }
+      ],
+      "tp": 1,
+      "fp": 1,
+      "fn": 2,
+      "exact": false
+    },
+    {
+      "story_id": "cloud-engine",
+      "expected": [
+        {
+          "entity": "工坊",
+          "key": "能量晶体",
+          "new_value": 14
+        },
+        {
+          "entity": "云眠",
+          "key": "专注值",
+          "new_value": 76
+        },
+        {
+          "entity": "任务:主轴修复",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "主控",
+          "key": "任务状态",
+          "new_value": "主轴修复：已完成"
+        },
+        {
+          "entity": "云眠",
+          "key": "专注值",
+          "new_value": "76"
+        }
+      ],
+      "tp": 1,
+      "fp": 1,
+      "fn": 2,
+      "exact": false
+    },
+    {
+      "story_id": "deep-current",
+      "expected": [
+        {
+          "entity": "考察团",
+          "key": "氧气瓶",
+          "new_value": 13
+        },
+        {
+          "entity": "临雾",
+          "key": "压力服完整度",
+          "new_value": 88
+        },
+        {
+          "entity": "任务:海门测绘",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "临雾",
+          "key": "压力服完整度",
+          "new_value": "88"
+        },
+        {
+          "entity": "任务",
+          "key": "海门测绘",
+          "new_value": "已完成"
+        }
+      ],
+      "tp": 2,
+      "fp": 0,
+      "fn": 1,
+      "exact": false
+    },
+    {
+      "story_id": "silver-forest",
+      "expected": [
+        {
+          "entity": "药库",
+          "key": "银叶苔",
+          "new_value": 21
+        },
+        {
+          "entity": "青黛",
+          "key": "声望值",
+          "new_value": 17
+        },
+        {
+          "entity": "任务:腐心解药",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "任务",
+          "key": "腐心解药",
+          "new_value": "已完成"
+        },
+        {
+          "entity": "青黛",
+          "key": "声望值",
+          "new_value": "17"
+        }
+      ],
+      "tp": 2,
+      "fp": 0,
+      "fn": 1,
+      "exact": false
+    },
+    {
+      "story_id": "midnight-clock",
+      "expected": [
+        {
+          "entity": "钟匠会",
+          "key": "备用齿轮",
+          "new_value": 27
+        },
+        {
+          "entity": "重光",
+          "key": "机械稳定度",
+          "new_value": 91
+        },
+        {
+          "entity": "任务:主钟复位",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "主控",
+          "key": "任务状态",
+          "new_value": "主钟复位：已完成"
+        },
+        {
+          "entity": "重光",
+          "key": "机械稳定度",
+          "new_value": "91"
+        }
+      ],
+      "tp": 1,
+      "fp": 1,
+      "fn": 2,
+      "exact": false
+    },
+    {
+      "story_id": "star-academy",
+      "expected": [
+        {
+          "entity": "研究会",
+          "key": "封印符",
+          "new_value": 18
+        },
+        {
+          "entity": "夕叶",
+          "key": "知识完整度",
+          "new_value": 84
+        },
+        {
+          "entity": "任务:禁书封存",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "任务",
+          "key": "禁书封存",
+          "new_value": "已完成"
+        },
+        {
+          "entity": "夕叶",
+          "key": "知识完整度",
+          "new_value": "84"
+        }
+      ],
+      "tp": 2,
+      "fp": 0,
+      "fn": 1,
+      "exact": false
+    },
+    {
+      "story_id": "north-fortress",
+      "expected": [
+        {
+          "entity": "守备队",
+          "key": "弩箭",
+          "new_value": 33
+        },
+        {
+          "entity": "白芦",
+          "key": "士气值",
+          "new_value": 74
+        },
+        {
+          "entity": "任务:冬季补给",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "玩家",
+          "key": "任务状态",
+          "new_value": "任务“冬季补给”已完成"
+        },
+        {
+          "entity": "白芦",
+          "key": "士气值",
+          "new_value": 74
+        }
+      ],
+      "tp": 1,
+      "fp": 1,
+      "fn": 2,
+      "exact": false
+    }
+  ]
+}

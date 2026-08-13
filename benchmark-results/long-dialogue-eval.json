@@ -1,0 +1,985 @@
+{
+  "metadata": {
+    "generated_at": "2026-08-13T12:20:44.463634+00:00",
+    "suite": "Saraswati Long Dialogue Consistency Eval v1",
+    "model": "qwen3.7-plus",
+    "temperature": 0.0,
+    "dataset_type": "deterministic synthetic long-dialogue histories",
+    "notice": "Two 50-turn synthetic histories; directional engineering result, not an external product benchmark."
+  },
+  "metrics": {
+    "long_dialogue": {
+      "stories": 2,
+      "turns_per_story": 50,
+      "total_turns": 100,
+      "total_messages": 200,
+      "recent_message_limit": 16,
+      "questions": 18,
+      "fact_turn_min": 2,
+      "fact_turn_max": 40,
+      "distance_to_query_turns_min": 10,
+      "distance_to_query_turns_max": 48
+    },
+    "retrieval": {
+      "recall_at_1": 0.7222222222222222,
+      "recall_at_3": 0.8888888888888888,
+      "recall_at_5": 0.9444444444444444
+    },
+    "project_context": {
+      "early_plot": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1.0
+      },
+      "faction_consistency": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1.0
+      },
+      "identity_consistency": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1.0
+      },
+      "item_consistency": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1.0
+      },
+      "location_consistency": {
+        "passed": 1,
+        "total": 2,
+        "rate": 0.5
+      },
+      "persona_adherence": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1.0
+      },
+      "promise_consistency": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1.0
+      },
+      "state_value": {
+        "passed": 1,
+        "total": 2,
+        "rate": 0.5
+      },
+      "unsupported_item": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1.0
+      },
+      "overall": {
+        "passed": 16,
+        "total": 18,
+        "rate": 0.8888888888888888
+      },
+      "explicit_contradiction_rate": {
+        "violations": 0,
+        "total": 6,
+        "rate": 0.0
+      }
+    },
+    "recent_only_baseline": {
+      "early_plot": {
+        "passed": 0,
+        "total": 2,
+        "rate": 0.0
+      },
+      "faction_consistency": {
+        "passed": 0,
+        "total": 2,
+        "rate": 0.0
+      },
+      "identity_consistency": {
+        "passed": 0,
+        "total": 2,
+        "rate": 0.0
+      },
+      "item_consistency": {
+        "passed": 0,
+        "total": 2,
+        "rate": 0.0
+      },
+      "location_consistency": {
+        "passed": 0,
+        "total": 2,
+        "rate": 0.0
+      },
+      "persona_adherence": {
+        "passed": 1,
+        "total": 2,
+        "rate": 0.5
+      },
+      "promise_consistency": {
+        "passed": 0,
+        "total": 2,
+        "rate": 0.0
+      },
+      "state_value": {
+        "passed": 0,
+        "total": 2,
+        "rate": 0.0
+      },
+      "unsupported_item": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1.0
+      },
+      "overall": {
+        "passed": 3,
+        "total": 18,
+        "rate": 0.16666666666666666
+      },
+      "explicit_contradiction_rate": {
+        "violations": 0,
+        "total": 6,
+        "rate": 0.0
+      }
+    },
+    "project_vs_recent_only": {
+      "absolute_improvement_points": 72.22222222222221,
+      "relative_improvement": 4.333333333333334
+    },
+    "world_ledger_event_extraction": {
+      "events": 8,
+      "exact_events": 3,
+      "exact_event_rate": 0.375,
+      "tp": 3,
+      "fp": 2,
+      "fn": 5,
+      "precision": 0.6,
+      "recall": 0.375,
+      "f1": 0.4615384615384615
+    },
+    "world_ledger_final_projection": {
+      "stories": 2,
+      "exact_stories": 0,
+      "exact_story_rate": 0.0,
+      "tp": 3,
+      "fp": 2,
+      "fn": 3,
+      "precision": 0.6,
+      "recall": 0.5
+    }
+  },
+  "question_rows": [
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-passphrase",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "旧王密门的口令是什么？只回答口令。",
+      "expected": [
+        "赤月无声"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "mist-harbor-m-02",
+      "retrieved_ids": [
+        "mist-harbor-m-02",
+        "mist-harbor-m-20",
+        "mist-harbor-m-22",
+        "mist-harbor-m-06",
+        "mist-harbor-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "赤月无声",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "未提及",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "宴会上有人向林澈递酒，他会怎么做？只回答“拒绝饮酒”或“接受饮酒”。",
+      "expected": [
+        "拒绝饮酒"
+      ],
+      "forbidden": [
+        "接受饮酒"
+      ],
+      "relevant_memory_id": "mist-harbor-m-04",
+      "retrieved_ids": [
+        "mist-harbor-m-04",
+        "mist-harbor-m-20",
+        "mist-harbor-m-12",
+        "mist-harbor-m-26",
+        "mist-harbor-m-24"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "拒绝饮酒",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "故事中未出现该事实。",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "林澈的真实身份是什么？只回答身份名称。",
+      "expected": [
+        "旧王室最后一名档案官",
+        "旧王室档案官"
+      ],
+      "forbidden": [
+        "商旅"
+      ],
+      "relevant_memory_id": "mist-harbor-m-06",
+      "retrieved_ids": [
+        "mist-harbor-m-20",
+        "mist-harbor-m-28",
+        "mist-harbor-m-06",
+        "mist-harbor-m-24",
+        "mist-harbor-m-14"
+      ],
+      "relevant_rank": 3,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "旧王室最后一名档案官",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "未提及",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "林澈当前效忠哪个阵营？只回答阵营名称。",
+      "expected": [
+        "白塔议会"
+      ],
+      "forbidden": [
+        "灰帆商会"
+      ],
+      "relevant_memory_id": "mist-harbor-m-12",
+      "retrieved_ids": [
+        "mist-harbor-m-20",
+        "mist-harbor-m-12",
+        "mist-harbor-m-06",
+        "mist-harbor-m-04",
+        "mist-harbor-m-30"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "白塔议会",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "未提及",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-item-owner",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "星纹钥匙现在由谁保管？只回答人物名称。",
+      "expected": [
+        "守钟人"
+      ],
+      "forbidden": [
+        "林澈"
+      ],
+      "relevant_memory_id": "mist-harbor-m-24",
+      "retrieved_ids": [
+        "mist-harbor-m-24",
+        "mist-harbor-m-20",
+        "mist-harbor-m-14",
+        "mist-harbor-m-28",
+        "mist-harbor-m-40"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "守钟人",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "无",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-location",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "林澈当前在哪里？只回答地点名称。",
+      "expected": [
+        "钟楼档案室"
+      ],
+      "forbidden": [
+        "旧码头"
+      ],
+      "relevant_memory_id": "mist-harbor-m-30",
+      "retrieved_ids": [
+        "mist-harbor-m-20",
+        "mist-harbor-m-40",
+        "mist-harbor-m-04",
+        "mist-harbor-m-12",
+        "mist-harbor-m-24"
+      ],
+      "relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_5": 0,
+      "project_answer": "未提及",
+      "project_passed": false,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "未知",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "档案安全转移的联络信号是什么？只回答信号。",
+      "expected": [
+        "黎明前连续敲三次钟",
+        "连续敲三次钟"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "mist-harbor-m-22",
+      "retrieved_ids": [
+        "mist-harbor-m-22",
+        "mist-harbor-m-20",
+        "mist-harbor-m-24",
+        "mist-harbor-m-06",
+        "mist-harbor-m-28"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "黎明前连续敲三次钟",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "本故事中未提及。",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-absent-item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "林澈现在拥有黑铁王冠吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "mist-harbor-m-28",
+      "retrieved_ids": [
+        "mist-harbor-m-28",
+        "mist-harbor-m-24",
+        "mist-harbor-m-20",
+        "mist-harbor-m-26",
+        "mist-harbor-m-32"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "没有。",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "没有",
+      "recent_only_passed": true,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "case_id": "mist-coins",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "队伍当前有多少枚金币？只回答数字。",
+      "expected": [
+        "31"
+      ],
+      "forbidden": [
+        "42"
+      ],
+      "relevant_memory_id": "mist-harbor-m-40",
+      "retrieved_ids": [
+        "mist-harbor-m-40",
+        "mist-harbor-m-20",
+        "mist-harbor-m-10",
+        "mist-harbor-m-24",
+        "mist-harbor-m-30"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "42",
+      "project_passed": false,
+      "project_forbidden_selected": true,
+      "recent_only_answer": "0",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-cure",
+      "category": "early_plot",
+      "fact_turn": 2,
+      "distance_to_query_turns": 48,
+      "query": "解除石化诅咒需要哪种花？只回答花名。",
+      "expected": [
+        "夜昙"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "twin-moons-m-02",
+      "retrieved_ids": [
+        "twin-moons-m-02",
+        "twin-moons-m-40",
+        "twin-moons-m-04",
+        "twin-moons-m-20",
+        "twin-moons-m-32"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "夜昙",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "未提及",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-persona",
+      "category": "persona_adherence",
+      "fact_turn": 4,
+      "distance_to_query_turns": 46,
+      "query": "有人要求照夜伪造观测记录，她会怎么做？只回答“拒绝伪造”或“接受伪造”。",
+      "expected": [
+        "拒绝伪造"
+      ],
+      "forbidden": [
+        "接受伪造"
+      ],
+      "relevant_memory_id": "twin-moons-m-04",
+      "retrieved_ids": [
+        "twin-moons-m-04",
+        "twin-moons-m-06",
+        "twin-moons-m-20",
+        "twin-moons-m-02",
+        "twin-moons-m-12"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "拒绝伪造",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "拒绝伪造",
+      "recent_only_passed": true,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-identity",
+      "category": "identity_consistency",
+      "fact_turn": 6,
+      "distance_to_query_turns": 44,
+      "query": "照夜是什么种族、从事什么职业？只回答“人类观星师”或“精灵祭司”。",
+      "expected": [
+        "人类观星师"
+      ],
+      "forbidden": [
+        "精灵祭司"
+      ],
+      "relevant_memory_id": "twin-moons-m-06",
+      "retrieved_ids": [
+        "twin-moons-m-06",
+        "twin-moons-m-02",
+        "twin-moons-m-20",
+        "twin-moons-m-04",
+        "twin-moons-m-30"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "人类观星师",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "本故事中未提及照夜的种族与职业。",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-faction",
+      "category": "faction_consistency",
+      "fact_turn": 12,
+      "distance_to_query_turns": 38,
+      "query": "照夜当前属于哪个阵营？只回答阵营名称。",
+      "expected": [
+        "南坡学社"
+      ],
+      "forbidden": [
+        "北境学院"
+      ],
+      "relevant_memory_id": "twin-moons-m-12",
+      "retrieved_ids": [
+        "twin-moons-m-12",
+        "twin-moons-m-30",
+        "twin-moons-m-20",
+        "twin-moons-m-10",
+        "twin-moons-m-04"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "南坡学社",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "未提及",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-item-owner",
+      "category": "item_consistency",
+      "fact_turn": 24,
+      "distance_to_query_turns": 26,
+      "query": "海镜现在由谁保管？只回答名称。",
+      "expected": [
+        "藏镜阁"
+      ],
+      "forbidden": [
+        "照夜"
+      ],
+      "relevant_memory_id": "twin-moons-m-24",
+      "retrieved_ids": [
+        "twin-moons-m-24",
+        "twin-moons-m-02",
+        "twin-moons-m-10",
+        "twin-moons-m-40",
+        "twin-moons-m-26"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "藏镜阁",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "未提及",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-location",
+      "category": "location_consistency",
+      "fact_turn": 30,
+      "distance_to_query_turns": 20,
+      "query": "照夜当前在哪里？只回答地点名称。",
+      "expected": [
+        "南坡营地"
+      ],
+      "forbidden": [
+        "星桥"
+      ],
+      "relevant_memory_id": "twin-moons-m-30",
+      "retrieved_ids": [
+        "twin-moons-m-20",
+        "twin-moons-m-30",
+        "twin-moons-m-40",
+        "twin-moons-m-04",
+        "twin-moons-m-12"
+      ],
+      "relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "南坡营地",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "未提及",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-promise",
+      "category": "promise_consistency",
+      "fact_turn": 22,
+      "distance_to_query_turns": 28,
+      "query": "海镜预言开始生效的约定信号是什么？只回答信号。",
+      "expected": [
+        "双月同升时点燃一盏蓝灯",
+        "点燃一盏蓝灯"
+      ],
+      "forbidden": [],
+      "relevant_memory_id": "twin-moons-m-22",
+      "retrieved_ids": [
+        "twin-moons-m-22",
+        "twin-moons-m-02",
+        "twin-moons-m-20",
+        "twin-moons-m-10",
+        "twin-moons-m-26"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "双月同升时点燃一盏蓝灯。",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "本故事中未提及。",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-absent-item",
+      "category": "unsupported_item",
+      "fact_turn": 28,
+      "distance_to_query_turns": 22,
+      "query": "照夜现在拥有龙骨短笛吗？只回答“有”或“没有”。",
+      "expected": [
+        "没有"
+      ],
+      "forbidden": [
+        "有"
+      ],
+      "relevant_memory_id": "twin-moons-m-28",
+      "retrieved_ids": [
+        "twin-moons-m-24",
+        "twin-moons-m-35",
+        "twin-moons-m-18",
+        "twin-moons-m-26",
+        "twin-moons-m-28"
+      ],
+      "relevant_rank": 5,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_5": 1,
+      "project_answer": "没有。",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "没有",
+      "recent_only_passed": true,
+      "recent_only_forbidden_selected": false
+    },
+    {
+      "story_id": "twin-moons",
+      "case_id": "moon-herbs",
+      "category": "state_value",
+      "fact_turn": 40,
+      "distance_to_query_turns": 10,
+      "query": "营地当前有多少份药草？只回答数字。",
+      "expected": [
+        "11"
+      ],
+      "forbidden": [
+        "18"
+      ],
+      "relevant_memory_id": "twin-moons-m-40",
+      "retrieved_ids": [
+        "twin-moons-m-40",
+        "twin-moons-m-10",
+        "twin-moons-m-30",
+        "twin-moons-m-20",
+        "twin-moons-m-26"
+      ],
+      "relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_5": 1,
+      "project_answer": "11",
+      "project_passed": true,
+      "project_forbidden_selected": false,
+      "recent_only_answer": "0",
+      "recent_only_passed": false,
+      "recent_only_forbidden_selected": false
+    }
+  ],
+  "state_rows": [
+    {
+      "story_id": "mist-harbor",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "队伍",
+          "key": "金币",
+          "new_value": 42
+        }
+      ],
+      "actual": [
+        {
+          "entity": "队伍",
+          "key": "金币",
+          "new_value": "42枚",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "林澈",
+          "key": "生命值",
+          "new_value": 78
+        }
+      ],
+      "actual": [
+        {
+          "entity": "林澈",
+          "key": "生命值",
+          "new_value": "78",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "mist-harbor",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:雾港密约",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "玩家",
+          "key": "任务状态",
+          "new_value": "雾港密约：已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "mist-harbor",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "队伍",
+          "key": "金币",
+          "new_value": 31
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "twin-moons",
+      "turn": 10,
+      "expected": [
+        {
+          "entity": "营地",
+          "key": "药草",
+          "new_value": 18
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    },
+    {
+      "story_id": "twin-moons",
+      "turn": 20,
+      "expected": [
+        {
+          "entity": "照夜",
+          "key": "法力值",
+          "new_value": 63
+        }
+      ],
+      "actual": [
+        {
+          "entity": "照夜",
+          "key": "法力值",
+          "new_value": "63",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "twin-moons",
+      "turn": 35,
+      "expected": [
+        {
+          "entity": "任务:双月校准",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "双月校准",
+          "key": "状态",
+          "new_value": "已完成",
+          "reason": "剧情正文中的明确变化"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "exact_case": true
+    },
+    {
+      "story_id": "twin-moons",
+      "turn": 40,
+      "expected": [
+        {
+          "entity": "营地",
+          "key": "药草",
+          "new_value": 11
+        }
+      ],
+      "actual": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "exact_case": false
+    }
+  ],
+  "projection_rows": [
+    {
+      "story_id": "mist-harbor",
+      "expected": [
+        {
+          "entity": "队伍",
+          "key": "金币",
+          "new_value": 31
+        },
+        {
+          "entity": "林澈",
+          "key": "生命值",
+          "new_value": 78
+        },
+        {
+          "entity": "任务:雾港密约",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "林澈",
+          "key": "生命值",
+          "new_value": "78"
+        },
+        {
+          "entity": "玩家",
+          "key": "任务状态",
+          "new_value": "雾港密约：已完成"
+        },
+        {
+          "entity": "队伍",
+          "key": "金币",
+          "new_value": "42枚"
+        }
+      ],
+      "tp": 1,
+      "fp": 2,
+      "fn": 2,
+      "exact": false
+    },
+    {
+      "story_id": "twin-moons",
+      "expected": [
+        {
+          "entity": "营地",
+          "key": "药草",
+          "new_value": 11
+        },
+        {
+          "entity": "照夜",
+          "key": "法力值",
+          "new_value": 63
+        },
+        {
+          "entity": "任务:双月校准",
+          "key": "状态",
+          "new_value": "已完成"
+        }
+      ],
+      "actual": [
+        {
+          "entity": "双月校准",
+          "key": "状态",
+          "new_value": "已完成"
+        },
+        {
+          "entity": "照夜",
+          "key": "法力值",
+          "new_value": "63"
+        }
+      ],
+      "tp": 2,
+      "fp": 0,
+      "fn": 1,
+      "exact": false
+    }
+  ]
+}

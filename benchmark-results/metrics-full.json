@@ -1,0 +1,130 @@
+{
+  "metadata": {
+    "generated_at": "2026-08-13T09:31:02.273790+00:00",
+    "model": "qwen3.7-plus",
+    "runs": 3,
+    "temperature": 0.8,
+    "top_p": 1.0,
+    "max_output_tokens": 512,
+    "embedding_mode": "local_hash_96",
+    "reranker_mode": "disabled",
+    "dataset_sha256": "0bb21ff9b0dfde870e4562c7a9fd5a9e464a751d1af920f3892ac09b60a77cd9",
+    "dataset_metadata": {
+      "name": "Saraswati Synthetic Narrative Benchmark v1",
+      "seed": 20260813,
+      "retrieval_cases": 120,
+      "consistency_cases": 60,
+      "state_cases": 40,
+      "notice": "Synthetic, template-generated and deterministically labelled; not real-user data."
+    },
+    "pricing_source": "https://help.aliyun.com/zh/model-studio/model-pricing",
+    "input_price_rmb_per_million": 2.0,
+    "output_price_rmb_per_million": 8.0,
+    "smoke": false
+  },
+  "metrics": {
+    "per_run": [
+      {
+        "run": 1,
+        "retrieval_recall_at_1": 0.7416666666666667,
+        "retrieval_recall_at_3": 1.0,
+        "retrieval_recall_at_5": 1.0,
+        "setting_consistency": 0.9666666666666667,
+        "state_precision": 0.9722222222222222,
+        "state_recall": 0.875,
+        "state_f1": 0.9210526315789473,
+        "mean_input_tokens": 231.38,
+        "mean_latency_ms": 8337.2369,
+        "standard_price_cost_rmb": 0.39226
+      },
+      {
+        "run": 2,
+        "retrieval_recall_at_1": 0.7416666666666667,
+        "retrieval_recall_at_3": 1.0,
+        "retrieval_recall_at_5": 1.0,
+        "setting_consistency": 0.9833333333333333,
+        "state_precision": 0.8888888888888888,
+        "state_recall": 0.8,
+        "state_f1": 0.8421052631578948,
+        "mean_input_tokens": 231.38,
+        "mean_latency_ms": 8238.5166,
+        "standard_price_cost_rmb": 0.388884
+      },
+      {
+        "run": 3,
+        "retrieval_recall_at_1": 0.7416666666666667,
+        "retrieval_recall_at_3": 1.0,
+        "retrieval_recall_at_5": 1.0,
+        "setting_consistency": 1.0,
+        "state_precision": 0.7435897435897436,
+        "state_recall": 0.725,
+        "state_f1": 0.7341772151898733,
+        "mean_input_tokens": 231.38,
+        "mean_latency_ms": 8309.6813,
+        "standard_price_cost_rmb": 0.393676
+      }
+    ],
+    "retrieval": {
+      "cases": 360,
+      "recall_at_1": 0.7416666666666667,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 0.8652777777777778,
+      "mean_local_latency_ms": 19.42508888888889,
+      "p95_local_latency_ms": 18.18335
+    },
+    "consistency": {
+      "observations": 180,
+      "passed": 177,
+      "rate": 0.9833333333333333,
+      "wilson_95_ci": [
+        0.9521509421982017,
+        0.9943160163139086
+      ]
+    },
+    "state_updates_micro": {
+      "observations": 120,
+      "tp": 96,
+      "fp": 15,
+      "fn": 24,
+      "precision": 0.8648648648648649,
+      "recall": 0.8,
+      "f1": 0.8311688311688312,
+      "precision_wilson_95_ci": [
+        0.7889529841041635,
+        0.9163663426903083
+      ],
+      "recall_wilson_95_ci": [
+        0.7196316465662729,
+        0.8617561908001696
+      ]
+    },
+    "state_updates_strict_schema": {
+      "tp": 0,
+      "fp": 111,
+      "fn": 120,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "model_efficiency": {
+      "observations": 300,
+      "api_calls": 300,
+      "mean_input_tokens": 231.38,
+      "mean_input_tokens_bootstrap_95_ci": [
+        222.73333333333332,
+        240.32333333333332
+      ],
+      "mean_output_tokens": 431.66333333333336,
+      "mean_standard_price_cost_rmb": 0.0039160666666666665,
+      "total_standard_price_cost_rmb": 1.17482,
+      "mean_latency_ms": 8295.144933333333,
+      "p50_latency_ms": 5863.110000000001,
+      "p95_latency_ms": 21076.706000000002,
+      "mean_latency_bootstrap_95_ci": [
+        7652.873366666666,
+        8930.620499999999
+      ]
+    }
+  }
+}
